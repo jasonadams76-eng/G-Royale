@@ -107,7 +107,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · boots</div>
+      <div class="ver">Version 2026-10-04 · pickaxe</div>
     </div>
 
     <div id="s-join" hidden>
@@ -1466,6 +1466,12 @@ function drawItem(c, type, s){
     c.fillStyle = '#b7bec4'; c.beginPath(); c.moveTo(3,-10); c.quadraticCurveTo(13,-9, 11,4); c.lineTo(8,3); c.quadraticCurveTo(9,-5, 3,-7); c.closePath(); c.fill(); c.stroke();   // lever
     c.strokeStyle = '#e6b800'; c.lineWidth = 2/s; c.beginPath(); c.arc(-6.5,-10, 3.2, 0, 7); c.stroke();    // pin ring
     c.fillStyle = 'rgba(255,255,255,0.35)'; c.beginPath(); c.ellipse(-4,0, 2,4, 0.2, 0, 7); c.fill();
+  } else if (type === 'pickaxe'){     // pickaxe, drawn upright (head on top); callers rotate it
+    rr(-2.5,-8, 5,28, 2, '#8a5a2b');                                                                      // wooden handle
+    c.strokeStyle = '#000'; c.fillStyle = '#c9d1d6'; c.beginPath();
+    c.moveTo(-19,2); c.quadraticCurveTo(-15,-12,0,-13); c.quadraticCurveTo(15,-12,19,2); c.lineTo(15,2); c.quadraticCurveTo(12,-7,0,-8); c.quadraticCurveTo(-12,-7,-15,2); c.closePath(); c.fill(); c.stroke();   // curved iron head
+    rr(-5,-12, 10,7, 2, '#8d979e');                                                                       // socket
+    c.fillStyle = 'rgba(255,255,255,0.5)'; c.beginPath(); c.ellipse(-8,-7, 4,1.4, -0.5, 0, 7); c.fill();
   } else if (type === 'boots'){       // winged speed boot
     c.fillStyle = '#e8a317'; c.beginPath(); c.moveTo(-6,-11); c.lineTo(6,-11); c.lineTo(6,1); c.quadraticCurveTo(15,3,15,10); c.lineTo(15,13); c.lineTo(-7,13); c.lineTo(-7,-1); c.closePath(); c.fill(); c.stroke();
     rr(-8,10, 24,4, 1.5, '#5a3a10');                                                                      // sole
@@ -1550,7 +1556,7 @@ function draw(){
     ctx.save(); ctx.translate(a.x,a.y); ctx.rotate(a.angle);
     const w = WEAP[a.inv[a.cur]] || WEAP.pickaxe;
     ctx.fillStyle = w.color; ctx.strokeStyle='#000'; ctx.lineWidth=2;
-    if (w.melee){ const sw = a.swing > 0 ? 0.8 : 0; ctx.save(); ctx.rotate(-0.4+sw); ctx.fillRect(10,-3,32,6); ctx.strokeRect(10,-3,32,6); ctx.restore(); }
+    if (w.melee){ const sw = a.swing > 0 ? 0.8 : 0; ctx.save(); ctx.rotate(-0.4+sw); ctx.translate(26,0); ctx.rotate(Math.PI/2); drawItem(ctx, 'pickaxe', 1); ctx.restore(); }
     else if (w.heal){ ctx.fillRect(14,-5,12,10); ctx.strokeRect(14,-5,12,10); }
     else if (w.passive){}
     else if (w.grenade){ ctx.save(); ctx.translate(24,0); drawItem(ctx, 'grenade', 0.55); ctx.restore(); }
@@ -1656,6 +1662,9 @@ function drawHUD(){
       if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(id === 'boots' ? 'Boots' : 'Grenade', r.x+r.w/2, r.y+r.h*0.9); }
       ctx.strokeStyle = '#000'; ctx.lineWidth = 5; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
       ctx.strokeStyle = RARITY[id === 'boots' ? BOOT_RAR : 4].col; ctx.lineWidth = 3; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
+    } else if (id === 'pickaxe'){
+      ctx.save(); ctx.translate(r.x + r.w/2, r.y + r.h*(tm ? 0.5 : 0.45)); ctx.rotate(0.6); drawItem(ctx, 'pickaxe', tm ? 0.75 : 0.95); ctx.restore();
+      if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText('Pickaxe', r.x+r.w/2, r.y+r.h*0.92); }
     } else if (STACK[id]){
       ctx.save(); ctx.translate(r.x + r.w/2, r.y + r.h*(tm ? 0.4 : 0.38)); drawItem(ctx, id, tm ? 0.6 : 0.8); ctx.restore();
       ctx.fillText('x'+p[STACK[id].key], r.x+r.w/2, r.y+r.h*(tm ? 0.88 : 0.9));
