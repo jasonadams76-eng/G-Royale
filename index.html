@@ -272,6 +272,9 @@ addEventListener('pointerdown', e => {
     touchMode = false; mouse.x = x; mouse.y = y;
     if (e.button === 0){
       if (S.over){ tryRestart(); return; }
+      for (let i=0;i<6;i++){          // clicking a loadout slot switches to it (without firing)
+        if (inRect(slotRect(i), x, y)){ const me = S.player; if (me.alive && me.inv[i]) selectSlot(i); return; }
+      }
       mouse.down = true;
     }
     if (e.button === 2) doBuild();
