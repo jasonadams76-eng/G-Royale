@@ -107,7 +107,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · slot colours</div>
+      <div class="ver">Version 2026-10-04 · grenades</div>
     </div>
 
     <div id="s-join" hidden>
@@ -170,7 +170,8 @@ const WEAP = {
   ar:      {name:'Rifle',   dmg:12, rate:0.11, spd:1100,spread:0.06, pellets:1, life:0.8, color:'#9f6'},
   bandage: {name:'Bandage', heal:true, color:'#fff'},
   med:     {name:'Medkit',  heal:true, color:'#f55'},
-  shield:  {name:'Shield',  heal:true, color:'#58f'}
+  shield:  {name:'Shield',  heal:true, color:'#58f'},
+  grenade: {name:'Grenade', grenade:true, color:'#fc0'}
 };
 const STACK = {};   // stackable loadout items: how many fit in one slot, how long they take to use, and where the count is kept
 const MAXBAND = 3, BANDAGE_HEAL = 25, HEAL_TIME = 1.5, MAXMED = 2, MED_TIME = 3.0,   // a medkit heals to full health but takes longer to use
@@ -179,6 +180,8 @@ const MAXBAND = 3, BANDAGE_HEAL = 25, HEAL_TIME = 1.5, MAXMED = 2, MED_TIME = 3.
 STACK.bandage = {key:'band', max:MAXBAND, time:HEAL_TIME};
 STACK.med     = {key:'med',  max:MAXMED,  time:MED_TIME};
 STACK.shield  = {key:'shd',  max:MAXSHD,  time:SHD_TIME};
+// Grenades: rare (always Gold) specialty items. One per slot; thrown at a spot within GR_RANGE, they explode there.
+const GR_RANGE = 520, GR_RADIUS = 140, GR_DMG_MAX = 130, GR_DMG_MIN = 60, GR_SPEED = 560, GR_CHANCE = 0.07;   // GR_CHANCE: odds per chest
 const CHEST_COUNT = 32, CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
 // Gun rarities: the rarer the gun, the harder it hits, the faster it fires and the straighter it shoots.
 const RARITY = [
@@ -194,7 +197,7 @@ function rollRarity(){
   return 0;
 }
 const newGr = () => ({pistol:0, shotgun:0, ar:0});     // rarity of the gun held for each type (you can hold one of each)
-const TYPES = ['pistol','shotgun','ar','bandage','shield','med','wood'];   // index used on the wire
+const TYPES = ['pistol','shotgun','ar','bandage','shield','med','wood','grenade'];   // index used on the wire
 const PHASES = [
   {wait:20, shrink:20, r:1700}, {wait:15, shrink:15, r:1100},
   {wait:12, shrink:12, r:600},  {wait:10, shrink:10, r:250},
@@ -235,6 +238,11 @@ function selectSlot(i){
   if (NET.role === 'guest'){ me.selHold = performance.now() + 400; netSend({t:'sel', i}); }
 }
 function doBuild(){ if (NET.role === 'guest') netSend({t:'build'}); else build(S.player); }
+function throwAtScreen(x, y){
+  const cam = camera(), wx = x/ZOOM + cam.x, wy = y/ZOOM + cam.y;
+  if (NET.role === 'guest') netSend({t:'throw', x:Math.round(wx), y:Math.round(wy)}); else throwGrenade(S.player, wx, wy);
+}
+const holdingGrenade = () => S && S.player && S.player.alive && S.player.inv[S.player.cur] === 'grenade';
 function doHeal(){ if (NET.role === 'guest') netSend({t:'heal'}); else startHeal(S.player); }
 function tryRestart(){
   if (!S.over || performance.now() - S.overAt < 700) return;
@@ -274,6 +282,7 @@ function tryFullscreen(){
   } catch(_){}
 }
 
+const taps = {};
 addEventListener('pointerdown', e => {
   if (phase !== 'play') return;
   const x = e.clientX, y = e.clientY;
@@ -285,6 +294,7 @@ addEventListener('pointerdown', e => {
       for (let i=0;i<6;i++){          // clicking a loadout slot switches to it (without firing)
         if (inRect(slotRect(i), x, y)){ const me = S.player; if (me.alive && me.inv[i]) selectSlot(i); return; }
       }
+      if (holdingGrenade()){ throwAtScreen(x, y); return; }       // grenade: click where to throw it
       mouse.down = true;
     }
     if (e.button === 2) doBuild();
@@ -306,6 +316,7 @@ addEventListener('pointerdown', e => {
   }
   const b = buildBtn();
   if (Math.hypot(x-b.x, y-b.y) <= b.r+10){ doBuild(); return; }
+  taps[e.pointerId] = {x, y, t:performance.now()};          // a quick tap with a grenade selected throws it there
   const side = x < SW/2 ? 'move' : 'aim';
   if (!touch[side]) touch[side] = {id:e.pointerId, ox:x, oy:y, dx:0, dy:0};
 });
@@ -324,6 +335,8 @@ addEventListener('pointermove', e => {
 function endPointer(e){
   if (e.pointerType === 'mouse'){ if (e.type === 'pointercancel' || e.button === 0) mouse.down = false; return; }
   for (const k of ['move','aim']) if (touch[k] && touch[k].id === e.pointerId) touch[k] = null;
+  const tp = taps[e.pointerId]; delete taps[e.pointerId];
+  if (tp && e.type === 'pointerup' && phase === 'play' && performance.now() - tp.t < 350 && Math.hypot(e.clientX - tp.x, e.clientY - tp.y) < 16 && holdingGrenade()) throwAtScreen(tp.x, tp.y);
   tryFullscreen(); // needs a completed tap to count as a user gesture
 }
 addEventListener('pointerup', endPointer);
@@ -361,7 +374,7 @@ function botPlan(humans){
 // humans = [{pid, name, mate}] (pid 0 is the host)
 function init(humans){
   humans = humans || [{pid:0, name:cleanName($('pname').value) || 'Player 1', mate:null}];
-  S = {actors:[], players:[], bullets:[], trees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[],
+  S = {actors:[], players:[], bullets:[], trees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[],
     over:false, winTeam:null, overAt:0,
     storm:{i:0, state:'wait', t:PHASES[0].wait, r:2900, rFrom:2900, rTo:PHASES[0].r}};
   for (let i=0;i<TREE_COUNT;i++) S.trees.push({id:i, x:Math.round(rnd(100,W-100)), y:Math.round(rnd(100,W-100)), r:22, wood:100});
@@ -461,6 +474,8 @@ const SFX = {
   bd:  () => { tone(130, 80, .1, 'square', .3); noise(.08, .35, 'lowpass', 700, 300); },
   ui:  () => { tone(880, 880, .08, 'sine', .3); tone(1175, 1175, .1, 'sine', .3, .08); },
   win: () => [523,659,784,1047].forEach((f,i) => tone(f, f, .3, 'triangle', .4, i*.15)),
+  th:  () => noise(.2, .4, 'highpass', 500, 2400),
+  bm:  () => { noise(.8, 1, 'lowpass', 2600, 70); tone(110, 28, .65, 'sawtooth', .7); tone(62, 24, .85, 'sine', .9); },
   lose:() => [392,330,262].forEach((f,i) => tone(f, f*.98, .35, 'sawtooth', .25, i*.2))
 };
 const SFX_GAP = {ar:.05, sg:.08, pi:.05, hit:.06, ch:.06, sw:.08};   // min seconds between two of the same sound (stops spam)
@@ -609,13 +624,14 @@ function damage(a, dmg, owner){
     a.inv.forEach(w => {
       if (!w || w === 'pickaxe') return;
       const n = STACK[w] ? a[STACK[w].key] : 1;
-      for (let i=0;i<n;i++) S.loot.push({x:a.x+rnd(-20,20), y:a.y+rnd(-20,20), type:w, rar:GUN_W[w] ? a.gr[w] : 0});
+      for (let i=0;i<n;i++) S.loot.push({x:a.x+rnd(-20,20), y:a.y+rnd(-20,20), type:w, rar:GUN_W[w] ? a.gr[w] : w === 'grenade' ? 4 : 0});
     });
   }
 }
 function fire(a){
   if (!a.alive) return;
   const w = WEAP[a.inv[a.cur]];
+  if (w.grenade) return;                 // grenades are thrown at a spot, not fired
   if (w.heal){ startHeal(a); return; }
   if (a.cd > 0) return;
   const rm = RARITY[w.melee || w.heal ? 0 : (a.gr[a.inv[a.cur]] || 0)];
@@ -652,6 +668,32 @@ function burst(x,y,c,n){
   if (NET.role === 'host' && peerCount() && S.ev.length < 60) S.ev.push([Math.round(x),Math.round(y),c,n]);  // let the guests see it too
 }
 
+// ---------- Grenades ----------
+function throwGrenade(a, tx, ty){
+  if (!a.alive || a.inv[a.cur] !== 'grenade' || !isFinite(tx) || !isFinite(ty)) return;
+  let dx = tx - a.x, dy = ty - a.y; const d = Math.hypot(dx, dy) || 1;
+  const reach = Math.max(30, Math.min(GR_RANGE, d));              // taps beyond the range land at the edge of it
+  dx = dx/d*reach; dy = dy/d*reach;
+  a.inv[a.cur] = null; a.cur = 0;                                  // the grenade is used up
+  S.grenades.push({sx:a.x, sy:a.y, x:a.x, y:a.y, tx:a.x+dx, ty:a.y+dy, t:0, dur:Math.max(0.3, reach/GR_SPEED), owner:a});
+  a.angle = Math.atan2(dy, dx); sfx('th', a.x, a.y);
+}
+function explode(g){
+  burst(g.tx, g.ty, '#fa4', 26); burst(g.tx, g.ty, '#fd5', 14);
+  sfx('bm', g.tx, g.ty);
+  S.blasts.push({x:g.tx, y:g.ty, t0:performance.now()});
+  if (NET.role === 'host' && peerCount()) S.bm.push([Math.round(g.tx), Math.round(g.ty)]);
+  for (const o of S.actors){
+    if (!o.alive) continue;
+    if (o !== g.owner && g.owner && o.team === g.owner.team) continue;      // teammates are never hurt (you can hurt yourself)
+    const d = Math.hypot(o.x - g.tx, o.y - g.ty);
+    if (d < GR_RADIUS + o.r) damage(o, GR_DMG_MAX - (GR_DMG_MAX - GR_DMG_MIN) * Math.min(1, d / GR_RADIUS), g.owner);
+  }
+  for (const [k, w] of [...S.walls]){                                         // the blast flattens walls
+    if (Math.hypot(w.gx*G + G/2 - g.tx, w.gy*G + G/2 - g.ty) < GR_RADIUS + G/2) S.walls.delete(k);
+  }
+}
+
 // ---------- Inventory / healing ----------
 // Slot 0 = pickaxe, slots 1-5 = loadout. Bandages stack up to MAXBAND in a single slot.
 function gunToast(type, rar, upgrade){ toast((upgrade ? 'Upgraded to ' : 'Picked up ') + RARITY[rar].name + ' ' + WEAP[type].name, 1800); }
@@ -663,6 +705,11 @@ function giveItem(a, type, rar){
     let i = a.inv.indexOf(type);
     if (i < 0){ i = a.inv.indexOf(null, 1); if (i < 0) return false; a.inv[i] = type; }
     a[st.key]++; return true;
+  }
+  if (type === 'grenade'){              // one grenade per slot
+    const gi = a.inv.indexOf(null, 1);
+    if (gi < 0) return false;
+    a.inv[gi] = 'grenade'; if (a.isPlayer) a.cur = gi; return true;
   }
   // guns: one of each type. A better one replaces the one you hold, which drops to the ground.
   const have = a.inv.indexOf(type);
@@ -699,6 +746,7 @@ function openChest(c){
   if (Math.random() < 0.25) drops.push(gun());              // 25% chance of a bonus weapon
   if (Math.random() < 0.45) drops.push({type:'shield'});    // 45% shield potion
   if (Math.random() < 0.30) drops.push({type:'med'});       // 30% medkit
+  if (Math.random() < GR_CHANCE) drops.push({type:'grenade', rar:4});   // 7%: a (gold) grenade
   const off = Math.random()*Math.PI*2;
   drops.forEach((dr,i) => {
     const ang = off + i*Math.PI*2/drops.length, d = rnd(40,55);
@@ -712,6 +760,7 @@ function canTake(a, l){
   if (type === 'wood') return true;
   const st = STACK[type];
   if (st) return a[st.key] < st.max && (a.inv.includes(type) || a.inv.includes(null));     // only if there is room for it
+  if (type === 'grenade') return a.inv.includes(null);
   if (a.inv.includes(type)) return (l.rar || 0) > a.gr[type];     // already holding one: only a better one is worth taking
   return a.inv.includes(null);
 }
@@ -757,6 +806,8 @@ function botThink(b, dt){
     const fwd = best > 280 ? 1 : best < 150 ? -1 : 0;
     mx = Math.cos(a)*fwd + Math.cos(a+Math.PI/2)*b.strafe*0.7;
     my = Math.sin(a)*fwd + Math.sin(a+Math.PI/2)*b.strafe*0.7;
+    const gi = b.inv.indexOf('grenade');
+    if (gi >= 0 && best > 150 && best < GR_RANGE - 30 && Math.random() < dt*1.2){ b.cur = gi; throwGrenade(b, target.x, target.y); return [0,0]; }
     // pick best weapon
     b.cur = bestSlot(b);
     if (b.cur === 0 && best < 70 || b.cur !== 0 && Math.abs(diff) < 0.35) fire(b);
@@ -909,6 +960,13 @@ function update(dt){
     }
   }
 
+  // grenades in flight
+  for (let i=S.grenades.length-1;i>=0;i--){
+    const g = S.grenades[i]; g.t += dt;
+    const pr = Math.min(1, g.t / g.dur); g.x = g.sx + (g.tx-g.sx)*pr; g.y = g.sy + (g.ty-g.sy)*pr;
+    if (pr >= 1){ S.grenades.splice(i,1); explode(g); }
+  }
+
   // bullets (teammates are never hurt by each other)
   for (let i=S.bullets.length-1;i>=0;i--){
     const b = S.bullets[i];
@@ -939,7 +997,7 @@ function update(dt){
 
 // ---------- Networking: host side ----------
 // Star topology: every guest connects to the host. The host runs the match and streams the state back out.
-const ITEM_CODE = {pickaxe:'1', pistol:'2', shotgun:'3', ar:'4', bandage:'5', med:'6', shield:'7'}, ITEM_BY = [null,'pickaxe','pistol','shotgun','ar','bandage','med','shield'];
+const ITEM_CODE = {pickaxe:'1', pistol:'2', shotgun:'3', ar:'4', bandage:'5', med:'6', shield:'7', grenade:'8'}, ITEM_BY = [null,'pickaxe','pistol','shotgun','ar','bandage','med','shield','grenade'];
 const encInv = inv => inv.map(w => w ? ITEM_CODE[w] : '0').join('');
 const decInv = str => str.split('').map(c => ITEM_BY[+c] || null);
 const peerCount = () => Object.keys(NET.peers).length;
@@ -958,8 +1016,8 @@ function sendSnapshot(){
   const msg = {t:'snap', st:{i:st.i, s:st.state === 'wait' ? 0 : 1, t:+st.t.toFixed(2), r:Math.round(st.r)},
     A:S.actors.map(encodeActor),
     B:S.bullets.map(b => [Math.round(b.x), Math.round(b.y), Math.round(b.vx), Math.round(b.vy), b.color]),
-    ev:S.ev, sn:S.sn || [], o:S.over?1:0, wt:S.winTeam};
-  S.ev = []; S.sn = [];
+    ev:S.ev, sn:S.sn || [], G:S.grenades.map(g => [Math.round(g.x), Math.round(g.y), +(g.t/g.dur).toFixed(2)]), bm:S.bm || [], o:S.over?1:0, wt:S.winTeam};
+  S.ev = []; S.sn = []; S.bm = [];
   // slow-changing world data is only sent when it actually changed
   const Wl = S.walls.size ? [...S.walls.values()].map(w => [w.gx, w.gy, Math.round(w.hp)]) : [];
   const Ws = JSON.stringify(Wl);               if (Ws !== NET.last.W){ NET.last.W = Ws; msg.W = Wl; }
@@ -1021,6 +1079,7 @@ function onHostData(pid, m){
     case 'build':   build(g); break;
     case 'sel':     if (m.i >= 0 && m.i < 6 && g.inv[m.i]) g.cur = m.i; break;
     case 'heal':    startHeal(g); break;
+    case 'throw':   throwGrenade(g, +m.x, +m.y); break;
     case 'restart': if (S.over && performance.now() - S.overAt > 700) hostRestart(); break;
   }
 }
@@ -1149,7 +1208,7 @@ function onLobbyMsg(m){
 
 // ---------- Networking: guest side ----------
 function buildGuestState(m){
-  S = {actors:[], players:[], bullets:[], trees:[], allTrees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[],
+  S = {actors:[], players:[], bullets:[], trees:[], allTrees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[],
     over:false, winTeam:null, overAt:0, storm:{i:0, state:'wait', t:20, r:2900, rFrom:2900, rTo:1700}};
   m.trees.forEach(([x,y], id) => { const t = {id, x, y, r:22, wood:100}; S.allTrees.push(t); S.trees.push(t); });
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
@@ -1188,6 +1247,8 @@ function applySnap(m){
     }
   }
   S.bullets = m.B.map(b => ({x:b[0], y:b[1], vx:b[2], vy:b[3], color:b[4]}));
+  S.grenades = (m.G || []).map(g => ({x:g[0], y:g[1], p:g[2]}));
+  if (m.bm) for (const q of m.bm) S.blasts.push({x:q[0], y:q[1], t0:performance.now()});
   const st = S.storm; st.i = m.st.i; st.state = m.st.s ? 'shrink' : 'wait'; st.t = m.st.t; st.r = m.st.r;
   if (m.W) S.walls = new Map(m.W.map(([gx,gy,hp]) => [wallKey(gx,gy), {gx, gy, hp}]));
   if (m.L) S.loot = m.L.map(([x,y,ti,n,rar]) => ({x, y, type:TYPES[ti], n:n || undefined, rar:rar || 0}));
@@ -1360,6 +1421,15 @@ function drawItem(c, type, s){
     c.quadraticCurveTo(-12,14, -12,6); c.quadraticCurveTo(-12,-1, -3,-6); c.closePath(); c.fill(); c.stroke();
     c.fillStyle = '#bfe0ff'; c.beginPath(); c.ellipse(-5,5, 2.4,4.6, 0.3, 0, 7); c.fill();               // shine
     c.fillStyle = '#fff'; c.beginPath(); c.moveTo(0,1); c.lineTo(5,3); c.lineTo(4,8); c.lineTo(0,11); c.lineTo(-4,8); c.lineTo(-5,3); c.closePath(); c.fill();   // shield badge
+  } else if (type === 'grenade'){     // fragmentation grenade
+    c.fillStyle = '#4f6f2e'; c.beginPath(); c.ellipse(0,3, 9.5,11.5, 0, 0, 7); c.fill(); c.stroke();
+    c.strokeStyle = '#2c4318'; c.lineWidth = 1/s;
+    c.beginPath(); c.moveTo(-9,3); c.lineTo(9,3); c.moveTo(-6,-4); c.lineTo(6,-4); c.moveTo(-6,10); c.lineTo(6,10); c.moveTo(0,-8); c.lineTo(0,14); c.moveTo(-5,-7); c.lineTo(-5,13); c.moveTo(5,-7); c.lineTo(5,13); c.stroke();
+    c.strokeStyle = '#000'; c.lineWidth = 1.6/s;
+    c.fillStyle = '#8b939a'; c.fillRect(-3.5,-11, 7,5); c.strokeRect(-3.5,-11, 7,5);                       // fuse head
+    c.fillStyle = '#b7bec4'; c.beginPath(); c.moveTo(3,-10); c.quadraticCurveTo(13,-9, 11,4); c.lineTo(8,3); c.quadraticCurveTo(9,-5, 3,-7); c.closePath(); c.fill(); c.stroke();   // lever
+    c.strokeStyle = '#e6b800'; c.lineWidth = 2/s; c.beginPath(); c.arc(-6.5,-10, 3.2, 0, 7); c.stroke();    // pin ring
+    c.fillStyle = 'rgba(255,255,255,0.35)'; c.beginPath(); c.ellipse(-4,0, 2,4, 0.2, 0, 7); c.fill();
   } else if (type === 'med'){         // first-aid kit
     rr(-6,-14, 12,6, 2, '#888');                                                                          // handle
     rr(-14,-10, 28,22, 4, '#e8362f');
@@ -1413,11 +1483,11 @@ function draw(){
   // loot
   for (const l of S.loot){ if (!vis(l.x,l.y)) continue;
     // every drop lies on a white plate with a coloured ring so it stands out on the grass
-    const ring = GUN_W[l.type] ? RARITY[l.rar || 0].col : ITEM_RING;
+    const ring = GUN_W[l.type] ? RARITY[l.rar || 0].col : l.type === 'grenade' ? RARITY[4].col : ITEM_RING;
     ctx.fillStyle = '#fffffff0'; ctx.beginPath(); ctx.arc(l.x, l.y, 19, 0, 7); ctx.fill();
     ctx.strokeStyle = '#000'; ctx.lineWidth = 6; ctx.stroke();                         // dark edge so every ring shows up on the grass
     ctx.strokeStyle = ring; ctx.lineWidth = 3.5; ctx.stroke();
-    if (l.rar === 4){ ctx.strokeStyle = '#fff6'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(l.x, l.y, 24 + Math.sin(performance.now()/250)*2, 0, 7); ctx.stroke(); }   // gold guns shimmer
+    if (l.rar === 4 || l.type === 'grenade'){ ctx.strokeStyle = '#fff6'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(l.x, l.y, 24 + Math.sin(performance.now()/250)*2, 0, 7); ctx.stroke(); }   // gold guns shimmer
     ctx.save(); ctx.translate(l.x, l.y);
     if (GUN_W[l.type]){
       ctx.rotate(-0.35); const gs = 28 / GUN_W[l.type]; ctx.translate(-GUN_CX[l.type]*gs, 0); drawGun(ctx, l.type, gs, RARITY[l.rar || 0].col);
@@ -1439,6 +1509,7 @@ function draw(){
     ctx.fillStyle = w.color; ctx.strokeStyle='#000'; ctx.lineWidth=2;
     if (w.melee){ const sw = a.swing > 0 ? 0.8 : 0; ctx.save(); ctx.rotate(-0.4+sw); ctx.fillRect(10,-3,32,6); ctx.strokeRect(10,-3,32,6); ctx.restore(); }
     else if (w.heal){ ctx.fillRect(14,-5,12,10); ctx.strokeRect(14,-5,12,10); }
+    else if (w.grenade){ ctx.save(); ctx.translate(24,0); drawItem(ctx, 'grenade', 0.55); ctx.restore(); }
     else {
       ctx.save(); if (Math.cos(a.angle) < 0) ctx.scale(1,-1);      // keep the gun the right way up when aiming left
       ctx.translate(a.inv[a.cur] === 'pistol' ? 10 : 18, 0); drawGun(ctx, a.inv[a.cur], a.inv[a.cur] === 'pistol' ? 1 : 0.78, RARITY[a.gr[a.inv[a.cur]] || 0].col); ctx.restore();
@@ -1457,6 +1528,32 @@ function draw(){
     if (a !== p){ ctx.fillStyle = a.team === p.team ? '#8f8' : '#fff'; ctx.font=Math.round(11/ZOOM)+'px sans-serif'; ctx.textAlign='center'; ctx.fillText(a.name,a.x,a.y-36); }
   }
   for (const q of S.particles){ ctx.fillStyle=q.c; ctx.fillRect(q.x,q.y,3,3); }
+  // grenade throw helper: the range you can reach, and (with a mouse) where it would land
+  if (p.alive && p.inv[p.cur] === 'grenade'){
+    ctx.save(); ctx.setLineDash([10,8]); ctx.strokeStyle = 'rgba(255,214,77,0.85)'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(p.x, p.y, GR_RANGE, 0, 7); ctx.stroke();
+    if (!touchMode){
+      let mx = mouse.x/ZOOM + cam.x, my = mouse.y/ZOOM + cam.y; const d = Math.hypot(mx-p.x, my-p.y);
+      if (d > GR_RANGE){ mx = p.x + (mx-p.x)/d*GR_RANGE; my = p.y + (my-p.y)/d*GR_RANGE; }
+      ctx.strokeStyle = 'rgba(255,70,40,0.8)'; ctx.fillStyle = 'rgba(255,70,40,0.12)';
+      ctx.beginPath(); ctx.arc(mx, my, GR_RADIUS, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(mx-10,my); ctx.lineTo(mx+10,my); ctx.moveTo(mx,my-10); ctx.lineTo(mx,my+10); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  for (const g of S.grenades){                        // in flight: arcs up and down, with a shadow on the ground
+    const pr = g.p !== undefined ? g.p : Math.min(1, g.t / g.dur), h = Math.sin(pr * Math.PI);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(g.x, g.y, 9 - h*2, 5 - h, 0, 0, 7); ctx.fill();
+    ctx.save(); ctx.translate(g.x, g.y - h*46); ctx.rotate(pr * 14); drawItem(ctx, 'grenade', 0.75 + h*0.35); ctx.restore();
+  }
+  const nowMs = performance.now();                    // explosions
+  S.blasts = S.blasts.filter(b => nowMs - b.t0 < 600);
+  for (const b of S.blasts){
+    const age = (nowMs - b.t0) / 600, r = GR_RADIUS * (1 - Math.pow(1 - Math.min(1, age*1.6), 3)), fade = 1 - age;
+    ctx.fillStyle = `rgba(255,140,30,${0.5*fade})`; ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, 7); ctx.fill();
+    ctx.fillStyle = `rgba(255,235,150,${0.8*fade})`; ctx.beginPath(); ctx.arc(b.x, b.y, r*0.55, 0, 7); ctx.fill();
+    ctx.strokeStyle = `rgba(255,80,20,${fade})`; ctx.lineWidth = 8*fade + 1; ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, 7); ctx.stroke();
+  }
   // build preview
   if (p.alive){
     const gx = Math.floor((p.x+Math.cos(p.angle)*62)/G), gy = Math.floor((p.y+Math.sin(p.angle)*62)/G);
@@ -1498,8 +1595,8 @@ function drawHUD(){
   for (let i=0;i<6;i++){
     const r = slotRect(i), id = p.inv[i];
     ctx.fillStyle = i===p.cur ? '#fc4' : '#0009'; ctx.fillRect(r.x,r.y,r.w,r.h);
-    if (id && GUN_W[id]){        // the whole slot is tinted with the gun's rarity colour
-      ctx.globalAlpha = i===p.cur ? 0.55 : 0.4; ctx.fillStyle = RARITY[p.gr[id] || 0].col; ctx.fillRect(r.x,r.y,r.w,r.h); ctx.globalAlpha = 1;
+    if (id && (GUN_W[id] || id === 'grenade')){        // the whole slot is tinted with the gun's rarity colour (grenades are always gold)
+      ctx.globalAlpha = i===p.cur ? 0.55 : 0.4; ctx.fillStyle = RARITY[GUN_W[id] ? (p.gr[id] || 0) : 4].col; ctx.fillRect(r.x,r.y,r.w,r.h); ctx.globalAlpha = 1;
     }
     ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.strokeRect(r.x,r.y,r.w,r.h);
     ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.font='10px sans-serif'; ctx.textAlign='left'; ctx.fillText(i+1, r.x+4, r.y+11);
@@ -1510,6 +1607,11 @@ function drawHUD(){
       ctx.strokeStyle = '#000'; ctx.lineWidth = 5; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
       ctx.strokeStyle = RARITY[p.gr[id] || 0].col; ctx.lineWidth = 3; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);   // slot border = rarity
       if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(WEAP[id].name, r.x+r.w/2, r.y+r.h*0.9); }
+    } else if (id === 'grenade'){
+      ctx.save(); ctx.translate(r.x + r.w/2, r.y + r.h*(tm ? 0.5 : 0.42)); drawItem(ctx, 'grenade', tm ? 0.65 : 0.85); ctx.restore();
+      if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText('Grenade', r.x+r.w/2, r.y+r.h*0.9); }
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 5; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
+      ctx.strokeStyle = RARITY[4].col; ctx.lineWidth = 3; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
     } else if (STACK[id]){
       ctx.save(); ctx.translate(r.x + r.w/2, r.y + r.h*(tm ? 0.4 : 0.38)); drawItem(ctx, id, tm ? 0.6 : 0.8); ctx.restore();
       ctx.fillText('x'+p[STACK[id].key], r.x+r.w/2, r.y+r.h*(tm ? 0.88 : 0.9));
