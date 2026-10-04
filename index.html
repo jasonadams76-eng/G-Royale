@@ -107,7 +107,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · victory song</div>
+      <div class="ver">Version 2026-10-04 · people</div>
     </div>
 
     <div id="s-join" hidden>
@@ -1602,7 +1602,24 @@ function draw(){
       ctx.save(); if (Math.cos(a.angle) < 0) ctx.scale(1,-1);      // keep the gun the right way up when aiming left
       ctx.translate(a.inv[a.cur] === 'pistol' ? 10 : 18, 0); drawGun(ctx, a.inv[a.cur], a.inv[a.cur] === 'pistol' ? 1 : 0.78, RARITY[a.gr[a.inv[a.cur]] || 0].col); ctx.restore();
     }
-    ctx.fillStyle = a.color; ctx.beginPath(); ctx.arc(0,0,a.r,0,7); ctx.fill(); ctx.stroke();
+    {   // a little person seen from above, facing right: feet, shoulders (team colour), arms, head with hair
+      const ph = Math.sin((a.x + a.y)*0.12)*5, skin = '#f1c7a0';
+      ctx.fillStyle = '#3b3b44';                                                       // shoes step as you move
+      ctx.beginPath(); ctx.ellipse(ph, -6, 5.5, 3.6, 0, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(-ph, 6, 5.5, 3.6, 0, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = a.color; ctx.beginPath(); ctx.ellipse(-1, 0, 7.5, 13.5, 0, 0, 7); ctx.fill(); ctx.stroke();   // body / shoulders
+      ctx.fillStyle = a.color; ctx.lineWidth = 2;
+      for (const sy of [-1, 1]){                                                        // arms reaching forward to the item
+        ctx.beginPath(); ctx.moveTo(-1, sy*11); ctx.lineTo(13, sy*5.5); ctx.lineWidth = 6.5; ctx.strokeStyle = '#000'; ctx.stroke();
+        ctx.lineWidth = 3.8; ctx.strokeStyle = a.color; ctx.stroke();
+        ctx.fillStyle = skin; ctx.lineWidth = 1.6; ctx.strokeStyle = '#000'; ctx.beginPath(); ctx.arc(14, sy*5.5, 3, 0, 7); ctx.fill(); ctx.stroke();   // hands
+      }
+      ctx.lineWidth = 2; ctx.strokeStyle = '#000';
+      ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(1.5, 0, 7.2, 0, 7); ctx.fill(); ctx.stroke();                   // head
+      ctx.fillStyle = '#4a3020'; ctx.beginPath(); ctx.arc(1.5, 0, 7.2, Math.PI*0.5, Math.PI*1.5); ctx.closePath(); ctx.fill();   // hair on the back of the head
+      ctx.beginPath(); ctx.arc(1.5, 0, 7.2, 0, 7); ctx.stroke();
+      ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(6, -2.6, 1, 0, 7); ctx.arc(6, 2.6, 1, 0, 7); ctx.fill();      // eyes
+    }
     ctx.restore();
     // healing progress ring
     if (a.heal > 0){
