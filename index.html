@@ -30,10 +30,29 @@
   .btn.ghost{background:#2a3b30;color:#cde;font-weight:600}
   .btn.sel{outline:3px solid #fff}
   .row{display:flex;gap:8px}.row .btn{margin:8px 0}
-  #roomcode{font-size:42px;font-weight:800;letter-spacing:8px;color:#fc4;margin:6px 0;-webkit-user-select:text;user-select:text}
-  #code{box-sizing:border-box;width:100%;font-size:30px;text-align:center;letter-spacing:8px;text-transform:uppercase;
+  #roomcode{font-size:38px;font-weight:800;letter-spacing:8px;color:#fc4;margin:6px 0;-webkit-user-select:text;user-select:text}
+  .txt{box-sizing:border-box;width:100%;font-size:30px;text-align:center;letter-spacing:8px;text-transform:uppercase;
     padding:8px;border-radius:10px;border:2px solid #3a5a40;background:#0d1610;color:#fff;
     -webkit-user-select:text;user-select:text}
+  .txt.name{font-size:20px;letter-spacing:1px;text-transform:none;padding:9px;margin-bottom:6px}
+  .lbl{display:block;text-align:left;font-size:12px;color:#9ab;margin:0 0 3px 2px}
+  .card .small{font-size:12px;margin:2px 0;color:#9ab}
+  #plist{margin:8px 0;text-align:left}
+  .prow{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#1f3326;border:1px solid #2f4a37;
+    border-radius:10px;padding:6px 10px;margin:5px 0;font-size:15px;min-height:30px}
+  .prow.me{border-color:#fc4}
+  .prow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tag{font-size:11px;color:#9ab;margin-left:6px}
+  .team{border:2px solid #6c6;border-radius:12px;padding:3px 6px 4px;margin:6px 0;background:#17301d}
+  .team .tl{font-size:11px;color:#8f8;text-transform:uppercase;letter-spacing:1px;margin:2px 4px}
+  .team .prow{margin:3px 0}
+  .mini{padding:6px 11px;font-size:13px;font-weight:700;border:0;border-radius:8px;background:#fc4;color:#102010;
+    touch-action:manipulation;cursor:pointer;flex:none}
+  .mini.no{background:#a44;color:#fff}
+  .mini:disabled{opacity:.5}
+  .inv{display:flex;align-items:center;justify-content:space-between;gap:6px;background:#3a2f10;border:1px solid #fc4;
+    border-radius:10px;padding:6px 10px;margin:5px 0;font-size:14px;text-align:left}
+  .inv .bt{display:flex;gap:6px;flex:none}
   #msg{min-height:18px;color:#f88;font-size:13px}
   #exit{display:none;position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:5;padding:5px 12px;font-size:12px;
     font-weight:700;color:#fff;background:rgba(0,0,0,.45);border:1px solid #fff6;border-radius:8px;touch-action:manipulation}
@@ -49,35 +68,31 @@
     <h1>STORM ROYALE</h1>
 
     <div id="s-main">
+      <label class="lbl" for="pname">Your name</label>
+      <input id="pname" class="txt name" maxlength="12" placeholder="Enter a name" autocomplete="off" spellcheck="false">
       <button class="btn" id="b-solo">Play Solo</button>
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
-      <p class="hint">Play with a friend on another device: one of you hosts and shares a room code.</p>
-    </div>
-
-    <div id="s-host" hidden>
-      <p>Choose a mode</p>
-      <div class="row">
-        <button class="btn sel" id="m-coop">Co-op</button>
-        <button class="btn ghost" id="m-versus">Versus</button>
-      </div>
-      <p class="hint" id="mode-desc"></p>
-      <button class="btn" id="b-create">Create Room</button>
-      <button class="btn ghost" data-back>Back</button>
-    </div>
-
-    <div id="s-wait" hidden>
-      <p>Room code</p>
-      <div id="roomcode">-----</div>
-      <p class="hint">Your friend picks "Join a Game" and enters this code. The match starts when they connect. Keep this tab open.</p>
-      <button class="btn ghost" id="b-cancel">Cancel</button>
+      <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
     </div>
 
     <div id="s-join" hidden>
       <p>Enter the room code</p>
-      <input id="code" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <input id="code" class="txt" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false">
       <button class="btn" id="b-go">Join</button>
       <button class="btn ghost" data-back>Back</button>
+    </div>
+
+    <div id="s-lobby" hidden>
+      <p class="small">Room code</p>
+      <div id="roomcode">-----</div>
+      <div id="plist"></div>
+      <div id="invites"></div>
+      <p class="hint" id="lobby-info"></p>
+      <button class="btn ghost" id="b-leaveteam" hidden>Leave team (play solo)</button>
+      <button class="btn" id="b-start" hidden>Start Match</button>
+      <p class="hint" id="wait-host" hidden>Waiting for the host to start the match…</p>
+      <button class="btn ghost" id="b-leave">Leave Room</button>
     </div>
 
     <div id="msg"></div>
@@ -129,13 +144,22 @@ const PHASES = [
 ];
 
 // ---------- Game / network state ----------
-let phase = 'menu';          // 'menu' | 'play'
+let phase = 'menu';          // 'menu' | 'lobby' | 'play'
+const MAX_PLAYERS = 8;
+const PLAYER_COLORS = ['#4af','#fa4','#e5e','#5e8','#ee4','#f66','#4ee','#a8f'];
 const NET = {
   role:'solo',               // 'solo' | 'host' | 'guest'
-  mode:'solo',               // 'solo' | 'coop' | 'versus'
-  peer:null, conn:null, guestIn:false,
-  snapAcc:0, inAcc:0, lastSnap:0, lost:false,
-  last:{W:'',L:'',C:'',T:''}
+  peer:null,                 // PeerJS peer
+  conn:null,                 // guest: the connection to the host
+  peers:{},                  // host: pid -> {conn, name}
+  code:'', myPid:0, nextPid:1,
+  snapAcc:0, inAcc:0, lastSnap:0, lost:false, left:false,
+  last:{W:'',L:'',C:'',T:''},
+  lobby:[],                  // host: the real lobby [{pid, name, mate}]
+  view:null,                 // what the lobby screen shows (host and guests)
+  invites:[],                // host: pending team-up invites [{from, to}]
+  incoming:[],               // invites waiting for my answer [{from, name}]
+  sent:new Set()             // players I have invited
 };
 function netSend(m){ try { if (NET.conn && NET.conn.open) NET.conn.send(m); } catch(_){} }
 
@@ -248,15 +272,15 @@ addEventListener('pointercancel', endPointer);
 let S, last = performance.now();
 const rnd = (a,b) => a + Math.random()*(b-a);
 
-// kind: 'p0' (host / solo player), 'p1' (guest), 'bot'
-function newActor(kind, i){
-  const human = kind !== 'bot', pid = kind === 'p0' ? 0 : kind === 'p1' ? 1 : -1;
+// kind: 'human' (h = {pid, name}) or 'bot'
+function newActor(kind, i, h){
+  const human = kind === 'human', pid = human ? h.pid : -1;
   const x = Math.round(rnd(200,W-200)), y = Math.round(rnd(200,W-200));
   const a = {x, y, tx:x, ty:y, r:15, hp:100, sh:0, wood:human?60:30,
     inv:['pickaxe',null,null,null,null,null], band:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
     isPlayer:human, pid, team:'', in:null,
-    name: human ? (pid === 0 ? 'Player 1' : 'Player 2') : 'Bot '+i,
-    color: pid === 0 ? '#4af' : pid === 1 ? '#fa4' : `hsl(${rnd(0,360)|0},60%,55%)`,
+    name: human ? h.name : 'Bot '+i,
+    color: human ? PLAYER_COLORS[pid % PLAYER_COLORS.length] : `hsl(${rnd(0,360)|0},60%,55%)`,
     strafe:1, strafeT:0, wp:null, wpT:0};
   if (!human){
     const t = ['pistol','shotgun','ar',null][Math.random()*4|0];
@@ -265,10 +289,22 @@ function newActor(kind, i){
   return a;
 }
 
-// Builds a fresh match on this device (solo, or the host of a 2-player game).
-function init(mode, withGuest){
-  mode = mode || 'solo';
-  S = {mode, actors:[], players:[], bullets:[], trees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[],
+// Team id of a human: partners share one, everyone else is on their own.
+const teamIdOf = h => 'H' + (h.mate != null ? Math.min(h.pid, h.mate) : h.pid);
+// How many bot teams play, and how big they are.
+// Bots play in duos once any human duo exists (otherwise solo). The field keeps the same number of teams:
+// every human team beyond the first replaces one bot team.
+function botPlan(humans){
+  const humanTeams = new Set(humans.map(teamIdOf)).size;
+  const size = humans.some(h => h.mate != null) ? 2 : 1, base = BOTS / size;
+  return {size, teams: Math.max(0, base - Math.max(0, humanTeams - 1))};
+}
+
+// Builds a fresh match on this device: solo, or the host of a multiplayer game.
+// humans = [{pid, name, mate}] (pid 0 is the host)
+function init(humans){
+  humans = humans || [{pid:0, name:cleanName($('pname').value) || 'Player 1', mate:null}];
+  S = {actors:[], players:[], bullets:[], trees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[],
     over:false, winTeam:null, overAt:0,
     storm:{i:0, state:'wait', t:PHASES[0].wait, r:2900, rFrom:2900, rTo:PHASES[0].r}};
   for (let i=0;i<TREE_COUNT;i++) S.trees.push({id:i, x:Math.round(rnd(100,W-100)), y:Math.round(rnd(100,W-100)), r:22, wood:100});
@@ -279,35 +315,36 @@ function init(mode, withGuest){
       if (S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 50)){ S.chests.push({x, y, open:false}); break; }
     }
   }
-  const p0 = newActor('p0', 0);
-  p0.team = mode === 'versus' || mode === 'solo' ? 'P0' : 'P';
-  S.actors.push(p0); S.players.push(p0);
-  if (withGuest){
-    const p1 = newActor('p1', 1);
-    p1.team = mode === 'versus' ? 'P1' : 'P';
-    if (mode === 'coop'){   // teammates start together
-      p1.x = Math.max(100, Math.min(W-100, Math.round(p0.x + rnd(-80,80))));
-      p1.y = Math.max(100, Math.min(W-100, Math.round(p0.y + rnd(-80,80))));
-      p1.tx = p1.x; p1.ty = p1.y;
-    }
-    S.actors.push(p1); S.players.push(p1);
+  const clampW = v => Math.max(100, Math.min(W-100, Math.round(v)));
+  const byPid = {};
+  for (const h of humans){
+    const a = newActor('human', 0, h);
+    a.team = teamIdOf(h);
+    S.actors.push(a); S.players.push(a); byPid[h.pid] = a;
   }
-  S.player = p0;
-  // In 2-player co-op the bots play in duos too: partners spawn together, share a colour hue and never hurt each other.
-  const duos = mode === 'coop' && withGuest;
-  for (let i=1;i<=BOTS;i++){
-    const b = newActor('bot', i);
-    b.team = 'B' + (duos ? Math.ceil(i/2) : i);
-    if (duos){
-      const mate = S.actors[S.actors.length-1];
-      if (i % 2 === 0){
-        b.x = Math.max(100, Math.min(W-100, Math.round(mate.x + rnd(-70,70))));
-        b.y = Math.max(100, Math.min(W-100, Math.round(mate.y + rnd(-70,70))));
-        b.tx = b.x; b.ty = b.y;
-        const hue = mate.hue; b.hue = hue; b.color = `hsl(${hue},65%,68%)`;
-      } else { b.hue = rnd(0,360)|0; b.color = `hsl(${b.hue},65%,45%)`; }
+  for (const h of humans){          // human duo partners start together
+    if (h.mate != null && h.pid < h.mate && byPid[h.mate]){
+      const a = byPid[h.pid], b = byPid[h.mate];
+      b.x = clampW(a.x + rnd(-80,80)); b.y = clampW(a.y + rnd(-80,80)); b.tx = b.x; b.ty = b.y;
     }
-    S.actors.push(b);
+  }
+  S.player = byPid[0] || S.players[0];
+  const plan = botPlan(humans);
+  let n = 0;
+  for (let t=1; t<=plan.teams; t++){
+    const hue = rnd(0,360)|0; let lead = null;
+    for (let k=0; k<plan.size; k++){
+      const b = newActor('bot', ++n);
+      b.team = 'B'+t;
+      if (plan.size === 2){           // bot duos: partners spawn together and share a colour hue
+        if (k === 0){ lead = b; b.color = `hsl(${hue},65%,45%)`; }
+        else {
+          b.x = clampW(lead.x + rnd(-70,70)); b.y = clampW(lead.y + rnd(-70,70)); b.tx = b.x; b.ty = b.y;
+          b.color = `hsl(${hue},65%,68%)`;
+        }
+      }
+      S.actors.push(b);
+    }
   }
 }
 
@@ -374,7 +411,7 @@ function fire(a){
 }
 function burst(x,y,c,n){
   for(let i=0;i<n;i++) S.particles.push({x,y,vx:rnd(-80,80),vy:rnd(-80,80),life:0.4,c});
-  if (NET.role === 'host' && NET.guestIn && S.ev.length < 60) S.ev.push([Math.round(x),Math.round(y),c,n]);  // let the guest see it too
+  if (NET.role === 'host' && peerCount() && S.ev.length < 60) S.ev.push([Math.round(x),Math.round(y),c,n]);  // let the guests see it too
 }
 
 // ---------- Inventory / healing ----------
@@ -490,7 +527,7 @@ function botThink(b, dt){
   return [mx*speed, my*speed];
 }
 
-// ---------- Local player input (used by solo/host for player 1 and by the guest for player 2) ----------
+// ---------- Local player input (used by solo/host for the host's player and by every guest for their own) ----------
 function localInput(a, dt){
   const cam = camera();
   let vx = 0, vy = 0, fireNow = false;
@@ -574,12 +611,12 @@ function update(dt){
       const inp = localInput(a, dt); vx = inp.vx; vy = inp.vy;
       if (inp.fire) fire(a);
     } else if (a.isPlayer){
-      // remote human (the guest): they move themselves, we trust their position and just apply their aim/fire
+      // remote human: they move themselves, we trust their position and just apply their aim/fire
       const g = a.in;
       if (g){ a.tx = g.x; a.ty = g.y; a.angle = g.a; if (g.f) fire(a); }
     } else [vx,vy] = botThink(a, dt);
 
-    if (a.isPlayer && a.pid === 1){
+    if (a.isPlayer && a.pid > 0){
       const k = Math.min(1, dt*20);
       a.x += (a.tx - a.x)*k; a.y += (a.ty - a.y)*k;
       a.x = Math.max(a.r, Math.min(W-a.r, a.x)); a.y = Math.max(a.r, Math.min(W-a.r, a.y));
@@ -637,12 +674,22 @@ function update(dt){
 }
 
 // ---------- Networking: host side ----------
+// Star topology: every guest connects to the host. The host runs the match and streams the state back out.
+const ITEM_CODE = {pickaxe:'1', pistol:'2', shotgun:'3', ar:'4', bandage:'5'}, ITEM_BY = [null,'pickaxe','pistol','shotgun','ar','bandage'];
+const encInv = inv => inv.map(w => w ? ITEM_CODE[w] : '0').join('');
+const decInv = str => str.split('').map(c => ITEM_BY[+c] || null);
+const peerCount = () => Object.keys(NET.peers).length;
+function broadcast(m){ for (const pid in NET.peers){ try { const c = NET.peers[pid].conn; if (c.open) c.send(m); } catch(_){} } }
+function peerSend(pid, m){
+  if (pid === 0){ onLobbyMsg(m); return; }     // the host's own screen
+  const p = NET.peers[pid]; try { if (p && p.conn.open) p.conn.send(m); } catch(_){}
+}
 function encodeActor(a){
   return [Math.round(a.x), Math.round(a.y), +a.angle.toFixed(2), Math.round(a.hp), Math.round(a.sh), a.wood, a.band,
-          +Math.max(0,a.heal).toFixed(2), a.cur, a.alive?1:0, a.kills, a.swing>0?1:0, a.place||0, a.inv];
+          +Math.max(0,a.heal).toFixed(2), a.cur, a.alive?1:0, a.kills, a.swing>0?1:0, a.place||0, encInv(a.inv), a.isPlayer?1:0];
 }
 function sendSnapshot(){
-  if (!NET.conn || !NET.guestIn) return;
+  if (!peerCount()) return;
   const st = S.storm;
   const msg = {t:'snap', st:{i:st.i, s:st.state === 'wait' ? 0 : 1, t:+st.t.toFixed(2), r:Math.round(st.r)},
     A:S.actors.map(encodeActor),
@@ -658,27 +705,34 @@ function sendSnapshot(){
   const Cs = Cl.join('');                      if (Cs !== NET.last.C){ NET.last.C = Cs; msg.C = Cl; }
   const Tl = new Array(TREE_COUNT).fill(0); for (const t of S.trees) Tl[t.id] = t.wood;
   const Ts = Tl.join(',');                     if (Ts !== NET.last.T){ NET.last.T = Ts; msg.T = Tl; }
-  netSend(msg);
+  broadcast(msg);
 }
 function sendInit(){
-  netSend({t:'init', mode:S.mode, me:1,
+  const base = {t:'init',
     trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]),
-    actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, x:Math.round(a.x), y:Math.round(a.y)}))});
+    actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, x:Math.round(a.x), y:Math.round(a.y)}))};
+  for (const pid in NET.peers){
+    const me = S.actors.findIndex(a => a.isPlayer && a.pid === +pid);
+    try { NET.peers[pid].conn.send(Object.assign({me}, base)); } catch(_){}
+  }
   NET.last = {W:'',L:'',C:'',T:''};
 }
+const currentHumans = () => NET.lobby.map(p => ({pid:p.pid, name:p.name, mate:p.mate}));
 function hostBeginMatch(){
-  init(NET.mode, true);
+  if (NET.role !== 'host' || phase !== 'lobby') return;
+  init(currentHumans());
   sendInit();
   phase = 'play'; hideMenu(); NET.snapAcc = 0;
 }
 function hostRestart(){
-  const hosting = NET.role === 'host';
-  init(hosting ? NET.mode : 'solo', hosting && NET.guestIn);
-  if (hosting && NET.guestIn) sendInit();
+  if (NET.role === 'host'){ init(currentHumans()); sendInit(); }
+  else init();
 }
-function onHostData(m){
-  if (!m || phase !== 'play') return;
-  const g = S.players.find(p => p.pid === 1);
+function onHostData(pid, m){
+  if (!m) return;
+  if (phase === 'lobby'){ lobbyAction(pid, m); return; }
+  if (phase !== 'play') return;
+  const g = S.players.find(p => p.pid === pid);
   if (!g) return;
   switch (m.t){
     case 'in':      g.in = m; break;
@@ -688,30 +742,132 @@ function onHostData(m){
     case 'restart': if (S.over && performance.now() - S.overAt > 700) hostRestart(); break;
   }
 }
-function hostAcceptConnection(conn){
-  if (NET.conn){ try { conn.close(); } catch(_){} return; }   // room is full
-  NET.conn = conn;
-  conn.on('data', onHostData);
-  conn.on('close', onGuestLeft);
-  conn.on('error', onGuestLeft);
-  const go = () => { NET.guestIn = true; hostBeginMatch(); };
-  if (conn.open) go(); else conn.on('open', go);
+// ----- name filter: keeps names kid-friendly. The host re-checks every name, so a modified client can't get around it. -----
+const BAD_PART = ['fuck','shit','bitch','cunt','nigg','fagg','whore','slut','rape','rapist','penis','vagina','pussy','bastard',
+  'asshole','dildo','porn','nazi','hitler','molest','pedo','wank','jizz','blowjob','handjob','retard','tranny','dyke','kkk',
+  'cocksuck','sex','motherf','bullshit','titties','boner','erotic','orgasm','genital','masturbat','vulva','rectum','scrotum'];
+const BAD_WORD = ['ass','arse','tit','tits','cock','dick','dik','cum','sex','sexy','anus','fag','damn','hell','crap','piss',
+  'boob','boobs','butt','nude','naked','nazi','coon','spic','kike','chink','gook','paki','homo','pimp','hoe','thot','balls','nuts','poop','fart'];
+const LEET = {'0':'o','1':'i','3':'e','4':'a','5':'s','7':'t','8':'b','9':'g','@':'a','$':'s','!':'i','+':'t','|':'i','(':'c'};
+const looseRe = w => w.split('').map(c => c + '+').join('');         // "fuuuck" still matches "fuck"
+const BAD_PART_RE = new RegExp(BAD_PART.map(looseRe).join('|'));
+const BAD_WORD_RE = new RegExp('^(' + BAD_WORD.map(looseRe).join('|') + ')$');
+function isBadName(name){
+  const norm = String(name).toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[0-9@$!+|(]/g, c => LEET[c] || c);
+  const squashed = norm.replace(/[^a-z]/g, '').replace(/scunthorpe|essex|sussex|middlesex|wessex/g, '');   // innocent words that contain a blocked part
+  if (BAD_PART_RE.test(squashed)) return true;
+  // short words only count as whole words, so "Class" or "Hello" are fine
+  return norm.split(/[^a-z]+/).some(t => t && BAD_WORD_RE.test(t));
 }
-function onGuestLeft(){
-  if (!NET.guestIn) return;
-  NET.guestIn = false; NET.conn = null;
-  const g = S.players.find(p => p.pid === 1);
-  if (g){            // a bot takes over (as a teammate in co-op, as an enemy in versus)
-    g.isPlayer = false; g.pid = -1; g.name = 'Bot'; g.in = null;
-    if (S.mode !== 'coop') g.team = 'B99';
+function cleanName(n){
+  const name = String(n == null ? '' : n).replace(/[\u0000-\u001f<>&"`]/g, '').trim().slice(0, 12);
+  return isBadName(name) ? '' : name;
+}
+const rawName = () => String($('pname').value).replace(/[\u0000-\u001f<>&"`]/g, '').trim().slice(0, 12);
+// blocks the menu action when the typed name isn't allowed
+function nameAllowed(){
+  if (rawName() && !cleanName(rawName())){ menuMsg('That name isn\'t allowed. Please pick a different one.'); $('pname').focus(); return false; }
+  return true;
+}
+function uniqueName(name){
+  let n = name, i = 2;
+  while (NET.lobby.some(p => p.name.toLowerCase() === n.toLowerCase())) n = name.slice(0, 10) + ' ' + (i++);
+  return n;
+}
+function hostAcceptConnection(conn){
+  let pid = null;
+  const reject = why => { try { conn.send({t:'rejected', why}); } catch(_){} setTimeout(() => { try { conn.close(); } catch(_){} }, 400); };
+  conn.on('data', m => {
+    if (pid !== null){ onHostData(pid, m); return; }
+    if (!m || m.t !== 'hello') return;
+    if (phase !== 'lobby') return reject('That match has already started.');
+    if (NET.lobby.length >= MAX_PLAYERS) return reject('That room is full.');
+    pid = NET.nextPid++;
+    const name = uniqueName(cleanName(m.name) || 'Player ' + (pid+1));
+    NET.peers[pid] = {conn, name};
+    NET.lobby.push({pid, name, mate:null});
+    try { conn.send({t:'welcome', pid, name}); } catch(_){}
+    lobbyBroadcast();
+    toast(name + ' joined');
+  });
+  const closed = () => { if (pid !== null && NET.peers[pid]) onPeerLeft(pid); };
+  conn.on('close', closed);
+  conn.on('error', closed);
+}
+function onPeerLeft(pid){
+  const peer = NET.peers[pid]; if (!peer) return;
+  delete NET.peers[pid];
+  const name = peer.name;
+  lobbyRemove(pid);
+  if (phase === 'lobby'){ lobbyBroadcast(); toast(name + ' left the room'); return; }
+  const g = S && S.players.find(p => p.pid === pid);
+  if (g){            // a bot takes over (as a teammate if they were in a duo, otherwise on their own)
+    g.isPlayer = false; g.pid = -1; g.name = name + ' (bot)'; g.in = null;
     S.players = S.players.filter(p => p !== g);
   }
-  toast('Player 2 disconnected. A bot took their place.');
+  toast(name + ' disconnected. A bot took their place.');
+}
+
+// ----- lobby: who is in the room and who is teamed with whom (the host's copy is the truth) -----
+const lp = id => NET.lobby.find(p => p.pid === id);
+function lobbyBroadcast(){
+  const players = NET.lobby.map(p => ({pid:p.pid, name:p.name, mate:p.mate}));
+  broadcast({t:'lobby', players});
+  onLobbyMsg({t:'lobby', players});
+}
+function clearInvites(pid){
+  NET.invites = NET.invites.filter(iv => {
+    if (iv.from !== pid && iv.to !== pid) return true;
+    if (iv.to !== pid) peerSend(iv.to, {t:'invitegone', from:iv.from});   // their banner goes away
+    return false;
+  });
+}
+function lobbyRemove(pid){
+  clearInvites(pid);
+  NET.lobby = NET.lobby.filter(p => p.pid !== pid);
+  for (const p of NET.lobby) if (p.mate === pid) p.mate = null;
+}
+function lobbyAction(pid, m){
+  const me = lp(pid); if (!me || !m) return;
+  if (m.t === 'invite'){
+    const to = lp(m.to);
+    if (!to || to.pid === pid || me.mate != null || to.mate != null) return;
+    if (NET.invites.some(iv => iv.from === pid && iv.to === to.pid)) return;
+    NET.invites.push({from:pid, to:to.pid});
+    peerSend(to.pid, {t:'invited', from:pid, name:me.name});
+  } else if (m.t === 'accept'){
+    const from = lp(m.from);
+    if (!from || me.mate != null || from.mate != null) return;
+    if (!NET.invites.some(iv => iv.from === m.from && iv.to === pid)) return;
+    me.mate = from.pid; from.mate = pid;
+    clearInvites(pid); clearInvites(from.pid);
+    lobbyBroadcast();
+  } else if (m.t === 'decline'){
+    const i = NET.invites.findIndex(iv => iv.from === m.from && iv.to === pid);
+    if (i >= 0){ NET.invites.splice(i, 1); peerSend(m.from, {t:'declined', by:pid, name:me.name}); }
+  } else if (m.t === 'leaveteam'){
+    if (me.mate != null){ const mate = lp(me.mate); me.mate = null; if (mate) mate.mate = null; lobbyBroadcast(); }
+  }
+}
+function sendLobbyMsg(m){ if (NET.role === 'host') lobbyAction(0, m); else netSend(m); }
+// what the lobby screen does with a message (the host calls this for its own screen too)
+function onLobbyMsg(m){
+  if (m.t === 'lobby'){
+    NET.view = m.players;
+    const me = m.players.find(p => p.pid === NET.myPid);
+    if (me && me.mate != null){ NET.incoming = []; NET.sent.clear(); }   // teamed up: pending invites no longer apply
+    renderLobby();
+  }
+  else if (m.t === 'invited'){
+    if (!NET.incoming.some(x => x.from === m.from)) NET.incoming.push({from:m.from, name:m.name});
+    renderLobby(); toast(m.name + ' wants to team up');
+  } else if (m.t === 'invitegone'){ NET.incoming = NET.incoming.filter(x => x.from !== m.from); renderLobby(); }
+  else if (m.t === 'declined'){ NET.sent.delete(m.by); toast(m.name + ' declined'); renderLobby(); }
 }
 
 // ---------- Networking: guest side ----------
 function buildGuestState(m){
-  S = {mode:m.mode, actors:[], players:[], bullets:[], trees:[], allTrees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[],
+  S = {actors:[], players:[], bullets:[], trees:[], allTrees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[],
     over:false, winTeam:null, overAt:0, storm:{i:0, state:'wait', t:20, r:2900, rFrom:2900, rTo:1700}};
   m.trees.forEach(([x,y], id) => { const t = {id, x, y, r:22, wood:100}; S.allTrees.push(t); S.trees.push(t); });
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
@@ -735,9 +891,10 @@ function applySnap(m){
     } else {
       a.tx = d[0]; a.ty = d[1]; a.tang = d[2];
       if (!a.seen){ a.x = d[0]; a.y = d[1]; a.angle = d[2]; a.seen = true; }
+      if (a.isPlayer && !d[14]){ a.isPlayer = false; a.name = a.name + ' (bot)'; }   // a player dropped out; a bot has their place
     }
     a.hp = d[3]; a.sh = d[4]; a.wood = d[5]; a.band = d[6]; a.heal = d[7]; a.alive = !!d[9];
-    a.kills = d[10]; if (d[11]) a.swing = 0.2; a.place = d[12]; a.inv = d[13];
+    a.kills = d[10]; if (d[11]) a.swing = 0.2; a.place = d[12]; a.inv = decInv(d[13]);
   }
   S.bullets = m.B.map(b => ({x:b[0], y:b[1], vx:b[2], vy:b[3], color:b[4]}));
   const st = S.storm; st.i = m.st.i; st.state = m.st.s ? 'shrink' : 'wait'; st.t = m.st.t; st.r = m.st.r;
@@ -751,10 +908,25 @@ function applySnap(m){
 }
 function onGuestData(m){
   if (!m) return;
-  if (m.t === 'init'){
-    buildGuestState(m); phase = 'play'; hideMenu(); NET.lastSnap = performance.now(); NET.lost = false;
-    for (const k of ['move','aim']) touch[k] = null;
-  } else if (m.t === 'snap' && phase === 'play' && NET.role === 'guest' && S.allTrees) applySnap(m);
+  switch (m.t){
+    case 'welcome':
+      NET.myPid = m.pid; NET.role = 'guest'; if (NET.joinOk) NET.joinOk();
+      phase = 'lobby'; $('roomcode').textContent = NET.code; showScreen('s-lobby');
+      break;
+    case 'lobby': case 'invited': case 'invitegone': case 'declined':
+      if (phase === 'lobby') onLobbyMsg(m);
+      break;
+    case 'rejected':
+      if (NET.joinFail) NET.joinFail(m.why || 'Could not join that room.');
+      break;
+    case 'init':
+      buildGuestState(m); phase = 'play'; hideMenu(); NET.lastSnap = performance.now(); NET.lost = false;
+      for (const k of ['move','aim']) touch[k] = null;
+      break;
+    case 'snap':
+      if (phase === 'play' && NET.role === 'guest' && S.allTrees) applySnap(m);
+      break;
+  }
 }
 function onHostLeft(){
   if (NET.role !== 'guest' || NET.left) return;
@@ -762,11 +934,13 @@ function onHostLeft(){
   toast('The host disconnected. Returning to the menu…', 4000);
   setTimeout(() => location.reload(), 2500);
 }
-function guestAttach(conn){
-  NET.conn = conn; NET.role = 'guest';
+function guestAttach(conn, name){
+  NET.conn = conn; NET.left = false;
   conn.on('data', onGuestData);
   conn.on('close', onHostLeft);
   conn.on('error', onHostLeft);
+  const hello = () => { try { conn.send({t:'hello', name:cleanName(name)}); } catch(_){} };
+  if (conn.open) hello(); else conn.on('open', hello);
 }
 
 // Guest simulation step: move myself locally, send my controls, smooth everyone else.
@@ -795,11 +969,12 @@ function updateGuest(dt){
 }
 
 // ---------- Render ----------
-// Whose view we show: ourselves, or (once eliminated) the other human so we can spectate.
+// Whose view we show: ourselves, or (once eliminated) a teammate, then any other human, so we can spectate.
 function viewTarget(){
   const me = S.player;
   if (me.alive) return me;
-  return S.actors.find(a => a.isPlayer && a.alive && a !== me) || me;
+  return S.actors.find(a => a.isPlayer && a.alive && a.team === me.team)
+      || S.actors.find(a => a.isPlayer && a.alive) || me;
 }
 function camera(){
   const p = viewTarget();
@@ -992,23 +1167,76 @@ function toast(t, ms){
   const el = $('toast'); el.textContent = t; el.style.display = 'block';
   clearTimeout(toastT); toastT = setTimeout(() => el.style.display = 'none', ms || 3500);
 }
-const SCREENS = ['s-main','s-host','s-wait','s-join'];
+const SCREENS = ['s-main','s-join','s-lobby'];
 function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); menuMsg(''); }
 function menuMsg(t){ $('msg').textContent = t || ''; }
 function hideMenu(){ $('menu').classList.add('hide'); $('exit').style.display = 'block'; }
 
-const MODE_DESC = {
-  coop:'You and your friend are a team against the bots. No friendly fire. Win together.',
-  versus:'You and your friend fight each other and the bots. Last one standing wins.'
-};
-let hostMode = 'coop';
-function setMode(m){
-  hostMode = m;
-  $('m-coop').className = 'btn ' + (m === 'coop' ? 'sel' : 'ghost');
-  $('m-versus').className = 'btn ' + (m === 'versus' ? 'sel' : 'ghost');
-  $('mode-desc').textContent = MODE_DESC[m];
+// the player's chosen name (remembered on this device)
+try { $('pname').value = localStorage.getItem('sr-name') || ''; } catch(_){}
+$('pname').addEventListener('input', () => { try { localStorage.setItem('sr-name', cleanName($('pname').value)); } catch(_){} });
+const myName = () => cleanName($('pname').value);
+
+function renderLobby(){
+  const list = NET.view || [];
+  const me = list.find(p => p.pid === NET.myPid);
+  const iAmSolo = !!me && me.mate == null;
+  for (const id of [...NET.sent]){ const p = list.find(x => x.pid === id); if (!p || p.mate != null) NET.sent.delete(id); }
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+  const mkRow = p => {
+    const r = el('div', 'prow' + (p.pid === NET.myPid ? ' me' : ''));
+    const nm = el('span', 'nm', p.name);
+    if (p.pid === NET.myPid) nm.appendChild(el('span', 'tag', '(you)'));
+    if (p.pid === 0) nm.appendChild(el('span', 'tag', 'host'));
+    r.appendChild(nm);
+    if (iAmSolo && p.pid !== NET.myPid && p.mate == null){
+      const b = el('button', 'mini');
+      if (NET.sent.has(p.pid)){ b.textContent = 'Invited'; b.disabled = true; }
+      else {
+        b.textContent = 'Team up';
+        b.onclick = () => { NET.sent.add(p.pid); sendLobbyMsg({t:'invite', to:p.pid}); toast('Invite sent to ' + p.name); renderLobby(); };
+      }
+      r.appendChild(b);
+    }
+    return r;
+  };
+
+  const box = $('plist'); box.textContent = '';
+  const seen = new Set();
+  for (const p of list){
+    if (seen.has(p.pid)) continue;
+    seen.add(p.pid);
+    if (p.mate != null){
+      const mate = list.find(x => x.pid === p.mate);
+      const t = el('div', 'team'); t.appendChild(el('div', 'tl', 'Team'));
+      t.appendChild(mkRow(p));
+      if (mate){ seen.add(mate.pid); t.appendChild(mkRow(mate)); }
+      box.appendChild(t);
+    } else box.appendChild(mkRow(p));
+  }
+
+  // invitations other players have sent me
+  const inv = $('invites'); inv.textContent = '';
+  NET.incoming = NET.incoming.filter(x => list.some(p => p.pid === x.from && p.mate == null));
+  if (iAmSolo) for (const iv of NET.incoming){
+    const row = el('div', 'inv'); row.appendChild(el('span', null, iv.name + ' wants to team up'));
+    const bt = el('span', 'bt');
+    const ok = el('button', 'mini', 'Accept'), no = el('button', 'mini no', 'Decline');
+    ok.onclick = () => { NET.incoming = NET.incoming.filter(x => x.from !== iv.from); sendLobbyMsg({t:'accept', from:iv.from}); renderLobby(); };
+    no.onclick = () => { NET.incoming = NET.incoming.filter(x => x.from !== iv.from); sendLobbyMsg({t:'decline', from:iv.from}); renderLobby(); };
+    bt.appendChild(ok); bt.appendChild(no); row.appendChild(bt); inv.appendChild(row);
+  }
+
+  const humans = list.map(p => ({pid:p.pid, mate:p.mate})), plan = botPlan(humans);
+  const teams = new Set(humans.map(teamIdOf)).size, s = n => n === 1 ? '' : 's';
+  $('lobby-info').textContent = list.length + ' player' + s(list.length) + ' in ' + teams + ' team' + s(teams) +
+    '. Bots fill the rest: ' + plan.teams + ' team' + s(plan.teams) + ' of ' + plan.size + '.';
+  const isHost = NET.role === 'host';
+  $('b-start').hidden = !isHost;
+  $('wait-host').hidden = isHost;
+  $('b-leaveteam').hidden = !(me && me.mate != null);
 }
-setMode('coop');
 
 // The multiplayer library is only fetched when someone actually uses it, so solo play works fully offline.
 const PEER_URLS = ['https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js', 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js'];
@@ -1022,49 +1250,53 @@ function loadPeer(ok, fail, i){
 }
 function genCode(){ const ch = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let s = ''; for (let i=0;i<5;i++) s += ch[Math.random()*ch.length|0]; return s; }
 
+function resetNet(){
+  try { if (NET.peer) NET.peer.destroy(); } catch(_){}
+  Object.assign(NET, {peer:null, conn:null, peers:{}, role:'solo', code:'', myPid:0, nextPid:1, lobby:[], view:null,
+    invites:[], incoming:[], sent:new Set(), joinOk:null, joinFail:null});
+  clearTimeout(NET.joinTimer);
+  phase = 'menu';
+}
 function createRoom(tries){
   tries = tries || 0;
   const code = genCode(), peer = new Peer('stormroyale-'+code);
   NET.peer = peer;
-  peer.on('open', () => { NET.role = 'host'; NET.mode = hostMode; $('roomcode').textContent = code; showScreen('s-wait'); });
+  peer.on('open', () => {
+    Object.assign(NET, {role:'host', code, myPid:0, nextPid:1, peers:{}, lobby:[{pid:0, name:myName() || 'Player 1', mate:null}],
+      invites:[], incoming:[], sent:new Set()});
+    phase = 'lobby'; $('roomcode').textContent = code; showScreen('s-lobby'); lobbyBroadcast();
+  });
   peer.on('connection', hostAcceptConnection);
   peer.on('error', err => {
     if (err.type === 'unavailable-id' && tries < 5){ try { peer.destroy(); } catch(_){} createRoom(tries+1); return; }
-    if (phase === 'menu'){ showScreen('s-host'); menuMsg('Could not create a room ('+err.type+'). Try again.'); }
+    if (phase === 'menu'){ showScreen('s-main'); menuMsg('Could not create a room ('+err.type+'). Try again.'); }
   });
-}
-function cancelRoom(){
-  try { if (NET.peer) NET.peer.destroy(); } catch(_){}
-  NET.peer = null; NET.conn = null; NET.guestIn = false; NET.role = 'solo';
-  showScreen('s-main');
 }
 function joinRoom(code){
-  const peer = new Peer(); NET.peer = peer;
+  const peer = new Peer(); NET.peer = peer; NET.code = code;
   let done = false;
-  const fail = t => { if (done) return; done = true; clearTimeout(timer); menuMsg(t); try { peer.destroy(); } catch(_){} NET.peer = null; NET.conn = null; NET.role = 'solo'; };
-  const timer = setTimeout(() => fail('Could not reach that room. Check the code, and that the host is waiting.'), 15000);
+  const fail = t => { if (done) return; done = true; clearTimeout(NET.joinTimer); resetNet(); showScreen('s-join'); menuMsg(t); };
+  NET.joinFail = fail;
+  NET.joinOk = () => { done = true; clearTimeout(NET.joinTimer); };
+  NET.joinTimer = setTimeout(() => fail('Could not reach that room. Check the code, and that the host is waiting.'), 15000);
   peer.on('error', err => fail(err.type === 'peer-unavailable' ? 'Room not found. Check the code.' : 'Connection error ('+err.type+').'));
-  peer.on('open', () => {
-    const conn = peer.connect('stormroyale-'+code, {reliable:true});
-    guestAttach(conn);
-    conn.on('open', () => { done = true; clearTimeout(timer); menuMsg('Connected. Starting…'); });
-  });
+  peer.on('open', () => { guestAttach(peer.connect('stormroyale-'+code, {reliable:true}), myName()); });
 }
 
-$('b-solo').onclick = () => { NET.role = 'solo'; NET.mode = 'solo'; phase = 'play'; hideMenu(); };
-$('b-host').onclick = () => showScreen('s-host');
-$('b-join').onclick = () => { showScreen('s-join'); $('code').focus(); };
-$('m-coop').onclick = () => setMode('coop');
-$('m-versus').onclick = () => setMode('versus');
-$('b-create').onclick = () => { menuMsg('Connecting…'); loadPeer(() => createRoom(), menuMsg); };
-$('b-cancel').onclick = cancelRoom;
+$('b-solo').onclick = () => { if (!nameAllowed()) return; NET.role = 'solo'; init(); phase = 'play'; hideMenu(); };
+$('b-host').onclick = () => { if (!nameAllowed()) return; menuMsg('Connecting…'); loadPeer(() => createRoom(), menuMsg); };
+$('b-join').onclick = () => { if (!nameAllowed()) return; showScreen('s-join'); $('code').focus(); };
 $('b-go').onclick = () => {
+  if (!nameAllowed()) return;
   const code = $('code').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (code.length < 5){ menuMsg('Enter the 5-character code.'); return; }
   menuMsg('Connecting…');
   loadPeer(() => joinRoom(code), menuMsg);
 };
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('b-go').click(); });
+$('b-start').onclick = hostBeginMatch;
+$('b-leaveteam').onclick = () => sendLobbyMsg({t:'leaveteam'});
+$('b-leave').onclick = () => { resetNet(); showScreen('s-main'); };
 document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => showScreen('s-main'));
 $('exit').onclick = () => { if (confirm('Leave the match and return to the menu?')) location.reload(); };
 
@@ -1075,16 +1307,16 @@ function loop(now){
     if (NET.role === 'guest') updateGuest(dt);
     else {
       if (!S.over || S.actors.some(a => a.alive && !a.isPlayer)) update(dt);
-      if (NET.role === 'host' && NET.guestIn){
+      if (NET.role === 'host' && peerCount()){
         NET.snapAcc += dt;
-        if (NET.snapAcc >= 0.05){ NET.snapAcc = 0; sendSnapshot(); }   // 20 snapshots per second
+        if (NET.snapAcc >= (peerCount() > 3 ? 1/15 : 1/20)){ NET.snapAcc = 0; sendSnapshot(); }   // 20 snapshots/s (15 with many players)
       }
     }
   }
   draw();
   requestAnimationFrame(loop);
 }
-init('solo');
+init();
 requestAnimationFrame(loop);
 </script>
 </body>
