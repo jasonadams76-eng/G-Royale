@@ -115,7 +115,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · ammo drops</div>
+      <div class="ver">Version 2026-10-04 · flame select</div>
     </div>
 
     <div id="s-join" hidden>
@@ -724,7 +724,7 @@ function flameFire(a){
     if (along < 0 || along > len + o.r) continue;
     if (Math.abs(-dx*sa + dy*ca) <= 8 + along*0.2 + o.r*0.6) damage(o, FL_DMG, a);
   }
-  a.flt = 0.25; a.flen = len; sfx('fl', a.x, a.y);
+  a.flt = 0.15; a.flen = len; sfx('fl', a.x, a.y);
 }
 function fire(a){
   if (!a.alive) return;
@@ -1085,7 +1085,7 @@ function update(dt){
 
   for (const a of S.actors){
     if (!a.alive) continue;
-    a.cd -= dt; a.swing -= dt; if (a.flt > 0) a.flt -= dt;
+    a.cd -= dt; a.swing -= dt; if (a.flt > 0){ a.flt -= dt; if (a.inv[a.cur] !== 'flame') a.flt = 0; }     // the flame only burns while the flamethrower is the selected item
     // bandage channel: switching items cancels it, finishing heals and uses one bandage
     if (a.heal > 0){
       const it = a.inv[a.cur], st = STACK[it];
@@ -1812,7 +1812,7 @@ function draw(){
     if (a !== p){ ctx.fillStyle = a.team === p.team ? '#8f8' : '#fff'; ctx.font=Math.round(11/ZOOM)+'px sans-serif'; ctx.textAlign='center'; ctx.fillText(a.name,a.x,a.y-36); }
   }
   for (const a of S.actors){          // flamethrower fire: flickering blobs along the cone, white-hot at the nozzle to dark red at the tip
-    if (!a.alive || !a.flen || !vis(a.x,a.y)) continue;
+    if (!a.alive || !a.flen || a.inv[a.cur] !== 'flame' || !vis(a.x,a.y)) continue;
     const ca = Math.cos(a.angle), sa = Math.sin(a.angle), L = a.flen;
     for (let k=0;k<34;k++){
       const t = Math.pow(Math.random(), 0.75), d = 20 + t*(L-20), spread = (8 + d*0.2) * (Math.random()*2-1) * 0.8;
