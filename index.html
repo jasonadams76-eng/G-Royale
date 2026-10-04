@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#111111">
+<title>Storm Royale</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#111;font-family:system-ui,sans-serif;
+    overscroll-behavior:none;touch-action:none;-webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+  body{position:fixed;inset:0;width:100%}
+  canvas{display:block;touch-action:none}
+
+  /* ----- menu / lobby ----- */
+  #menu{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;
+    background:rgba(8,14,8,.80);touch-action:pan-y;overflow:auto}
+  #menu.hide{display:none}
+  .card{box-sizing:border-box;width:min(340px,calc(100% - 24px));max-height:calc(100% - 12px);overflow:auto;
+    background:#16221a;border:2px solid #3a5a40;border-radius:14px;padding:16px 16px 12px;color:#eee;text-align:center}
+  .card h1{margin:0 0 10px;font-size:26px;letter-spacing:2px;color:#fc4}
+  .card p{margin:8px 0;font-size:14px;color:#cde}
+  .card .hint{font-size:12px;color:#9ab;min-height:30px}
+  .card [hidden]{display:none}
+  .btn{display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:12px;font-size:17px;font-weight:700;
+    color:#102010;background:#fc4;border:0;border-radius:10px;cursor:pointer;touch-action:manipulation}
+  .btn.ghost{background:#2a3b30;color:#cde;font-weight:600}
+  .btn.sel{outline:3px solid #fff}
+  .row{display:flex;gap:8px}.row .btn{margin:8px 0}
+  #roomcode{font-size:42px;font-weight:800;letter-spacing:8px;color:#fc4;margin:6px 0;-webkit-user-select:text;user-select:text}
+  #code{box-sizing:border-box;width:100%;font-size:30px;text-align:center;letter-spacing:8px;text-transform:uppercase;
+    padding:8px;border-radius:10px;border:2px solid #3a5a40;background:#0d1610;color:#fff;
+    -webkit-user-select:text;user-select:text}
+  #msg{min-height:18px;color:#f88;font-size:13px}
+  #exit{display:none;position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:5;padding:5px 12px;font-size:12px;
+    font-weight:700;color:#fff;background:rgba(0,0,0,.45);border:1px solid #fff6;border-radius:8px;touch-action:manipulation}
+  #toast{display:none;position:fixed;top:44px;left:50%;transform:translateX(-50%);z-index:20;pointer-events:none;
+    background:rgba(0,0,0,.8);color:#fff;padding:8px 14px;border-radius:10px;font-size:14px;text-align:center;max-width:90%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="menu">
+  <div class="card">
+    <h1>STORM ROYALE</h1>
+
+    <div id="s-main">
+      <button class="btn" id="b-solo">Play Solo</button>
+      <button class="btn" id="b-host">Host a Game</button>
+      <button class="btn" id="b-join">Join a Game</button>
+      <p class="hint">Play with a friend on another device: one of you hosts and shares a room code.</p>
+    </div>
+
+    <div id="s-host" hidden>
+      <p>Choose a mode</p>
+      <div class="row">
+        <button class="btn sel" id="m-coop">Co-op</button>
+        <button class="btn ghost" id="m-versus">Versus</button>
+      </div>
+      <p class="hint" id="mode-desc"></p>
+      <button class="btn" id="b-create">Create Room</button>
+      <button class="btn ghost" data-back>Back</button>
+    </div>
+
+    <div id="s-wait" hidden>
+      <p>Room code</p>
+      <div id="roomcode">-----</div>
+      <p class="hint">Your friend picks "Join a Game" and enters this code. The match starts when they connect. Keep this tab open.</p>
+      <button class="btn ghost" id="b-cancel">Cancel</button>
+    </div>
+
+    <div id="s-join" hidden>
+      <p>Enter the room code</p>
+      <input id="code" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <button class="btn" id="b-go">Join</button>
+      <button class="btn ghost" data-back>Back</button>
+    </div>
+
+    <div id="msg"></div>
+  </div>
+</div>
+<button id="exit">Menu</button>
+<div id="toast"></div>
+
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+
+// ---------- Screen / scaling ----------
+// SW,SH = screen size in CSS px. VW,VH = world-view size (screen / ZOOM).
+let DPR = 1, ZOOM = 1, SW = 0, SH = 0, VW = 0, VH = 0;
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  SW = innerWidth; SH = innerHeight;
+  cv.width = Math.round(SW*DPR); cv.height = Math.round(SH*DPR);
+  cv.style.width = SW+'px'; cv.style.height = SH+'px';
+  ZOOM = Math.max(0.6, Math.min(1, Math.min(SW,SH)/700)); // zoom out a bit on small screens
+  VW = SW/ZOOM; VH = SH/ZOOM;
+}
+addEventListener('resize', resize);
+addEventListener('orientationchange', () => setTimeout(resize, 200));
+resize();
+
+// Stop page scroll / pinch-zoom / rubber-banding on phones (but let the menu scroll)
+document.addEventListener('touchmove', e => { if (!(e.target.closest && e.target.closest('#menu'))) e.preventDefault(); }, {passive:false});
+document.addEventListener('gesturestart', e => e.preventDefault(), {passive:false});
+
+// ---------- Config ----------
+const W = 4000, G = 48, BOTS = 24, CENTER = {x: W/2, y: W/2};
+const TREE_COUNT = 320;
+const WEAP = {
+  pickaxe: {name:'Pickaxe', melee:true, dmg:20, rate:0.5, range:55, color:'#bbb'},
+  pistol:  {name:'Pistol',  dmg:18, rate:0.33, spd:950, spread:0.03, pellets:1, life:0.7, color:'#9cf'},
+  shotgun: {name:'Shotgun', dmg:11, rate:0.9,  spd:850, spread:0.22, pellets:7, life:0.4, color:'#fa5'},
+  ar:      {name:'Rifle',   dmg:12, rate:0.11, spd:1100,spread:0.06, pellets:1, life:0.8, color:'#9f6'},
+  bandage: {name:'Bandage', heal:true, color:'#fff'}
+};
+const MAXBAND = 3, BANDAGE_HEAL = 25, HEAL_TIME = 1.5, WEAPON_PRIO = ['ar','shotgun','pistol'];
+const CHEST_COUNT = 70, CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
+const TYPES = ['pistol','shotgun','ar','bandage','shield','med','wood'];   // index used on the wire
+const PHASES = [
+  {wait:20, shrink:20, r:1700}, {wait:15, shrink:15, r:1100},
+  {wait:12, shrink:12, r:600},  {wait:10, shrink:10, r:250},
+  {wait:8,  shrink:8,  r:60}
+];
+
+// ---------- Game / network state ----------
+let phase = 'menu';          // 'menu' | 'play'
+const NET = {
+  role:'solo',               // 'solo' | 'host' | 'guest'
+  mode:'solo',               // 'solo' | 'coop' | 'versus'
+  peer:null, conn:null, guestIn:false,
+  snapAcc:0, inAcc:0, lastSnap:0, lost:false,
+  last:{W:'',L:'',C:'',T:''}
+};
+function netSend(m){ try { if (NET.conn && NET.conn.open) NET.conn.send(m); } catch(_){} }
+
+// ---------- Input ----------
+let touchMode = matchMedia('(pointer: coarse)').matches;
+const keys = {}, mouse = {x:0, y:0, down:false};
+const STICK_R = 55;
+const touch = {move:null, aim:null};   // each: {id, ox, oy, dx, dy}
+
+// local-player actions (routed over the network when we are the guest)
+function selectSlot(i){
+  const me = S.player;
+  if (!me.alive || !me.inv[i]) return;
+  me.cur = i;
+  if (NET.role === 'guest'){ me.selHold = performance.now() + 400; netSend({t:'sel', i}); }
+}
+function doBuild(){ if (NET.role === 'guest') netSend({t:'build'}); else build(S.player); }
+function doHeal(){ if (NET.role === 'guest') netSend({t:'heal'}); else startHeal(S.player); }
+function tryRestart(){
+  if (!S.over || performance.now() - S.overAt < 700) return;
+  if (NET.role === 'guest') netSend({t:'restart'}); else hostRestart();
+}
+
+addEventListener('keydown', e => {
+  if (phase !== 'play' || (e.target && e.target.tagName === 'INPUT')) return;
+  const k = e.key.toLowerCase();
+  keys[k] = true;
+  if (e.key >= '1' && e.key <= '6') selectSlot(e.key-1);
+  if (k === 'q') doBuild();
+  if (k === 'r') tryRestart();
+});
+addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+addEventListener('contextmenu', e => e.preventDefault());
+
+// UI hit areas (shared by drawing and touch handling)
+function slotRect(i){
+  return touchMode ? {x:12+i*46, y:50, w:42, h:36}
+                   : {x:SW/2-195+i*66, y:SH-70, w:60, h:50};
+}
+function buildBtn(){ return {x:SW-190, y:SH-80, r:32}; }
+const inRect = (r,x,y) => x>=r.x && x<=r.x+r.w && y>=r.y && y<=r.y+r.h;
+
+let fsTried = false;
+function tryFullscreen(){
+  if (fsTried) return; fsTried = true;
+  try {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req && !document.fullscreenElement){
+      Promise.resolve(req.call(el))
+        .then(() => { try { screen.orientation.lock('landscape').catch(()=>{}); } catch(_){} })
+        .catch(()=>{});
+    }
+  } catch(_){}
+}
+
+addEventListener('pointerdown', e => {
+  if (phase !== 'play') return;
+  const x = e.clientX, y = e.clientY;
+  if (e.pointerType === 'mouse'){
+    if (e.target !== cv) return;
+    touchMode = false; mouse.x = x; mouse.y = y;
+    if (e.button === 0){
+      if (S.over){ tryRestart(); return; }
+      mouse.down = true;
+    }
+    if (e.button === 2) doBuild();
+    return;
+  }
+  if (e.target !== cv) return;
+  touchMode = true;
+  e.preventDefault();
+  if (S.over){ tryRestart(); return; }
+  for (let i=0;i<6;i++){
+    if (inRect(slotRect(i), x, y)){
+      const me = S.player;
+      if (me.alive && me.inv[i]){
+        selectSlot(i);
+        if (me.inv[i] === 'bandage') doHeal();   // tapping a bandage slot uses it
+      }
+      return;
+    }
+  }
+  const b = buildBtn();
+  if (Math.hypot(x-b.x, y-b.y) <= b.r+10){ doBuild(); return; }
+  const side = x < SW/2 ? 'move' : 'aim';
+  if (!touch[side]) touch[side] = {id:e.pointerId, ox:x, oy:y, dx:0, dy:0};
+});
+addEventListener('pointermove', e => {
+  if (phase !== 'play') return;
+  if (e.pointerType === 'mouse'){ touchMode = false; mouse.x = e.clientX; mouse.y = e.clientY; return; }
+  for (const k of ['move','aim']){
+    const s = touch[k];
+    if (s && s.id === e.pointerId){
+      let dx = e.clientX - s.ox, dy = e.clientY - s.oy; const m = Math.hypot(dx,dy);
+      if (m > STICK_R){ dx = dx/m*STICK_R; dy = dy/m*STICK_R; }
+      s.dx = dx; s.dy = dy;
+    }
+  }
+});
+function endPointer(e){
+  if (e.pointerType === 'mouse'){ if (e.type === 'pointercancel' || e.button === 0) mouse.down = false; return; }
+  for (const k of ['move','aim']) if (touch[k] && touch[k].id === e.pointerId) touch[k] = null;
+  tryFullscreen(); // needs a completed tap to count as a user gesture
+}
+addEventListener('pointerup', endPointer);
+addEventListener('pointercancel', endPointer);
+
+// ---------- State ----------
+let S, last = performance.now();
+const rnd = (a,b) => a + Math.random()*(b-a);
+
+// kind: 'p0' (host / solo player), 'p1' (guest), 'bot'
+function newActor(kind, i){
+  const human = kind !== 'bot', pid = kind === 'p0' ? 0 : kind === 'p1' ? 1 : -1;
+  const x = Math.round(rnd(200,W-200)), y = Math.round(rnd(200,W-200));
+  const a = {x, y, tx:x, ty:y, r:15, hp:100, sh:0, wood:human?60:30,
+    inv:['pickaxe',null,null,null,null,null], band:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
+    isPlayer:human, pid, team:'', in:null,
+    name: human ? (pid === 0 ? 'Player 1' : 'Player 2') : 'Bot '+i,
+    color: pid === 0 ? '#4af' : pid === 1 ? '#fa4' : `hsl(${rnd(0,360)|0},60%,55%)`,
+    strafe:1, strafeT:0, wp:null, wpT:0};
+  if (!human){
+    const t = ['pistol','shotgun','ar',null][Math.random()*4|0];
+    if (t){ a.inv[1] = t; a.cur = 1; }
+  }
+  return a;
+}
+
+// Builds a fresh match on this device (solo, or the host of a 2-player game).
+function init(mode, withGuest){
+  mode = mode || 'solo';
+  S = {mode, actors:[], players:[], bullets:[], trees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[],
+    over:false, winTeam:null, overAt:0,
+    storm:{i:0, state:'wait', t:PHASES[0].wait, r:2900, rFrom:2900, rTo:PHASES[0].r}};
+  for (let i=0;i<TREE_COUNT;i++) S.trees.push({id:i, x:Math.round(rnd(100,W-100)), y:Math.round(rnd(100,W-100)), r:22, wood:100});
+  // no loot lies on the ground at the start: everything comes from chests (or from eliminated players)
+  for (let n=0;n<CHEST_COUNT;n++){
+    for (let tries=0;tries<30;tries++){
+      const x = Math.round(rnd(150,W-150)), y = Math.round(rnd(150,W-150));
+      if (S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 50)){ S.chests.push({x, y, open:false}); break; }
+    }
+  }
+  const p0 = newActor('p0', 0);
+  p0.team = mode === 'versus' || mode === 'solo' ? 'P0' : 'P';
+  S.actors.push(p0); S.players.push(p0);
+  if (withGuest){
+    const p1 = newActor('p1', 1);
+    p1.team = mode === 'versus' ? 'P1' : 'P';
+    if (mode === 'coop'){   // teammates start together
+      p1.x = Math.max(100, Math.min(W-100, Math.round(p0.x + rnd(-80,80))));
+      p1.y = Math.max(100, Math.min(W-100, Math.round(p0.y + rnd(-80,80))));
+      p1.tx = p1.x; p1.ty = p1.y;
+    }
+    S.actors.push(p1); S.players.push(p1);
+  }
+  S.player = p0;
+  for (let i=1;i<=BOTS;i++){ const b = newActor('bot', i); b.team = 'B'+i; S.actors.push(b); }
+}
+
+// ---------- Helpers ----------
+const wallKey = (gx,gy) => gx+','+gy;
+function build(a){
+  if (!a.alive || a.wood < 10) return;
+  const gx = Math.floor((a.x + Math.cos(a.angle)*62)/G), gy = Math.floor((a.y + Math.sin(a.angle)*62)/G);
+  const k = wallKey(gx,gy);
+  if (S.walls.has(k) || gx<0 || gy<0 || gx*G>=W || gy*G>=W) return;
+  S.walls.set(k, {gx, gy, hp:150}); a.wood -= 10;
+}
+function damage(a, dmg, owner){
+  a.heal = 0;   // taking damage interrupts healing
+  if (a.sh > 0){ const s = Math.min(a.sh, dmg); a.sh -= s; dmg -= s; }
+  a.hp -= dmg; a.lastHit = performance.now();
+  if (a === S.player && touchMode && NET.role !== 'guest' && navigator.vibrate && a.lastHit - (a.lastVib||0) > 150){
+    a.lastVib = a.lastHit; navigator.vibrate(a.hp <= 0 ? 200 : 20);
+  }
+  if (a.hp <= 0 && a.alive){
+    a.alive = false; a.hp = 0;
+    if (owner && owner !== a) owner.kills++;
+    a.place = S.actors.filter(x => x.alive).length + 1;
+    // drop the whole inventory: all wood in one pile, plus every weapon and bandage
+    if (a.wood > 0) S.loot.push({x:a.x, y:a.y, type:'wood', n:a.wood});
+    a.inv.forEach(w => {
+      if (!w || w === 'pickaxe') return;
+      const n = w === 'bandage' ? a.band : 1;
+      for (let i=0;i<n;i++) S.loot.push({x:a.x+rnd(-20,20), y:a.y+rnd(-20,20), type:w});
+    });
+  }
+}
+function fire(a){
+  if (!a.alive) return;
+  const w = WEAP[a.inv[a.cur]];
+  if (w.heal){ startHeal(a); return; }
+  if (a.cd > 0) return;
+  a.cd = w.rate;
+  if (w.melee){
+    a.swing = 0.2;
+    for (const t of S.trees){
+      const d = Math.hypot(t.x-a.x, t.y-a.y);
+      if (d < w.range + t.r){
+        const diff = Math.abs(Math.atan2(Math.sin(Math.atan2(t.y-a.y,t.x-a.x)-a.angle), Math.cos(Math.atan2(t.y-a.y,t.x-a.x)-a.angle)));
+        if (diff < 0.9 && t.wood > 0){ t.wood -= 10; a.wood = Math.min(999, a.wood+10); burst(t.x,t.y,'#7a5',4); }
+      }
+    }
+    S.trees = S.trees.filter(t => t.wood > 0);
+    for (const o of S.actors){
+      if (o === a || !o.alive || o.team === a.team) continue;   // no friendly fire
+      const d = Math.hypot(o.x-a.x, o.y-a.y);
+      if (d < w.range + o.r){
+        const ang = Math.atan2(o.y-a.y,o.x-a.x);
+        if (Math.abs(Math.atan2(Math.sin(ang-a.angle),Math.cos(ang-a.angle))) < 0.9) damage(o, w.dmg, a);
+      }
+    }
+  } else {
+    for (let i=0;i<w.pellets;i++){
+      const ang = a.angle + rnd(-w.spread, w.spread);
+      S.bullets.push({x:a.x+Math.cos(ang)*20, y:a.y+Math.sin(ang)*20, vx:Math.cos(ang)*w.spd, vy:Math.sin(ang)*w.spd,
+        life:w.life, dmg:w.dmg, owner:a, color:w.color});
+    }
+  }
+}
+function burst(x,y,c,n){
+  for(let i=0;i<n;i++) S.particles.push({x,y,vx:rnd(-80,80),vy:rnd(-80,80),life:0.4,c});
+  if (NET.role === 'host' && NET.guestIn && S.ev.length < 60) S.ev.push([Math.round(x),Math.round(y),c,n]);  // let the guest see it too
+}
+
+// ---------- Inventory / healing ----------
+// Slot 0 = pickaxe, slots 1-5 = loadout. Bandages stack up to MAXBAND in a single slot.
+function giveItem(a, type){
+  if (type === 'bandage'){
+    if (a.band >= MAXBAND) return false;
+    let i = a.inv.indexOf('bandage');
+    if (i < 0){ i = a.inv.indexOf(null, 1); if (i < 0) return false; a.inv[i] = 'bandage'; }
+    a.band++; return true;
+  }
+  const i = a.inv.indexOf(null, 1);
+  if (i < 0) return false;
+  a.inv[i] = type; if (a.isPlayer) a.cur = i;
+  return true;
+}
+function startHeal(a){ if (a.alive && a.heal <= 0 && a.band > 0 && a.hp < 100) a.heal = HEAL_TIME; }
+function bestSlot(a){
+  for (const t of WEAPON_PRIO){ const i = a.inv.indexOf(t); if (i >= 0) return i; }
+  return 0;
+}
+
+function openChest(c){
+  c.open = true;
+  const pick = () => CHEST_WEAPONS[Math.random()*CHEST_WEAPONS.length|0];
+  const drops = [pick()];                                   // always one weapon
+  if (Math.random() < 0.55) for (let i = 1 + (Math.random()*3|0); i > 0; i--) drops.push('bandage');   // 55%: 1-3 bandages
+  if (Math.random() < 0.25) drops.push(pick());             // 25% chance of a bonus weapon
+  if (Math.random() < 0.45) drops.push('shield');           // 45% shield potion
+  if (Math.random() < 0.30) drops.push('med');              // 30% medkit
+  const off = Math.random()*Math.PI*2;
+  drops.forEach((type,i) => {
+    const ang = off + i*Math.PI*2/drops.length, d = rnd(40,55);
+    S.loot.push({x:Math.max(20,Math.min(W-20,c.x+Math.cos(ang)*d)), y:Math.max(20,Math.min(W-20,c.y+Math.sin(ang)*d)), type});
+  });
+  burst(c.x, c.y, '#fc4', 14);
+}
+// can this actor actually use a loot item right now? (keeps bots from chasing things they can't take)
+function canTake(a, type){
+  if (type === 'shield') return a.sh < 100;
+  if (type === 'med') return a.hp < 100;
+  if (type === 'wood') return true;
+  if (type === 'bandage') return a.band < MAXBAND && (a.inv.includes('bandage') || a.inv.includes(null));
+  return a.inv.includes(null);
+}
+
+function collide(a){
+  for (const t of S.trees){
+    const dx = a.x-t.x, dy = a.y-t.y, d = Math.hypot(dx,dy), m = a.r+t.r*0.8;
+    if (d < m && d > 0){ a.x = t.x + dx/d*m; a.y = t.y + dy/d*m; }
+  }
+  const cx = Math.floor(a.x/G), cy = Math.floor(a.y/G);
+  for (let gx=cx-1; gx<=cx+1; gx++) for (let gy=cy-1; gy<=cy+1; gy++){
+    if (!S.walls.has(wallKey(gx,gy))) continue;
+    const nx = Math.max(gx*G, Math.min(a.x, gx*G+G)), ny = Math.max(gy*G, Math.min(a.y, gy*G+G));
+    const dx = a.x-nx, dy = a.y-ny, d = Math.hypot(dx,dy);
+    if (d < a.r){
+      if (d > 0){ a.x = nx + dx/d*a.r; a.y = ny + dy/d*a.r; }
+      else a.y -= a.r;
+    }
+  }
+  a.x = Math.max(a.r, Math.min(W-a.r, a.x)); a.y = Math.max(a.r, Math.min(W-a.r, a.y));
+}
+
+// ---------- Bot AI ----------
+function botThink(b, dt){
+  let target = null, best = 450;
+  for (const o of S.actors){
+    if (o === b || !o.alive || o.team === b.team) continue;
+    const d = Math.hypot(o.x-b.x, o.y-b.y);
+    if (d < best){ best = d; target = o; }
+  }
+  const sd = Math.hypot(b.x-CENTER.x, b.y-CENTER.y);
+  let mx = 0, my = 0, speed = 190;
+  if (sd > S.storm.r - 100){
+    const a = Math.atan2(CENTER.y-b.y, CENTER.x-b.x); mx = Math.cos(a); my = Math.sin(a); speed = 230;
+    if (target) b.angle = Math.atan2(target.y-b.y, target.x-b.x);
+  } else if (target){
+    const a = Math.atan2(target.y-b.y, target.x-b.x);
+    const want = a + rnd(-0.05,0.05);
+    const diff = Math.atan2(Math.sin(want-b.angle), Math.cos(want-b.angle));
+    b.angle += diff * Math.min(1, dt*7);
+    b.strafeT -= dt; if (b.strafeT <= 0){ b.strafe *= -1; b.strafeT = rnd(0.8,2); }
+    const fwd = best > 280 ? 1 : best < 150 ? -1 : 0;
+    mx = Math.cos(a)*fwd + Math.cos(a+Math.PI/2)*b.strafe*0.7;
+    my = Math.sin(a)*fwd + Math.sin(a+Math.PI/2)*b.strafe*0.7;
+    // pick best weapon
+    b.cur = bestSlot(b);
+    if (b.cur === 0 && best < 70 || b.cur !== 0 && Math.abs(diff) < 0.35) fire(b);
+    if (b.cur === 0 && best > 70) { mx = Math.cos(a); my = Math.sin(a); }
+    if (b.hp < 50 && b.wood >= 10 && Math.random() < dt*2) build(b);
+  } else {
+    // heal when no one is nearby
+    if (b.heal > 0 || (b.band > 0 && b.hp < 70)){
+      const bi = b.inv.indexOf('bandage');
+      if (bi >= 0){ b.cur = bi; startHeal(b); return [0,0]; }
+    }
+    // seek loot / chests or wander
+    let near = null, nd = 700;
+    for (const l of S.loot){ if (!canTake(b, l.type)) continue; const d = Math.hypot(l.x-b.x,l.y-b.y); if (d < nd){ nd = d; near = l; } }
+    for (const c of S.chests){ if (c.open) continue; const d = Math.hypot(c.x-b.x,c.y-b.y); if (d < nd){ nd = d; near = c; } }
+    if (near) b.wp = {x:near.x,y:near.y};
+    else { b.wpT -= dt; if (!b.wp || b.wpT <= 0){ b.wp = {x:CENTER.x+rnd(-S.storm.r,S.storm.r)*0.8, y:CENTER.y+rnd(-S.storm.r,S.storm.r)*0.8}; b.wpT = rnd(4,9); } }
+    const a = Math.atan2(b.wp.y-b.y, b.wp.x-b.x); mx = Math.cos(a); my = Math.sin(a);
+    b.angle = a; b.cur = bestSlot(b);
+    // harvest trees in the way
+    if (b.wood < 40) for (const t of S.trees){ if (Math.hypot(t.x-b.x,t.y-b.y) < 70){ b.angle = Math.atan2(t.y-b.y,t.x-b.x); const c=b.cur; b.cur=0; fire(b); b.cur=c; break; } }
+  }
+  return [mx*speed, my*speed];
+}
+
+// ---------- Local player input (used by solo/host for player 1 and by the guest for player 2) ----------
+function localInput(a, dt){
+  const cam = camera();
+  let vx = 0, vy = 0, fireNow = false;
+  if (keys['w']||keys['arrowup']) vy -= 1; if (keys['s']||keys['arrowdown']) vy += 1;
+  if (keys['a']||keys['arrowleft']) vx -= 1; if (keys['d']||keys['arrowright']) vx += 1;
+  const l = Math.hypot(vx,vy) || 1; vx = vx/l*230; vy = vy/l*230;
+  if (!touchMode){
+    a.angle = Math.atan2(mouse.y/ZOOM + cam.y - a.y, mouse.x/ZOOM + cam.x - a.x);
+    if (mouse.down) fireNow = true;
+  } else {
+    // left stick = move
+    const mv = touch.move;
+    if (mv){
+      const m = Math.min(1, Math.hypot(mv.dx,mv.dy)/STICK_R);
+      if (m > 0.12){ const g = Math.atan2(mv.dy,mv.dx); vx = Math.cos(g)*230*m; vy = Math.sin(g)*230*m; }
+    }
+    // right stick = aim; push past 40% to fire. Light aim assist toward nearby enemies.
+    const am = touch.aim;
+    if (am){
+      const mag = Math.hypot(am.dx, am.dy);
+      if (mag > 10){
+        let ang = Math.atan2(am.dy, am.dx), assist = null, bd = 520;
+        for (const o of S.actors){
+          if (o === a || !o.alive || o.team === a.team) continue;
+          const d = Math.hypot(o.x-a.x, o.y-a.y);
+          if (d < bd){
+            const t = Math.atan2(o.y-a.y, o.x-a.x);
+            const df = Math.atan2(Math.sin(t-ang), Math.cos(t-ang));
+            if (Math.abs(df) < 0.25){ bd = d; assist = df; }
+          }
+        }
+        if (assist !== null) ang += assist*0.7;
+        a.angle = ang;
+        if (mag > STICK_R*0.4) fireNow = true;
+      }
+    }
+  }
+  return {vx, vy, fire:fireNow};
+}
+
+// ---------- Update (solo / host: the authoritative simulation) ----------
+function stepParticles(dt){
+  for (let i=S.particles.length-1;i>=0;i--){
+    const q = S.particles[i]; q.x += q.vx*dt; q.y += q.vy*dt; q.life -= dt;
+    if (q.life <= 0) S.particles.splice(i,1);
+  }
+}
+
+function update(dt){
+  // storm
+  const st = S.storm;
+  st.t -= dt;
+  if (st.state === 'wait'){
+    if (st.t <= 0){ st.state = 'shrink'; st.t = PHASES[st.i].shrink; st.rFrom = st.r; st.rTo = PHASES[st.i].r; }
+  } else {
+    st.r = st.rFrom + (st.rTo - st.rFrom) * (1 - Math.max(0, st.t)/PHASES[st.i].shrink);
+    if (st.t <= 0){
+      st.r = st.rTo;
+      if (st.i < PHASES.length-1){ st.i++; st.state = 'wait'; st.t = PHASES[st.i].wait; }
+      else st.t = 9999;
+    }
+  }
+  const stormDps = 2 + st.i*2;
+
+  for (const a of S.actors){
+    if (!a.alive) continue;
+    a.cd -= dt; a.swing -= dt;
+    // bandage channel: switching items cancels it, finishing heals and uses one bandage
+    if (a.heal > 0){
+      if (a.inv[a.cur] !== 'bandage') a.heal = 0;
+      else {
+        a.heal -= dt;
+        if (a.heal <= 0){
+          a.heal = 0; a.hp = Math.min(100, a.hp + BANDAGE_HEAL); a.band--;
+          if (a.band <= 0){ const bi = a.inv.indexOf('bandage'); if (bi >= 0) a.inv[bi] = null; a.band = 0; a.cur = 0; }
+        }
+      }
+    }
+    let vx = 0, vy = 0;
+    if (a.isPlayer && a.pid === 0){
+      const inp = localInput(a, dt); vx = inp.vx; vy = inp.vy;
+      if (inp.fire) fire(a);
+    } else if (a.isPlayer){
+      // remote human (the guest): they move themselves, we trust their position and just apply their aim/fire
+      const g = a.in;
+      if (g){ a.tx = g.x; a.ty = g.y; a.angle = g.a; if (g.f) fire(a); }
+    } else [vx,vy] = botThink(a, dt);
+
+    if (a.isPlayer && a.pid === 1){
+      const k = Math.min(1, dt*20);
+      a.x += (a.tx - a.x)*k; a.y += (a.ty - a.y)*k;
+      a.x = Math.max(a.r, Math.min(W-a.r, a.x)); a.y = Math.max(a.r, Math.min(W-a.r, a.y));
+    } else {
+      if (a.heal > 0){ vx *= 0.5; vy *= 0.5; }   // slowed while healing
+      a.x += vx*dt; a.y += vy*dt; collide(a);
+    }
+    // storm damage
+    if (Math.hypot(a.x-CENTER.x, a.y-CENTER.y) > st.r){
+      a.stormAcc = (a.stormAcc||0) + dt;
+      if (a.stormAcc >= 1){ a.stormAcc = 0; damage(a, stormDps, null); }
+    }
+    // walk into a chest to open it
+    for (const c of S.chests) if (!c.open && Math.hypot(c.x-a.x, c.y-a.y) < 34) openChest(c);
+    // pickups
+    for (let i=S.loot.length-1;i>=0;i--){
+      const l = S.loot[i];
+      if (Math.hypot(l.x-a.x,l.y-a.y) > 28) continue;
+      let take = false;
+      if (WEAP[l.type]){
+        take = giveItem(a, l.type);
+      } else if (l.type === 'shield' && a.sh < 100){ a.sh = Math.min(100, a.sh+40); take = true; }
+      else if (l.type === 'med' && a.hp < 100){ a.hp = Math.min(100, a.hp+30); take = true; }
+      else if (l.type === 'wood'){ a.wood = Math.min(999, a.wood + (l.n || 30)); take = true; }
+      if (take) S.loot.splice(i,1);
+    }
+  }
+
+  // bullets (teammates are never hurt by each other)
+  for (let i=S.bullets.length-1;i>=0;i--){
+    const b = S.bullets[i];
+    b.x += b.vx*dt; b.y += b.vy*dt; b.life -= dt;
+    let dead = b.life <= 0;
+    if (!dead){
+      const k = wallKey(Math.floor(b.x/G), Math.floor(b.y/G));
+      const w = S.walls.get(k);
+      if (w){ w.hp -= b.dmg; dead = true; burst(b.x,b.y,'#c93',3); if (w.hp <= 0) S.walls.delete(k); }
+    }
+    if (!dead) for (const t of S.trees){ if (Math.hypot(b.x-t.x,b.y-t.y) < t.r){ dead = true; burst(b.x,b.y,'#4a4',2); break; } }
+    if (!dead) for (const a of S.actors){
+      if (a === b.owner || !a.alive || a.team === b.owner.team) continue;
+      if (Math.hypot(b.x-a.x,b.y-a.y) < a.r){ damage(a, b.dmg, b.owner); burst(b.x,b.y,'#f44',4); dead = true; break; }
+    }
+    if (dead) S.bullets.splice(i,1);
+  }
+  stepParticles(dt);
+
+  // end conditions: the match ends when the humans are all down, or only one team is left standing
+  if (!S.over){
+    const humansAlive = S.players.filter(p => p.alive).length;
+    const teams = new Set(); for (const a of S.actors) if (a.alive) teams.add(a.team);
+    if (humansAlive === 0){ S.over = true; S.winTeam = null; S.overAt = performance.now(); }
+    else if (teams.size <= 1){ S.over = true; S.winTeam = [...teams][0] || null; S.overAt = performance.now(); }
+  }
+}
+
+// ---------- Networking: host side ----------
+function encodeActor(a){
+  return [Math.round(a.x), Math.round(a.y), +a.angle.toFixed(2), Math.round(a.hp), Math.round(a.sh), a.wood, a.band,
+          +Math.max(0,a.heal).toFixed(2), a.cur, a.alive?1:0, a.kills, a.swing>0?1:0, a.place||0, a.inv];
+}
+function sendSnapshot(){
+  if (!NET.conn || !NET.guestIn) return;
+  const st = S.storm;
+  const msg = {t:'snap', st:{i:st.i, s:st.state === 'wait' ? 0 : 1, t:+st.t.toFixed(2), r:Math.round(st.r)},
+    A:S.actors.map(encodeActor),
+    B:S.bullets.map(b => [Math.round(b.x), Math.round(b.y), Math.round(b.vx), Math.round(b.vy), b.color]),
+    ev:S.ev, o:S.over?1:0, wt:S.winTeam};
+  S.ev = [];
+  // slow-changing world data is only sent when it actually changed
+  const Wl = S.walls.size ? [...S.walls.values()].map(w => [w.gx, w.gy, Math.round(w.hp)]) : [];
+  const Ws = JSON.stringify(Wl);               if (Ws !== NET.last.W){ NET.last.W = Ws; msg.W = Wl; }
+  const Ll = S.loot.map(l => [Math.round(l.x), Math.round(l.y), TYPES.indexOf(l.type), l.n || 0]);
+  const Ls = JSON.stringify(Ll);               if (Ls !== NET.last.L){ NET.last.L = Ls; msg.L = Ll; }
+  const Cl = S.chests.map(c => c.open ? 1 : 0);
+  const Cs = Cl.join('');                      if (Cs !== NET.last.C){ NET.last.C = Cs; msg.C = Cl; }
+  const Tl = new Array(TREE_COUNT).fill(0); for (const t of S.trees) Tl[t.id] = t.wood;
+  const Ts = Tl.join(',');                     if (Ts !== NET.last.T){ NET.last.T = Ts; msg.T = Tl; }
+  netSend(msg);
+}
+function sendInit(){
+  netSend({t:'init', mode:S.mode, me:1,
+    trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]),
+    actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, x:Math.round(a.x), y:Math.round(a.y)}))});
+  NET.last = {W:'',L:'',C:'',T:''};
+}
+function hostBeginMatch(){
+  init(NET.mode, true);
+  sendInit();
+  phase = 'play'; hideMenu(); NET.snapAcc = 0;
+}
+function hostRestart(){
+  const hosting = NET.role === 'host';
+  init(hosting ? NET.mode : 'solo', hosting && NET.guestIn);
+  if (hosting && NET.guestIn) sendInit();
+}
+function onHostData(m){
+  if (!m || phase !== 'play') return;
+  const g = S.players.find(p => p.pid === 1);
+  if (!g) return;
+  switch (m.t){
+    case 'in':      g.in = m; break;
+    case 'build':   build(g); break;
+    case 'sel':     if (m.i >= 0 && m.i < 6 && g.inv[m.i]) g.cur = m.i; break;
+    case 'heal':    startHeal(g); break;
+    case 'restart': if (S.over && performance.now() - S.overAt > 700) hostRestart(); break;
+  }
+}
+function hostAcceptConnection(conn){
+  if (NET.conn){ try { conn.close(); } catch(_){} return; }   // room is full
+  NET.conn = conn;
+  conn.on('data', onHostData);
+  conn.on('close', onGuestLeft);
+  conn.on('error', onGuestLeft);
+  const go = () => { NET.guestIn = true; hostBeginMatch(); };
+  if (conn.open) go(); else conn.on('open', go);
+}
+function onGuestLeft(){
+  if (!NET.guestIn) return;
+  NET.guestIn = false; NET.conn = null;
+  const g = S.players.find(p => p.pid === 1);
+  if (g){            // a bot takes over (as a teammate in co-op, as an enemy in versus)
+    g.isPlayer = false; g.pid = -1; g.name = 'Bot'; g.in = null;
+    if (S.mode !== 'coop') g.team = 'B99';
+    S.players = S.players.filter(p => p !== g);
+  }
+  toast('Player 2 disconnected. A bot took their place.');
+}
+
+// ---------- Networking: guest side ----------
+function buildGuestState(m){
+  S = {mode:m.mode, actors:[], players:[], bullets:[], trees:[], allTrees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[],
+    over:false, winTeam:null, overAt:0, storm:{i:0, state:'wait', t:20, r:2900, rFrom:2900, rTo:1700}};
+  m.trees.forEach(([x,y], id) => { const t = {id, x, y, r:22, wood:100}; S.allTrees.push(t); S.trees.push(t); });
+  m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
+  m.actors.forEach(d => S.actors.push({x:d.x, y:d.y, tx:d.x, ty:d.y, r:15, hp:100, sh:0, wood:0,
+    inv:['pickaxe',null,null,null,null,null], band:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
+    isPlayer:!!d.h, pid:d.pid, team:d.tm, name:d.n, color:d.c, seen:false}));
+  S.player = S.actors[m.me];
+  S.player.seen = true;
+}
+function applySnap(m){
+  NET.lastSnap = performance.now();
+  if (NET.lost){ NET.lost = false; toast('Reconnected'); }
+  const now = performance.now();
+  const A = m.A;
+  for (let i=0;i<A.length && i<S.actors.length;i++){
+    const d = A[i], a = S.actors[i];
+    if (a === S.player){
+      if (Math.hypot(d[0]-a.x, d[1]-a.y) > 250){ a.x = d[0]; a.y = d[1]; }          // far off: snap (new match, etc.)
+      if (d[3] < a.hp && touchMode && navigator.vibrate) navigator.vibrate(d[3] <= 0 ? 200 : 20);
+      if (now > (a.selHold || 0)) a.cur = d[8];
+    } else {
+      a.tx = d[0]; a.ty = d[1]; a.tang = d[2];
+      if (!a.seen){ a.x = d[0]; a.y = d[1]; a.angle = d[2]; a.seen = true; }
+    }
+    a.hp = d[3]; a.sh = d[4]; a.wood = d[5]; a.band = d[6]; a.heal = d[7]; a.alive = !!d[9];
+    a.kills = d[10]; if (d[11]) a.swing = 0.2; a.place = d[12]; a.inv = d[13];
+  }
+  S.bullets = m.B.map(b => ({x:b[0], y:b[1], vx:b[2], vy:b[3], color:b[4]}));
+  const st = S.storm; st.i = m.st.i; st.state = m.st.s ? 'shrink' : 'wait'; st.t = m.st.t; st.r = m.st.r;
+  if (m.W) S.walls = new Map(m.W.map(([gx,gy,hp]) => [wallKey(gx,gy), {gx, gy, hp}]));
+  if (m.L) S.loot = m.L.map(([x,y,ti,n]) => ({x, y, type:TYPES[ti], n:n || undefined}));
+  if (m.C) m.C.forEach((o,i) => { if (S.chests[i]) S.chests[i].open = !!o; });
+  if (m.T){ m.T.forEach((w,id) => { S.allTrees[id].wood = w; }); S.trees = S.allTrees.filter(t => t.wood > 0); }
+  for (const e of m.ev) burst(e[0], e[1], e[2], e[3]);
+  if (m.o && !S.over){ S.over = true; S.overAt = performance.now(); }
+  S.winTeam = m.wt;
+}
+function onGuestData(m){
+  if (!m) return;
+  if (m.t === 'init'){
+    buildGuestState(m); phase = 'play'; hideMenu(); NET.lastSnap = performance.now(); NET.lost = false;
+    for (const k of ['move','aim']) touch[k] = null;
+  } else if (m.t === 'snap' && phase === 'play' && NET.role === 'guest' && S.allTrees) applySnap(m);
+}
+function onHostLeft(){
+  if (NET.role !== 'guest' || NET.left) return;
+  NET.left = true;
+  toast('The host disconnected. Returning to the menu…', 4000);
+  setTimeout(() => location.reload(), 2500);
+}
+function guestAttach(conn){
+  NET.conn = conn; NET.role = 'guest';
+  conn.on('data', onGuestData);
+  conn.on('close', onHostLeft);
+  conn.on('error', onHostLeft);
+}
+
+// Guest simulation step: move myself locally, send my controls, smooth everyone else.
+function updateGuest(dt){
+  const me = S.player, st = S.storm;
+  if (me.alive){
+    const inp = localInput(me, dt);
+    let vx = inp.vx, vy = inp.vy;
+    if (me.heal > 0){ vx *= 0.5; vy *= 0.5; }
+    me.x += vx*dt; me.y += vy*dt; collide(me);
+    NET.inAcc += dt;
+    if (NET.inAcc >= 1/30){ NET.inAcc = 0; netSend({t:'in', x:Math.round(me.x), y:Math.round(me.y), a:+me.angle.toFixed(3), f:inp.fire?1:0}); }
+  }
+  const k = Math.min(1, dt*14);
+  for (const a of S.actors){
+    if (a.heal > 0) a.heal -= dt;
+    a.swing -= dt;
+    if (a === me) continue;
+    a.x += (a.tx - a.x)*k; a.y += (a.ty - a.y)*k;
+    if (a.tang !== undefined) a.angle += Math.atan2(Math.sin(a.tang-a.angle), Math.cos(a.tang-a.angle))*k;
+  }
+  for (const b of S.bullets){ b.x += b.vx*dt; b.y += b.vy*dt; }
+  st.t -= dt;
+  stepParticles(dt);
+  if (!NET.lost && performance.now() - NET.lastSnap > 5000){ NET.lost = true; toast('Connection lost… waiting for the host', 5000); }
+}
+
+// ---------- Render ----------
+// Whose view we show: ourselves, or (once eliminated) the other human so we can spectate.
+function viewTarget(){
+  const me = S.player;
+  if (me.alive) return me;
+  return S.actors.find(a => a.isPlayer && a.alive && a !== me) || me;
+}
+function camera(){
+  const p = viewTarget();
+  return {x: Math.max(0, Math.min(W-VW, p.x - VW/2)), y: Math.max(0, Math.min(W-VH, p.y - VH/2))};
+}
+const LOOT_COL = {pistol:'#9cf', shotgun:'#fa5', ar:'#9f6', shield:'#58f', med:'#f55', wood:'#a73', bandage:'#fff'};
+const LOOT_LBL = {pistol:'P', shotgun:'S', ar:'R', shield:'+', med:'♥', wood:'W', bandage:'B'};
+
+function draw(){
+  const cam = camera(), p = S.player, vw = VW, vh = VH;
+  ctx.setTransform(DPR*ZOOM, 0, 0, DPR*ZOOM, 0, 0);
+  ctx.fillStyle = '#4c8c4a'; ctx.fillRect(0,0,vw,vh);
+  ctx.save(); ctx.translate(-cam.x, -cam.y);
+  // grid
+  ctx.strokeStyle = 'rgba(0,0,0,0.07)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = Math.floor(cam.x/G)*G; x < cam.x+vw; x += G){ ctx.moveTo(x,cam.y); ctx.lineTo(x,cam.y+vh); }
+  for (let y = Math.floor(cam.y/G)*G; y < cam.y+vh; y += G){ ctx.moveTo(cam.x,y); ctx.lineTo(cam.x+vw,y); }
+  ctx.stroke();
+  // map edge
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 4; ctx.strokeRect(0,0,W,W);
+  const vis = (x,y,m=60) => x>cam.x-m && x<cam.x+vw+m && y>cam.y-m && y<cam.y+vh+m;
+  // chests
+  for (const c of S.chests){ if (!vis(c.x,c.y)) continue;
+    ctx.save(); ctx.translate(c.x,c.y); ctx.lineWidth=2; ctx.strokeStyle='#000';
+    if (!c.open){
+      ctx.fillStyle='rgba(255,210,60,0.25)'; ctx.beginPath(); ctx.arc(0,0,30,0,7); ctx.fill();
+      ctx.fillStyle='#d9a22b'; ctx.fillRect(-16,-11,32,22);
+      ctx.fillStyle='#b9801a'; ctx.fillRect(-16,-11,32,9);
+      ctx.strokeRect(-16,-11,32,22);
+      ctx.beginPath(); ctx.moveTo(-16,-2); ctx.lineTo(16,-2); ctx.stroke();
+      ctx.fillStyle='#fff6c0'; ctx.fillRect(-3,-5,6,7);
+    } else {
+      ctx.fillStyle='#6b4a1a'; ctx.fillRect(-16,-4,32,15);
+      ctx.fillStyle='#2a1c08'; ctx.fillRect(-13,-2,26,8);
+      ctx.fillStyle='#8a6422'; ctx.fillRect(-16,-16,32,8);
+      ctx.strokeRect(-16,-4,32,15); ctx.strokeRect(-16,-16,32,8);
+    }
+    ctx.restore(); }
+  // loot
+  for (const l of S.loot){ if (!vis(l.x,l.y)) continue;
+    ctx.fillStyle = LOOT_COL[l.type]; ctx.fillRect(l.x-10,l.y-10,20,20);
+    ctx.strokeStyle='#000'; ctx.lineWidth=2; ctx.strokeRect(l.x-10,l.y-10,20,20);
+    ctx.fillStyle='#000'; ctx.font='bold 13px sans-serif'; ctx.textAlign='center'; ctx.fillText(LOOT_LBL[l.type], l.x, l.y+5); }
+  // walls
+  for (const w of S.walls.values()){ const x=w.gx*G, y=w.gy*G; if (!vis(x,y)) continue;
+    ctx.fillStyle = `rgb(${120+w.hp/3|0},${90+w.hp/4|0},60)`; ctx.fillRect(x,y,G,G);
+    ctx.strokeStyle='#432'; ctx.lineWidth=3; ctx.strokeRect(x+1,y+1,G-2,G-2); }
+  // trees
+  for (const t of S.trees){ if (!vis(t.x,t.y,40)) continue;
+    ctx.fillStyle='#5a3a1a'; ctx.beginPath(); ctx.arc(t.x,t.y,6,0,7); ctx.fill();
+    ctx.fillStyle = t.wood < 100 ? '#2d6a2d' : '#1f7a2a'; ctx.beginPath(); ctx.arc(t.x,t.y,t.r,0,7); ctx.fill();
+    ctx.strokeStyle='#0d3d12'; ctx.lineWidth=2; ctx.stroke(); }
+  // bullets
+  for (const b of S.bullets){ ctx.strokeStyle=b.color; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-b.vx*0.025, b.y-b.vy*0.025); ctx.stroke(); }
+  // actors
+  for (const a of S.actors){ if (!a.alive || !vis(a.x,a.y)) continue;
+    ctx.save(); ctx.translate(a.x,a.y); ctx.rotate(a.angle);
+    const w = WEAP[a.inv[a.cur]] || WEAP.pickaxe;
+    ctx.fillStyle = w.color; ctx.strokeStyle='#000'; ctx.lineWidth=2;
+    if (w.melee){ const sw = a.swing > 0 ? 0.8 : 0; ctx.save(); ctx.rotate(-0.4+sw); ctx.fillRect(10,-3,32,6); ctx.strokeRect(10,-3,32,6); ctx.restore(); }
+    else if (w.heal){ ctx.fillRect(14,-5,12,10); ctx.strokeRect(14,-5,12,10); }
+    else { ctx.fillRect(8,-4,26,8); ctx.strokeRect(8,-4,26,8); }
+    ctx.fillStyle = a.color; ctx.beginPath(); ctx.arc(0,0,a.r,0,7); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    // healing progress ring
+    if (a.heal > 0){
+      ctx.strokeStyle='#fff'; ctx.lineWidth=4; ctx.beginPath();
+      ctx.arc(a.x,a.y,a.r+6,-Math.PI/2,-Math.PI/2+Math.PI*2*(1-a.heal/HEAL_TIME)); ctx.stroke();
+    }
+    // bars
+    ctx.fillStyle='#0008'; ctx.fillRect(a.x-18,a.y-30,36,6);
+    ctx.fillStyle='#4d4'; ctx.fillRect(a.x-18,a.y-30,36*a.hp/100,3);
+    ctx.fillStyle='#4af'; ctx.fillRect(a.x-18,a.y-27,36*a.sh/100,3);
+    if (a !== p){ ctx.fillStyle = a.team === p.team ? '#8f8' : '#fff'; ctx.font=Math.round(11/ZOOM)+'px sans-serif'; ctx.textAlign='center'; ctx.fillText(a.name,a.x,a.y-36); }
+  }
+  for (const q of S.particles){ ctx.fillStyle=q.c; ctx.fillRect(q.x,q.y,3,3); }
+  // build preview
+  if (p.alive){
+    const gx = Math.floor((p.x+Math.cos(p.angle)*62)/G), gy = Math.floor((p.y+Math.sin(p.angle)*62)/G);
+    ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.setLineDash([5,5]); ctx.lineWidth=2; ctx.strokeRect(gx*G,gy*G,G,G); ctx.setLineDash([]);
+  }
+  // storm overlay (hole in the middle)
+  ctx.fillStyle = 'rgba(110,40,170,0.42)';
+  ctx.beginPath(); ctx.rect(cam.x-10,cam.y-10,vw+20,vh+20);
+  ctx.arc(CENTER.x, CENTER.y, Math.max(1,S.storm.r), 0, Math.PI*2, true); ctx.fill('evenodd');
+  ctx.strokeStyle='#c6f'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(CENTER.x,CENTER.y,Math.max(1,S.storm.r),0,7); ctx.stroke();
+  ctx.restore();
+  drawHUD();
+}
+
+function drawHUD(){
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);   // HUD is in screen pixels, not world-zoomed
+  const p = S.player, vw = SW, vh = SH, tm = touchMode;
+  const alive = S.actors.filter(a=>a.alive).length, st = S.storm;
+  ctx.textAlign = 'left';
+
+  // health / shield / wood
+  if (tm){
+    ctx.fillStyle='#0009'; ctx.fillRect(10,8,158,34);
+    ctx.fillStyle='#4af'; ctx.fillRect(14,11,150*p.sh/100,12);
+    ctx.fillStyle='#4d4'; ctx.fillRect(14,26,150*p.hp/100,12);
+    ctx.fillStyle='#fff'; ctx.font='bold 10px sans-serif';
+    ctx.fillText('SHIELD '+(p.sh|0), 18, 21); ctx.fillText('HEALTH '+(p.hp|0), 18, 36);
+    ctx.fillStyle='#fc4'; ctx.font='bold 13px sans-serif'; ctx.fillText('Wood: '+p.wood, 174, 24);
+  } else {
+    ctx.fillStyle='#0009'; ctx.fillRect(20,vh-70,260,50);
+    ctx.fillStyle='#4af'; ctx.fillRect(26,vh-64,248*p.sh/100,16);
+    ctx.fillStyle='#4d4'; ctx.fillRect(26,vh-42,248*p.hp/100,16);
+    ctx.fillStyle='#fff'; ctx.font='bold 12px sans-serif';
+    ctx.fillText('SHIELD '+(p.sh|0), 32, vh-52); ctx.fillText('HEALTH '+(p.hp|0), 32, vh-30);
+    ctx.fillStyle='#fc4'; ctx.font='bold 16px sans-serif'; ctx.fillText('Wood: '+p.wood, 20, vh-80);
+  }
+
+  // weapon slots (tappable on touch)
+  for (let i=0;i<6;i++){
+    const r = slotRect(i), id = p.inv[i];
+    ctx.fillStyle = i===p.cur ? '#fc4' : '#0009'; ctx.fillRect(r.x,r.y,r.w,r.h);
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.strokeRect(r.x,r.y,r.w,r.h);
+    ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.font='10px sans-serif'; ctx.textAlign='left'; ctx.fillText(i+1, r.x+4, r.y+11);
+    ctx.textAlign='center'; ctx.font = tm ? 'bold 9px sans-serif' : 'bold 12px sans-serif';
+    ctx.fillText(id ? WEAP[id].name : '-', r.x+r.w/2, r.y+r.h*(id === 'bandage' ? 0.55 : 0.68));
+    if (id === 'bandage') ctx.fillText('x'+p.band, r.x+r.w/2, r.y+r.h*0.88);
+  }
+
+  // top-right info + minimap
+  const ms = tm ? 90 : 160, mx = vw-ms-(tm?10:20), my = tm ? 8 : 100, k = ms/W;
+  const fs = tm ? 12 : 18, lh = tm ? 16 : 24, tx = vw-(tm?10:20), ty = tm ? my+ms+16 : 30;
+  ctx.textAlign='right'; ctx.fillStyle='#fff'; ctx.font='bold '+fs+'px sans-serif';
+  ctx.fillText('Alive: '+alive, tx, ty); ctx.fillText('Kills: '+p.kills, tx, ty+lh);
+  ctx.fillStyle='#d9f';
+  ctx.fillText((st.state==='wait'?'Storm shrinks in ':'Storm closing ')+Math.max(0,st.t|0)+'s', tx, ty+lh*2);
+  ctx.fillStyle='#0a3a12cc'; ctx.fillRect(mx,my,ms,ms);
+  ctx.strokeStyle='#c6f'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(mx+CENTER.x*k,my+CENTER.y*k,st.r*k,0,7); ctx.stroke();
+  ctx.fillStyle='#fc4';
+  for (const c of S.chests){ if (c.open || Math.hypot(c.x-p.x,c.y-p.y) > 900) continue; ctx.fillRect(mx+c.x*k-2, my+c.y*k-2, 4, 4); }
+  for (const a of S.actors){
+    if (!a.alive) continue;
+    const mine = a === p, mate = !mine && a.team === p.team;
+    if (!mine && !mate && Math.hypot(a.x-p.x,a.y-p.y) > 700) continue;   // enemies only show when close
+    ctx.fillStyle = mine ? '#4af' : mate ? '#6f6' : '#f66';
+    ctx.beginPath(); ctx.arc(mx+a.x*k,my+a.y*k,mine?3:2,0,7); ctx.fill();
+  }
+  ctx.strokeStyle='#fff'; ctx.strokeRect(mx,my,ms,ms);
+
+  if (tm){
+    // build button
+    const b = buildBtn();
+    ctx.fillStyle = p.wood >= 10 ? 'rgba(255,200,70,0.35)' : 'rgba(150,150,150,0.25)';
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.font='bold 12px sans-serif'; ctx.textAlign='center'; ctx.fillText('BUILD', b.x, b.y+4);
+    // virtual sticks (faint ghosts show where to touch)
+    const drawStick = (s, gx, gy, label) => {
+      const ox = s ? s.ox : gx, oy = s ? s.oy : gy;
+      ctx.fillStyle = '#fff';
+      ctx.globalAlpha = s ? 0.35 : 0.15;
+      ctx.beginPath(); ctx.arc(ox,oy,STICK_R,0,7); ctx.fill();
+      ctx.globalAlpha = s ? 0.75 : 0.3;
+      ctx.beginPath(); ctx.arc(ox+(s?s.dx:0), oy+(s?s.dy:0), 24, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+      if (!s){ ctx.font='10px sans-serif'; ctx.textAlign='center'; ctx.fillText(label, ox, oy+STICK_R+14); }
+    };
+    drawStick(touch.move, 95, vh-115, 'MOVE');
+    drawStick(touch.aim, vw-95, vh-115, 'AIM / FIRE');
+  } else {
+    ctx.textAlign='left'; ctx.fillStyle='#fff'; ctx.font='12px sans-serif';
+    ctx.fillText('WASD move · Mouse aim/shoot · 1-6 select slot · Hold click with Bandage to heal · Q / Right-click build wall', 20, 24);
+  }
+
+  // end screen / spectating banner
+  if (S.over){
+    const win = S.winTeam !== null && S.winTeam === p.team;   // a co-op team win counts for both players
+    ctx.fillStyle='#000a'; ctx.fillRect(0,0,vw,vh);
+    ctx.textAlign='center'; ctx.fillStyle = win ? '#fc4' : '#f66'; ctx.font='bold '+Math.min(64, vw/10)+'px sans-serif';
+    ctx.fillText(win ? 'VICTORY ROYALE' : 'ELIMINATED', vw/2, vh/2-20);
+    ctx.fillStyle='#fff'; ctx.font=Math.min(24, vw/22)+'px sans-serif';
+    ctx.fillText((win ? '#1' : '#'+p.place)+' · '+p.kills+' kills · '+(tm ? 'Tap' : 'Press R')+' to play again', vw/2, vh/2+30);
+  } else if (!p.alive){
+    ctx.fillStyle='#000a'; ctx.fillRect(vw/2-170, 44, 340, 46);
+    ctx.textAlign='center'; ctx.fillStyle='#f66'; ctx.font='bold 16px sans-serif';
+    ctx.fillText('ELIMINATED #'+p.place+' · '+p.kills+' kills', vw/2, 63);
+    ctx.fillStyle='#fff'; ctx.font='12px sans-serif';
+    ctx.fillText('Spectating · the match is still in progress', vw/2, 81);
+  }
+}
+
+// ---------- Menu / lobby ----------
+let toastT;
+function toast(t, ms){
+  const el = $('toast'); el.textContent = t; el.style.display = 'block';
+  clearTimeout(toastT); toastT = setTimeout(() => el.style.display = 'none', ms || 3500);
+}
+const SCREENS = ['s-main','s-host','s-wait','s-join'];
+function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); menuMsg(''); }
+function menuMsg(t){ $('msg').textContent = t || ''; }
+function hideMenu(){ $('menu').classList.add('hide'); $('exit').style.display = 'block'; }
+
+const MODE_DESC = {
+  coop:'You and your friend are a team against the bots. No friendly fire. Win together.',
+  versus:'You and your friend fight each other and the bots. Last one standing wins.'
+};
+let hostMode = 'coop';
+function setMode(m){
+  hostMode = m;
+  $('m-coop').className = 'btn ' + (m === 'coop' ? 'sel' : 'ghost');
+  $('m-versus').className = 'btn ' + (m === 'versus' ? 'sel' : 'ghost');
+  $('mode-desc').textContent = MODE_DESC[m];
+}
+setMode('coop');
+
+// The multiplayer library is only fetched when someone actually uses it, so solo play works fully offline.
+const PEER_URLS = ['https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js', 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js'];
+function loadPeer(ok, fail, i){
+  i = i || 0;
+  if (window.Peer) return ok();
+  if (i >= PEER_URLS.length) return fail('Could not load the multiplayer library. Check your internet connection.');
+  const s = document.createElement('script'); s.src = PEER_URLS[i];
+  s.onload = ok; s.onerror = () => loadPeer(ok, fail, i+1);
+  document.head.appendChild(s);
+}
+function genCode(){ const ch = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let s = ''; for (let i=0;i<5;i++) s += ch[Math.random()*ch.length|0]; return s; }
+
+function createRoom(tries){
+  tries = tries || 0;
+  const code = genCode(), peer = new Peer('stormroyale-'+code);
+  NET.peer = peer;
+  peer.on('open', () => { NET.role = 'host'; NET.mode = hostMode; $('roomcode').textContent = code; showScreen('s-wait'); });
+  peer.on('connection', hostAcceptConnection);
+  peer.on('error', err => {
+    if (err.type === 'unavailable-id' && tries < 5){ try { peer.destroy(); } catch(_){} createRoom(tries+1); return; }
+    if (phase === 'menu'){ showScreen('s-host'); menuMsg('Could not create a room ('+err.type+'). Try again.'); }
+  });
+}
+function cancelRoom(){
+  try { if (NET.peer) NET.peer.destroy(); } catch(_){}
+  NET.peer = null; NET.conn = null; NET.guestIn = false; NET.role = 'solo';
+  showScreen('s-main');
+}
+function joinRoom(code){
+  const peer = new Peer(); NET.peer = peer;
+  let done = false;
+  const fail = t => { if (done) return; done = true; clearTimeout(timer); menuMsg(t); try { peer.destroy(); } catch(_){} NET.peer = null; NET.conn = null; NET.role = 'solo'; };
+  const timer = setTimeout(() => fail('Could not reach that room. Check the code, and that the host is waiting.'), 15000);
+  peer.on('error', err => fail(err.type === 'peer-unavailable' ? 'Room not found. Check the code.' : 'Connection error ('+err.type+').'));
+  peer.on('open', () => {
+    const conn = peer.connect('stormroyale-'+code, {reliable:true});
+    guestAttach(conn);
+    conn.on('open', () => { done = true; clearTimeout(timer); menuMsg('Connected. Starting…'); });
+  });
+}
+
+$('b-solo').onclick = () => { NET.role = 'solo'; NET.mode = 'solo'; phase = 'play'; hideMenu(); };
+$('b-host').onclick = () => showScreen('s-host');
+$('b-join').onclick = () => { showScreen('s-join'); $('code').focus(); };
+$('m-coop').onclick = () => setMode('coop');
+$('m-versus').onclick = () => setMode('versus');
+$('b-create').onclick = () => { menuMsg('Connecting…'); loadPeer(() => createRoom(), menuMsg); };
+$('b-cancel').onclick = cancelRoom;
+$('b-go').onclick = () => {
+  const code = $('code').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length < 5){ menuMsg('Enter the 5-character code.'); return; }
+  menuMsg('Connecting…');
+  loadPeer(() => joinRoom(code), menuMsg);
+};
+$('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('b-go').click(); });
+document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => showScreen('s-main'));
+$('exit').onclick = () => { if (confirm('Leave the match and return to the menu?')) location.reload(); };
+
+// ---------- Loop ----------
+function loop(now){
+  const dt = Math.min(0.05, (now-last)/1000); last = now;
+  if (phase === 'play'){
+    if (NET.role === 'guest') updateGuest(dt);
+    else {
+      if (!S.over || S.actors.some(a => a.alive && !a.isPlayer)) update(dt);
+      if (NET.role === 'host' && NET.guestIn){
+        NET.snapAcc += dt;
+        if (NET.snapAcc >= 0.05){ NET.snapAcc = 0; sendSnapshot(); }   // 20 snapshots per second
+      }
+    }
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+init('solo');
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
