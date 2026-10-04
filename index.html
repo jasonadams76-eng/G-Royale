@@ -115,7 +115,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · outfits</div>
+      <div class="ver">Version 2026-10-04 · flamethrower</div>
     </div>
 
     <div id="s-join" hidden>
@@ -180,7 +180,8 @@ const WEAP = {
   med:     {name:'Medkit',  heal:true, color:'#f55'},
   shield:  {name:'Shield',  heal:true, color:'#58f'},
   grenade: {name:'Grenade', grenade:true, color:'#fc0'},
-  boots:   {name:'Speed Boots', passive:true, color:'#e8a317'}
+  boots:   {name:'Speed Boots', passive:true, color:'#e8a317'},
+  flame:   {name:'Flamethrower', flame:true, color:'#f60'}
 };
 const STACK = {};   // stackable loadout items: how many fit in one slot, how long they take to use, and where the count is kept
 const MAXBAND = 3, BANDAGE_HEAL = 25, HEAL_TIME = 1.5, MAXMED = 2, MED_TIME = 3.0,   // a medkit heals to full health but takes longer to use
@@ -191,6 +192,7 @@ STACK.med     = {key:'med',  max:MAXMED,  time:MED_TIME};
 STACK.shield  = {key:'shd',  max:MAXSHD,  time:SHD_TIME};
 // Grenades: rare (always Gold) specialty items. One per slot; thrown at a spot within GR_RANGE, they explode there.
 const GR_RANGE = 520, GR_RADIUS = 140, GR_DMG_MAX = 130, GR_DMG_MIN = 60, GR_SPEED = 560, GR_CHANCE = 0.07;   // GR_CHANCE: odds per chest
+const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 8;   // flamethrower: reach in px, a burst every 0.1 s, 8 damage each = 80 damage/s to everything in the flame
 const BOOT_MULT = 1.5, BOOT_RAR = 4, bootMul = a => a.inv.includes('boots') ? BOOT_MULT : 1;   // speed boots: 1.5x move speed while in your loadout (one pair per match)
 const CHEST_COUNT = 32, CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
 // Gun rarities: the rarer the gun, the harder it hits, the faster it fires and the straighter it shoots.
@@ -207,7 +209,7 @@ function rollRarity(){
   return 0;
 }
 const newGr = () => ({pistol:0, shotgun:0, ar:0});     // rarity of the gun held for each type (you can hold one of each)
-const TYPES = ['pistol','shotgun','ar','bandage','shield','med','wood','grenade','boots'];   // index used on the wire
+const TYPES = ['pistol','shotgun','ar','bandage','shield','med','wood','grenade','boots','flame'];   // index used on the wire
 const PHASES = [
   {wait:20, shrink:20, r:1700}, {wait:15, shrink:15, r:1100},
   {wait:12, shrink:12, r:600},  {wait:10, shrink:10, r:250},
@@ -220,6 +222,7 @@ const MAX_PLAYERS = 8;
 const SHIRTS = ['#e53935','#fb8c00','#fdd835','#43a047','#00acc1','#1e88e5','#8e24aa','#ec407a','#f5f5f5'];
 const SKINS = ['#fde0c8','#f1c7a0','#d9a26e','#b9814f','#8a5a35','#5c3a21'];
 const okIdx = (i, n, d) => Number.isInteger(i) && i >= 0 && i < n ? i : d;
+let soloCrown = false;           // solo: did I win my previous game?
 let look = {shirt:5, skin:1};      // my chosen shirt colour / skin tone (indexes into SHIRTS / SKINS)
 try { const l = JSON.parse(localStorage.getItem('sr-look')); if (l){ look.shirt = okIdx(l.shirt, SHIRTS.length, 5); look.skin = okIdx(l.skin, SKINS.length, 1); } else look.shirt = Math.random()*SHIRTS.length|0; } catch(_){}
 const PLAYER_COLORS = ['#4af','#fa4','#e5e','#5e8','#ee4','#f66','#4ee','#a8f'];
@@ -380,6 +383,7 @@ function newActor(kind, i, h){
     name: human ? h.name : 'Bot '+i,
     color: human ? PLAYER_COLORS[pid % PLAYER_COLORS.length] : `hsl(${rnd(0,360)|0},60%,55%)`,
     strafe:1, strafeT:0, wp:null, wpT:0};
+  a.crown = !!(human && h.crown);
   if (human){ a.shirt = SHIRTS[okIdx(h.shirt, SHIRTS.length, -1)] || null; a.skin = SKINS[okIdx(h.skin, SKINS.length, 1)]; }
   else a.skin = SKINS[Math.random()*SKINS.length|0];
   return a;
@@ -399,7 +403,7 @@ function botPlan(humans){
 // Builds a fresh match on this device: solo, or the host of a multiplayer game.
 // humans = [{pid, name, mate}] (pid 0 is the host)
 function init(humans){
-  humans = humans || [{pid:0, name:cleanName($('pname').value) || 'Player 1', mate:null, shirt:look.shirt, skin:look.skin}];
+  humans = humans || [{pid:0, name:cleanName($('pname').value) || 'Player 1', mate:null, shirt:look.shirt, skin:look.skin, crown:soloCrown}];
   S = {actors:[], players:[], bullets:[], trees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[],
     over:false, winTeam:null, overAt:0,
     storm:{i:0, state:'wait', t:PHASES[0].wait, r:2900, rFrom:2900, rTo:PHASES[0].r}};
@@ -411,7 +415,10 @@ function init(humans){
       if (S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 50)){ S.chests.push({x, y, open:false}); break; }
     }
   }
-  if (S.chests.length) S.chests[Math.random()*S.chests.length|0].boots = true;     // exactly one chest on the map holds the speed boots
+  if (S.chests.length){                        // exactly one chest holds the speed boots and a different one holds the flamethrower
+    const bi = Math.random()*S.chests.length|0; S.chests[bi].boots = true;
+    if (S.chests.length > 1){ let fi; do fi = Math.random()*S.chests.length|0; while (fi === bi); S.chests[fi].flame = true; }
+  }
   const clampW = v => Math.max(100, Math.min(W-100, Math.round(v)));
   const byPid = {};
   for (const h of humans){
@@ -502,10 +509,11 @@ const SFX = {
   ui:  () => { tone(880, 880, .08, 'sine', .3); tone(1175, 1175, .1, 'sine', .3, .08); },
   win: () => [523,659,784,1047].forEach((f,i) => tone(f, f, .3, 'triangle', .4, i*.15)),
   th:  () => noise(.2, .4, 'highpass', 500, 2400),
+  fl:  () => { noise(.17, .55, 'bandpass', 1100, 500); noise(.17, .35, 'lowpass', 1800, 400); },
   bm:  () => { noise(.8, 1, 'lowpass', 2600, 70); tone(110, 28, .65, 'sawtooth', .7); tone(62, 24, .85, 'sine', .9); },
   lose:() => [392,330,262].forEach((f,i) => tone(f, f*.98, .35, 'sawtooth', .25, i*.2))
 };
-const SFX_GAP = {ar:.05, sg:.08, pi:.05, hit:.06, ch:.06, sw:.08};   // min seconds between two of the same sound (stops spam)
+const SFX_GAP = {fl:.12, ar:.05, sg:.08, pi:.05, hit:.06, ch:.06, sw:.08};   // min seconds between two of the same sound (stops spam)
 const sfxLast = {};
 // Plays a sound at a world position (louder and more centred the closer it is to the player we're watching).
 function playSnd(t, x, y){
@@ -689,15 +697,36 @@ function damage(a, dmg, owner){
     a.inv.forEach(w => {
       if (!w || w === 'pickaxe') return;
       const n = STACK[w] ? a[STACK[w].key] : 1;
-      for (let i=0;i<n;i++) S.loot.push({x:a.x+rnd(-20,20), y:a.y+rnd(-20,20), type:w, rar:GUN_W[w] ? a.gr[w] : w === 'grenade' ? 4 : w === 'boots' ? BOOT_RAR : 0});
+      for (let i=0;i<n;i++) S.loot.push({x:a.x+rnd(-20,20), y:a.y+rnd(-20,20), type:w, rar:GUN_W[w] ? a.gr[w] : w === 'grenade' ? 4 : w === 'boots' ? BOOT_RAR : w === 'flame' ? 4 : 0});
     });
   }
+}
+// Flamethrower: a steady cone of fire. Trees and walls stop it (and walls burn). Everything else in the cone takes damage every tick.
+function flameFire(a){
+  if (a.cd > 0) return;
+  a.cd = FL_TICK;
+  const ca = Math.cos(a.angle), sa = Math.sin(a.angle);
+  let len = FL_RANGE;
+  scan: for (let d = 24; d <= FL_RANGE; d += 8){
+    const x = a.x + ca*d, y = a.y + sa*d, k = wallKey(Math.floor(x/G), Math.floor(y/G)), w = S.walls.get(k);
+    if (w){ w.hp -= 7; if (w.hp <= 0) S.walls.delete(k); len = d; break; }
+    for (const t of S.trees) if (Math.hypot(t.x-x, t.y-y) < t.r){ len = d; break scan; }
+  }
+  for (const o of S.actors){
+    if (o === a || !o.alive || o.team === a.team) continue;       // no friendly fire
+    const dx = o.x - a.x, dy = o.y - a.y, along = dx*ca + dy*sa;
+    if (along < 0 || along > len + o.r) continue;
+    if (Math.abs(-dx*sa + dy*ca) <= 8 + along*0.2 + o.r*0.6) damage(o, FL_DMG, a);
+  }
+  a.flt = 0.25; a.flen = len; sfx('fl', a.x, a.y);
 }
 function fire(a){
   if (!a.alive) return;
   const w = WEAP[a.inv[a.cur]];
+  if (!w){ a.cur = 0; return; }                       // the selected slot is empty: fall back to the pickaxe
   if (w.grenade || w.passive) return;                 // grenades are thrown at a spot, not fired
   if (w.heal){ startHeal(a); return; }
+  if (w.flame){ flameFire(a); return; }
   if (a.cd > 0) return;
   const rm = RARITY[w.melee || w.heal ? 0 : (a.gr[a.inv[a.cur]] || 0)];
   a.cd = w.rate * rm.rate;
@@ -771,6 +800,12 @@ function giveItem(a, type, rar){
     if (i < 0){ i = a.inv.indexOf(null, 1); if (i < 0) return false; a.inv[i] = type; }
     a[st.key]++; return true;
   }
+  if (type === 'flame'){                // flamethrower: one, takes a slot, selected right away so you can use it
+    if (a.inv.includes('flame')) return false;
+    const fi = a.inv.indexOf(null, 1);
+    if (fi < 0) return false;
+    a.inv[fi] = 'flame'; if (a.isPlayer) a.cur = fi; if (a === S.player) toast('Flamethrower! Hold fire to burn everything ahead', 2400); return true;
+  }
   if (type === 'boots'){                // speed boots: one pair, takes a slot, doesn't change what you hold
     if (a.inv.includes('boots')) return false;
     const bi = a.inv.indexOf(null, 1);
@@ -809,7 +844,7 @@ function dropItem(a){
   const i = a.cur, it = a.inv[i];
   if (!it || it === 'pickaxe') return;
   const st = STACK[it], n = st ? a[st.key] : 1;
-  const rar = GUN_W[it] ? a.gr[it] : it === 'grenade' ? 4 : it === 'boots' ? BOOT_RAR : 0;
+  const rar = GUN_W[it] ? a.gr[it] : it === 'grenade' ? 4 : it === 'boots' ? BOOT_RAR : it === 'flame' ? 4 : 0;
   const px = Math.max(20, Math.min(W-20, a.x + Math.cos(a.angle)*60)), py = Math.max(20, Math.min(W-20, a.y + Math.sin(a.angle)*60));
   for (let k=0;k<n;k++) S.loot.push({x:px + (n>1 ? rnd(-14,14) : 0), y:py + (n>1 ? rnd(-14,14) : 0), type:it, rar, ban:a.pid, until:performance.now()+1500});
   if (st) a[st.key] = 0;
@@ -831,6 +866,7 @@ function openChest(c){
   if (Math.random() < 0.45) drops.push({type:'shield'});    // 45% shield potion
   if (Math.random() < 0.30) drops.push({type:'med'});       // 30% medkit
   if (c.boots) drops.push({type:'boots', rar:BOOT_RAR});
+  if (c.flame) drops.push({type:'flame', rar:4});
   if (Math.random() < GR_CHANCE) drops.push({type:'grenade', rar:4});   // 7%: a (gold) grenade
   const off = Math.random()*Math.PI*2;
   drops.forEach((dr,i) => {
@@ -845,7 +881,7 @@ function canTake(a, l){
   if (type === 'wood') return true;
   const st = STACK[type];
   if (st) return a[st.key] < st.max && (a.inv.includes(type) || a.inv.includes(null));     // only if there is room for it
-  if (type === 'boots') return !a.inv.includes('boots') && a.inv.includes(null);
+  if (type === 'boots' || type === 'flame') return !a.inv.includes(type) && a.inv.includes(null);
   if (type === 'grenade') return a.inv.includes(null);
   if (a.inv.includes(type)) return (l.rar || 0) > a.gr[type];     // already holding one: only a better one is worth taking
   return a.inv.includes(null);
@@ -871,7 +907,7 @@ function collide(a){
 
 // ---------- Bot AI ----------
 function botThink(b, dt){
-  const armed = b.inv.some(w => w && WEAP[w] && WEAP[w].spd);
+  const armed = b.inv.some(w => w && WEAP[w] && (WEAP[w].spd || WEAP[w].flame));
   let target = null, best = armed ? 450 : 110;   // unarmed bots only fight what is right next to them; otherwise they go find a chest
   for (const o of S.actors){
     if (o === b || !o.alive || o.team === b.team) continue;
@@ -889,13 +925,14 @@ function botThink(b, dt){
     const diff = Math.atan2(Math.sin(want-b.angle), Math.cos(want-b.angle));
     b.angle += diff * Math.min(1, dt*7);
     b.strafeT -= dt; if (b.strafeT <= 0){ b.strafe *= -1; b.strafeT = rnd(0.8,2); }
-    const fwd = best > 280 ? 1 : best < 150 ? -1 : 0;
+    const fwd = b.inv.includes('flame') ? (best > 140 ? 1 : 0) : best > 280 ? 1 : best < 150 ? -1 : 0;
     mx = Math.cos(a)*fwd + Math.cos(a+Math.PI/2)*b.strafe*0.7;
     my = Math.sin(a)*fwd + Math.sin(a+Math.PI/2)*b.strafe*0.7;
     const gi = b.inv.indexOf('grenade');
     if (gi >= 0 && best > 150 && best < GR_RANGE - 30 && Math.random() < dt*1.2){ b.cur = gi; throwGrenade(b, target.x, target.y); return [0,0]; }
     // pick best weapon
     b.cur = bestSlot(b);
+    const fli = b.inv.indexOf('flame'); if (fli >= 0 && best < FL_RANGE - 20) b.cur = fli;      // close enough to burn them
     if (b.cur === 0 && best < 70 || b.cur !== 0 && Math.abs(diff) < 0.35) fire(b);
     if (b.cur === 0 && best > 70) { mx = Math.cos(a); my = Math.sin(a); }
     if (b.hp < 50 && b.wood >= 10 && Math.random() < dt*2) build(b);
@@ -993,7 +1030,7 @@ function update(dt){
 
   for (const a of S.actors){
     if (!a.alive) continue;
-    a.cd -= dt; a.swing -= dt;
+    a.cd -= dt; a.swing -= dt; if (a.flt > 0) a.flt -= dt;
     // bandage channel: switching items cancels it, finishing heals and uses one bandage
     if (a.heal > 0){
       const it = a.inv[a.cur], st = STACK[it];
@@ -1085,9 +1122,9 @@ function update(dt){
 
 // ---------- Networking: host side ----------
 // Star topology: every guest connects to the host. The host runs the match and streams the state back out.
-const ITEM_CODE = {pickaxe:'1', pistol:'2', shotgun:'3', ar:'4', bandage:'5', med:'6', shield:'7', grenade:'8', boots:'9'}, ITEM_BY = [null,'pickaxe','pistol','shotgun','ar','bandage','med','shield','grenade','boots'];
+const ITEM_CODE = {pickaxe:'1', pistol:'2', shotgun:'3', ar:'4', bandage:'5', med:'6', shield:'7', grenade:'8', boots:'9', flame:'a'}, ITEM_BY = [null,'pickaxe','pistol','shotgun','ar','bandage','med','shield','grenade','boots','flame'];
 const encInv = inv => inv.map(w => w ? ITEM_CODE[w] : '0').join('');
-const decInv = str => str.split('').map(c => ITEM_BY[+c] || null);
+const decInv = str => str.split('').map(c => ITEM_BY[parseInt(c, 36)] || null);
 const peerCount = () => Object.keys(NET.peers).length;
 function broadcast(m){ for (const pid in NET.peers){ try { const c = NET.peers[pid].conn; if (c.open) c.send(m); } catch(_){} } }
 function peerSend(pid, m){
@@ -1096,7 +1133,7 @@ function peerSend(pid, m){
 }
 function encodeActor(a){
   return [Math.round(a.x), Math.round(a.y), +a.angle.toFixed(2), Math.round(a.hp), Math.round(a.sh), a.wood, a.band,
-          +Math.max(0,a.heal).toFixed(2), a.cur, a.alive?1:0, a.kills, a.swing>0?1:0, a.place||0, encInv(a.inv), a.isPlayer?1:0, '' + a.gr.pistol + a.gr.shotgun + a.gr.ar, a.med, a.shd];
+          +Math.max(0,a.heal).toFixed(2), a.cur, a.alive?1:0, a.kills, a.swing>0?1:0, a.place||0, encInv(a.inv), a.isPlayer?1:0, '' + a.gr.pistol + a.gr.shotgun + a.gr.ar, a.med, a.shd, a.flt > 0 ? Math.round(a.flen) : 0];
 }
 function sendSnapshot(){
   if (!peerCount()) return;
@@ -1120,14 +1157,14 @@ function sendSnapshot(){
 function sendInit(){
   const base = {t:'init',
     trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]),
-    actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, s:a.shirt || null, k:a.skin, x:Math.round(a.x), y:Math.round(a.y)}))};
+    actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, s:a.shirt || null, k:a.skin, cw:a.crown ? 1 : 0, x:Math.round(a.x), y:Math.round(a.y)}))};
   for (const pid in NET.peers){
     const me = S.actors.findIndex(a => a.isPlayer && a.pid === +pid);
     try { NET.peers[pid].conn.send(Object.assign({me}, base)); } catch(_){}
   }
   NET.last = {W:'',L:'',C:'',T:''};
 }
-const currentHumans = () => NET.lobby.map(p => ({pid:p.pid, name:p.name, mate:p.mate, shirt:p.shirt, skin:p.skin}));
+const currentHumans = () => NET.lobby.map(p => ({pid:p.pid, name:p.name, mate:p.mate, shirt:p.shirt, skin:p.skin, crown:!!p.crown}));
 function hostBeginMatch(){
   if (NET.role !== 'host' || phase !== 'lobby') return;
   init(currentHumans());
@@ -1136,10 +1173,11 @@ function hostBeginMatch(){
 }
 // Wins are kept per hosted room: the host counts them and the lobby shows them. A new room starts everyone at 0.
 function creditWins(){
+  for (const e of NET.lobby) e.crown = false;          // the crown only lasts one game: whoever won the last one wears it next
   if (S.winTeam === null) return;
   for (const p of S.players){
     const e = lp(p.pid);
-    if (e && p.team === S.winTeam) e.wins = (e.wins || 0) + 1;
+    if (e && p.team === S.winTeam){ e.wins = (e.wins || 0) + 1; e.crown = true; }
   }
 }
 // After a hosted match everyone returns to the lobby (teams are kept, so the host can just start again).
@@ -1303,7 +1341,7 @@ function buildGuestState(m){
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
   m.actors.forEach(d => S.actors.push({x:d.x, y:d.y, tx:d.x, ty:d.y, r:15, hp:100, sh:0, wood:0,
     inv:['pickaxe',null,null,null,null,null], gr:newGr(), band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
-    isPlayer:!!d.h, pid:d.pid, team:d.tm, name:d.n, color:d.c, shirt:d.s || null, skin:d.k, seen:false}));
+    isPlayer:!!d.h, pid:d.pid, team:d.tm, name:d.n, color:d.c, shirt:d.s || null, skin:d.k, crown:!!d.cw, seen:false}));
   S.player = S.actors[m.me];
   S.player.seen = true;
 }
@@ -1325,7 +1363,7 @@ function applySnap(m){
     }
     a.hp = d[3]; a.sh = d[4]; a.wood = d[5]; a.band = d[6]; a.heal = d[7]; a.alive = !!d[9];
     a.kills = d[10]; if (d[11]) a.swing = 0.2; a.place = d[12]; a.inv = decInv(d[13]);
-    a.med = d[16] || 0; a.shd = d[17] || 0;
+    a.med = d[16] || 0; a.shd = d[17] || 0; a.flen = d[18] || 0;
     if (d[15]){
       const ng = {pistol:+d[15][0], shotgun:+d[15][1], ar:+d[15][2]};
       if (a === S.player && a._pg) for (const t of ['pistol','shotgun','ar']){
@@ -1525,6 +1563,13 @@ function drawItem(c, type, s){
     c.moveTo(-19,2); c.quadraticCurveTo(-15,-12,0,-13); c.quadraticCurveTo(15,-12,19,2); c.lineTo(15,2); c.quadraticCurveTo(12,-7,0,-8); c.quadraticCurveTo(-12,-7,-15,2); c.closePath(); c.fill(); c.stroke();   // curved iron head
     rr(-5,-12, 10,7, 2, '#8d979e');                                                                       // socket
     c.fillStyle = 'rgba(255,255,255,0.5)'; c.beginPath(); c.ellipse(-8,-7, 4,1.4, -0.5, 0, 7); c.fill();
+  } else if (type === 'flame'){       // flamethrower: fuel tank, hose, gun body, nozzle with a pilot flame (points right)
+    rr(-18,-7, 15,14, 6, '#d8402a'); rr(-14,-7, 3,14, 0, '#8e2a1c');                                     // fuel tank + band
+    c.strokeStyle = '#000'; c.lineWidth = 3/s; c.beginPath(); c.moveTo(-3,2); c.quadraticCurveTo(0,9,4,3); c.stroke();
+    c.strokeStyle = '#555'; c.lineWidth = 1.4/s; c.stroke(); c.strokeStyle = '#000'; c.lineWidth = 1.6/s;
+    rr(-3,-4, 15,8, 2, '#8d979e'); rr(11,-2.6, 9,5.2, 1.5, '#444');                                       // body + nozzle
+    c.fillStyle = '#ff9a1a'; c.beginPath(); c.moveTo(20.5,0); c.quadraticCurveTo(24,-4,28,0); c.quadraticCurveTo(24,4,20.5,0); c.fill(); c.stroke();   // pilot flame
+    c.fillStyle = '#ffe36b'; c.beginPath(); c.ellipse(23,0,2.2,1.3,0,0,7); c.fill();
   } else if (type === 'boots'){       // winged speed boot
     c.fillStyle = '#e8a317'; c.beginPath(); c.moveTo(-6,-11); c.lineTo(6,-11); c.lineTo(6,1); c.quadraticCurveTo(15,3,15,10); c.lineTo(15,13); c.lineTo(-7,13); c.lineTo(-7,-1); c.closePath(); c.fill(); c.stroke();
     rr(-8,10, 24,4, 1.5, '#5a3a10');                                                                      // sole
@@ -1552,7 +1597,12 @@ const ITEM_RING = '#46606e';     // non-gun drops get a neutral ring; guns get t
 const LOOT_LBL = {pistol:'P', shotgun:'S', ar:'R', shield:'+', med:'♥', wood:'W', bandage:'B'};
 
 // a little person seen from above, facing right (shared by the game and the menu preview)
-function drawPerson(c, shirt, skinCol, ph){
+function drawCrownIcon(c, x, y, k){      // little upright crown shown above a champion
+  c.save(); c.translate(x, y); c.scale(k, k); c.fillStyle = '#ffc400'; c.strokeStyle = '#000'; c.lineWidth = 1.6/k; c.lineJoin = 'round';
+  c.beginPath(); c.moveTo(-9,4); c.lineTo(-10,-6); c.lineTo(-4.5,-1); c.lineTo(0,-8); c.lineTo(4.5,-1); c.lineTo(10,-6); c.lineTo(9,4); c.closePath(); c.fill(); c.stroke();
+  c.fillStyle = '#e53935'; c.beginPath(); c.arc(0,0,1.7,0,7); c.fill(); c.restore();
+}
+function drawPerson(c, shirt, skinCol, ph, crown){
     {   // a little person seen from above, facing right: feet, shoulders (team colour), arms, head with hair
       const skin = skinCol;
       c.fillStyle = '#3b3b44';                                                       // shoes step as you move
@@ -1570,6 +1620,12 @@ function drawPerson(c, shirt, skinCol, ph){
       c.fillStyle = '#4a3020'; c.beginPath(); c.arc(1.5, 0, 7.2, Math.PI*0.5, Math.PI*1.5); c.closePath(); c.fill();   // hair on the back of the head
       c.beginPath(); c.arc(1.5, 0, 7.2, 0, 7); c.stroke();
       c.fillStyle = '#222'; c.beginPath(); c.arc(6, -2.6, 1, 0, 7); c.arc(6, 2.6, 1, 0, 7); c.fill();      // eyes
+      if (crown){                                                                        // crown seen from above: a gold ring of points around the head
+        c.beginPath();
+        for (let k=0;k<10;k++){ const ang = k*Math.PI/5 - Math.PI/2, r = k%2 ? 6.6 : 10.2; c[k ? 'lineTo' : 'moveTo'](1.5 + Math.cos(ang)*r, Math.sin(ang)*r); }
+        c.closePath(); c.lineJoin = 'round'; c.strokeStyle = '#000'; c.lineWidth = 4.6; c.stroke(); c.strokeStyle = '#ffc400'; c.lineWidth = 2.4; c.stroke();
+        c.fillStyle = '#e53935'; c.beginPath(); c.arc(1.5, 0, 1.6, 0, 7); c.fill();
+      }
     }
 }
 function draw(){
@@ -1605,11 +1661,11 @@ function draw(){
   // loot
   for (const l of S.loot){ if (!vis(l.x,l.y)) continue;
     // every drop lies on a white plate with a coloured ring so it stands out on the grass
-    const ring = GUN_W[l.type] ? RARITY[l.rar || 0].col : l.type === 'grenade' ? RARITY[4].col : l.type === 'boots' ? RARITY[BOOT_RAR].col : ITEM_RING;
+    const ring = GUN_W[l.type] ? RARITY[l.rar || 0].col : l.type === 'grenade' ? RARITY[4].col : l.type === 'boots' || l.type === 'flame' ? RARITY[4].col : ITEM_RING;
     ctx.fillStyle = '#fffffff0'; ctx.beginPath(); ctx.arc(l.x, l.y, 19, 0, 7); ctx.fill();
     ctx.strokeStyle = '#000'; ctx.lineWidth = 6; ctx.stroke();                         // dark edge so every ring shows up on the grass
     ctx.strokeStyle = ring; ctx.lineWidth = 3.5; ctx.stroke();
-    if (l.rar === 4 || l.type === 'grenade' || l.type === 'boots'){ ctx.strokeStyle = '#fff6'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(l.x, l.y, 24 + Math.sin(performance.now()/250)*2, 0, 7); ctx.stroke(); }   // gold guns shimmer
+    if (l.rar === 4 || l.type === 'grenade' || l.type === 'boots' || l.type === 'flame'){ ctx.strokeStyle = '#fff6'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(l.x, l.y, 24 + Math.sin(performance.now()/250)*2, 0, 7); ctx.stroke(); }   // gold guns shimmer
     ctx.save(); ctx.translate(l.x, l.y);
     if (GUN_W[l.type]){
       ctx.rotate(-0.35); const gs = 28 / GUN_W[l.type]; ctx.translate(-GUN_CX[l.type]*gs, 0); drawGun(ctx, l.type, gs, RARITY[l.rar || 0].col);
@@ -1633,12 +1689,13 @@ function draw(){
     if (w.melee){ const sw = a.swing > 0 ? 0.8 : 0; ctx.save(); ctx.rotate(-0.4+sw); ctx.translate(26,0); ctx.rotate(Math.PI/2); drawItem(ctx, 'pickaxe', 1); ctx.restore(); }
     else if (w.heal){ ctx.fillRect(14,-5,12,10); ctx.strokeRect(14,-5,12,10); }
     else if (w.passive){}
+    else if (w.flame){ ctx.save(); ctx.translate(14,0); ctx.scale(Math.cos(a.angle) < 0 ? 1 : 1, 1); drawItem(ctx, 'flame', 0.95); ctx.restore(); }
     else if (w.grenade){ ctx.save(); ctx.translate(24,0); drawItem(ctx, 'grenade', 0.55); ctx.restore(); }
     else {
       ctx.save(); if (Math.cos(a.angle) < 0) ctx.scale(1,-1);      // keep the gun the right way up when aiming left
       ctx.translate(a.inv[a.cur] === 'pistol' ? 10 : 18, 0); drawGun(ctx, a.inv[a.cur], a.inv[a.cur] === 'pistol' ? 1 : 0.78, RARITY[a.gr[a.inv[a.cur]] || 0].col); ctx.restore();
     }
-    drawPerson(ctx, a.shirt || a.color, a.skin || SKINS[1], Math.sin((a.x + a.y)*0.12)*5);
+    drawPerson(ctx, a.shirt || a.color, a.skin || SKINS[1], Math.sin((a.x + a.y)*0.12)*5, a.crown);
     ctx.restore();
     // healing progress ring
     if (a.heal > 0){
@@ -1646,10 +1703,23 @@ function draw(){
       ctx.arc(a.x,a.y,a.r+6,-Math.PI/2,-Math.PI/2+Math.PI*2*(1-a.heal/healTime(a))); ctx.stroke();
     }
     // bars
+    if (a.crown) drawCrownIcon(ctx, a.x, a.y-(a === p ? 40 : 50), 0.9);
     ctx.fillStyle='#0008'; ctx.fillRect(a.x-18,a.y-30,36,6);
     ctx.fillStyle='#4d4'; ctx.fillRect(a.x-18,a.y-30,36*a.hp/100,3);
     ctx.fillStyle='#4af'; ctx.fillRect(a.x-18,a.y-27,36*a.sh/100,3);
     if (a !== p){ ctx.fillStyle = a.team === p.team ? '#8f8' : '#fff'; ctx.font=Math.round(11/ZOOM)+'px sans-serif'; ctx.textAlign='center'; ctx.fillText(a.name,a.x,a.y-36); }
+  }
+  for (const a of S.actors){          // flamethrower fire: flickering blobs along the cone, white-hot at the nozzle to dark red at the tip
+    if (!a.alive || !a.flen || !vis(a.x,a.y)) continue;
+    const ca = Math.cos(a.angle), sa = Math.sin(a.angle), L = a.flen;
+    for (let k=0;k<34;k++){
+      const t = Math.pow(Math.random(), 0.75), d = 20 + t*(L-20), spread = (8 + d*0.2) * (Math.random()*2-1) * 0.8;
+      const x = a.x + ca*d - sa*spread, y = a.y + sa*d + ca*spread, r = 4 + t*10 + Math.random()*4;
+      ctx.globalAlpha = 0.75 - t*0.45;
+      ctx.fillStyle = t < 0.25 ? '#fff3b0' : t < 0.55 ? '#ffb020' : t < 0.8 ? '#ff5a14' : '#a02810';
+      ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
   for (const q of S.particles){ ctx.fillStyle=q.c; ctx.fillRect(q.x,q.y,3,3); }
   // grenade throw helper: the range you can reach, and (with a mouse) where it would land
@@ -1719,7 +1789,7 @@ function drawHUD(){
   for (let i=0;i<6;i++){
     const r = slotRect(i), id = p.inv[i];
     ctx.fillStyle = i===p.cur ? '#fc4' : '#0009'; ctx.fillRect(r.x,r.y,r.w,r.h);
-    if (id && (GUN_W[id] || id === 'grenade' || id === 'boots')){        // the whole slot is tinted with the gun's rarity colour (grenades are always gold)
+    if (id && (GUN_W[id] || id === 'grenade' || id === 'boots' || id === 'flame')){        // the whole slot is tinted with the gun's rarity colour (grenades are always gold)
       ctx.globalAlpha = i===p.cur ? 0.55 : 0.4; ctx.fillStyle = RARITY[GUN_W[id] ? (p.gr[id] || 0) : id === 'boots' ? BOOT_RAR : 4].col; ctx.fillRect(r.x,r.y,r.w,r.h); ctx.globalAlpha = 1;
     }
     ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.strokeRect(r.x,r.y,r.w,r.h);
@@ -1731,9 +1801,9 @@ function drawHUD(){
       ctx.strokeStyle = '#000'; ctx.lineWidth = 5; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
       ctx.strokeStyle = RARITY[p.gr[id] || 0].col; ctx.lineWidth = 3; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);   // slot border = rarity
       if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(WEAP[id].name, r.x+r.w/2, r.y+r.h*0.9); }
-    } else if (id === 'grenade' || id === 'boots'){
+    } else if (id === 'grenade' || id === 'boots' || id === 'flame'){
       ctx.save(); ctx.translate(r.x + r.w/2, r.y + r.h*(tm ? 0.5 : 0.42)); drawItem(ctx, id, tm ? 0.65 : 0.85); ctx.restore();
-      if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(id === 'boots' ? 'Boots' : 'Grenade', r.x+r.w/2, r.y+r.h*0.9); }
+      if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(id === 'boots' ? 'Boots' : id === 'flame' ? 'Flame' : 'Grenade', r.x+r.w/2, r.y+r.h*0.9); }
       ctx.strokeStyle = '#000'; ctx.lineWidth = 5; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
       ctx.strokeStyle = RARITY[id === 'boots' ? BOOT_RAR : 4].col; ctx.lineWidth = 3; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
     } else if (id === 'pickaxe'){
@@ -1983,7 +2053,7 @@ function loop(now){
   }
   if (phase === 'play' && S.over && !S.sfxDone){
     S.sfxDone = true;
-    if (NET.role === 'host') creditWins();
+    if (NET.role === 'host') creditWins(); else if (NET.role === 'solo') soloCrown = S.winTeam !== null && S.winTeam === S.player.team;
     if (!(S.winTeam !== null && S.winTeam === S.player.team)) playSnd('lose');     // winners hear the victory fanfare (music) instead
   }
   draw();
