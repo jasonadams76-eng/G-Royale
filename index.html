@@ -293,7 +293,22 @@ function init(mode, withGuest){
     S.actors.push(p1); S.players.push(p1);
   }
   S.player = p0;
-  for (let i=1;i<=BOTS;i++){ const b = newActor('bot', i); b.team = 'B'+i; S.actors.push(b); }
+  // In 2-player co-op the bots play in duos too: partners spawn together, share a colour hue and never hurt each other.
+  const duos = mode === 'coop' && withGuest;
+  for (let i=1;i<=BOTS;i++){
+    const b = newActor('bot', i);
+    b.team = 'B' + (duos ? Math.ceil(i/2) : i);
+    if (duos){
+      const mate = S.actors[S.actors.length-1];
+      if (i % 2 === 0){
+        b.x = Math.max(100, Math.min(W-100, Math.round(mate.x + rnd(-70,70))));
+        b.y = Math.max(100, Math.min(W-100, Math.round(mate.y + rnd(-70,70))));
+        b.tx = b.x; b.ty = b.y;
+        const hue = mate.hue; b.hue = hue; b.color = `hsl(${hue},65%,68%)`;
+      } else { b.hue = rnd(0,360)|0; b.color = `hsl(${b.hue},65%,45%)`; }
+    }
+    S.actors.push(b);
+  }
 }
 
 // ---------- Helpers ----------
@@ -461,7 +476,11 @@ function botThink(b, dt){
     let near = null, nd = 700;
     for (const l of S.loot){ if (!canTake(b, l.type)) continue; const d = Math.hypot(l.x-b.x,l.y-b.y); if (d < nd){ nd = d; near = l; } }
     for (const c of S.chests){ if (c.open) continue; const d = Math.hypot(c.x-b.x,c.y-b.y); if (d < nd){ nd = d; near = c; } }
-    if (near) b.wp = {x:near.x,y:near.y};
+    // duo partners stick together: regroup if they have drifted apart
+    const mate = S.actors.find(o => o !== b && o.alive && o.team === b.team);
+    if (mate && near && Math.hypot(near.x-mate.x, near.y-mate.y) > 380) near = null;   // don't wander off to loot far from the partner
+    if (mate && Math.hypot(mate.x-b.x, mate.y-b.y) > 240) b.wp = {x:mate.x, y:mate.y};
+    else if (near) b.wp = {x:near.x,y:near.y};
     else { b.wpT -= dt; if (!b.wp || b.wpT <= 0){ b.wp = {x:CENTER.x+rnd(-S.storm.r,S.storm.r)*0.8, y:CENTER.y+rnd(-S.storm.r,S.storm.r)*0.8}; b.wpT = rnd(4,9); } }
     const a = Math.atan2(b.wp.y-b.y, b.wp.x-b.x); mx = Math.cos(a); my = Math.sin(a);
     b.angle = a; b.cur = bestSlot(b);
