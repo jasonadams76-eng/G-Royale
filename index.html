@@ -115,7 +115,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · flame select</div>
+      <div class="ver">Version 2026-10-04 · bot weapons</div>
     </div>
 
     <div id="s-join" hidden>
@@ -983,8 +983,15 @@ function botThink(b, dt){
     const gi = b.inv.indexOf('grenade');
     if (gi >= 0 && best > 150 && best < GR_RANGE - 30 && Math.random() < dt*1.2){ b.cur = gi; throwGrenade(b, target.x, target.y); return [0,0]; }
     // pick best weapon
-    b.cur = bestSlot(b);
-    const fli = b.inv.indexOf('flame'); if (fli >= 0 && best < FL_RANGE - 20) b.cur = fli;      // close enough to burn them
+    // choose one weapon and stick with it for a moment (no flickering between the flamethrower and a gun)
+    b.wpnT = (b.wpnT || 0) - dt;
+    const cw = b.inv[b.cur], dead = !cw || (WEAP[cw] && WEAP[cw].spd && b.ammo[cw] <= 0);
+    if (b.wpnT <= 0 || dead){
+      let c = bestSlot(b);
+      const fli = b.inv.indexOf('flame');
+      if (fli >= 0 && best < (b.cur === fli ? FL_RANGE + 30 : FL_RANGE - 20)) c = fli;      // close enough to burn them (with some hysteresis)
+      if (c !== b.cur){ b.cur = c; b.wpnT = 0.7; }
+    }
     if (b.cur === 0 && best < 70 || b.cur !== 0 && Math.abs(diff) < 0.35) fire(b);
     if (b.cur === 0 && best > 70) { mx = Math.cos(a); my = Math.sin(a); }
     if (b.hp < 50 && b.wood >= 10 && Math.random() < dt*2) build(b);
