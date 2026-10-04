@@ -115,7 +115,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · loadout bottom</div>
+      <div class="ver">Version 2026-10-04 · flame 250dps</div>
     </div>
 
     <div id="s-join" hidden>
@@ -226,7 +226,7 @@ const AMMO = {ammo_pistol:{gun:'pistol', box:30, max:150, name:'pistol ammo'}, a
 const START_AMMO = {pistol:30, shotgun:10, ar:60};     // ammo you get the first time you pick up each gun type in a match
 const newAmmo = () => ({pistol:0, shotgun:0, ar:0});
 const FL_MAX = 5, FL_COOL = 1;      // the flamethrower burns for at most 5 s at a time, then needs a 1 s pause
-const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 8;   // flamethrower: reach in px, a burst every 0.1 s, 8 damage each = 80 damage/s to everything in the flame
+const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 25;   // flamethrower: reach in px, a burst every 0.1 s, 25 damage each = 250 damage/s (more than any gun, even a gold rifle at ~217) to everything in the flame
 const BOOT_MULT = 1.5, BOOT_RAR = 4, bootMul = a => a.inv.includes('boots') ? BOOT_MULT : 1;   // speed boots: 1.5x move speed while in your loadout (one pair per match)
 const CHEST_COUNT = Math.round(32 * MS), CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
 // Gun rarities: the rarer the gun, the harder it hits, the faster it fires and the straighter it shoots.
