@@ -776,7 +776,7 @@ function update(dt){
       else st.t = 9999;
     }
   }
-  const stormDps = 2 + st.i*2;
+  const stormDps = 8 + st.i*4;   // per second: roughly 12 seconds to eliminate at first, much faster in later phases
 
   for (const a of S.actors){
     if (!a.alive) continue;
@@ -813,7 +813,7 @@ function update(dt){
     // storm damage
     if (Math.hypot(a.x-CENTER.x, a.y-CENTER.y) > st.r){
       a.stormAcc = (a.stormAcc||0) + dt;
-      if (a.stormAcc >= 1){ a.stormAcc = 0; damage(a, stormDps, null); }
+      if (a.stormAcc >= 0.25){ a.stormAcc -= 0.25; damage(a, stormDps*0.25, null); }   // ticks 4 times a second
     }
     // walk into a chest to open it
     for (const c of S.chests) if (!c.open && Math.hypot(c.x-a.x, c.y-a.y) < 34) openChest(c);
