@@ -115,7 +115,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · flame 250dps</div>
+      <div class="ver">Version 2026-10-04 · drop left</div>
     </div>
 
     <div id="s-join" hidden>
@@ -296,7 +296,7 @@ function throwAtScreen(x, y){
 }
 const holdingGrenade = () => S && S.player && S.player.alive && S.player.inv[S.player.cur] === 'grenade';
 function doDrop(){ if (NET.role === 'guest') netSend({t:'drop'}); else dropItem(S.player); }
-const dropBtn = () => ({x:SW-190, y:SH-148, r:26});
+const dropBtn = () => ({x:Math.round(SW/2-138-6-22), y:SH-28, r:22});          // just left of the loadout slots
 const canDropNow = () => { const p = S && S.player; return !!(p && p.alive && p.cur > 0 && p.inv[p.cur]); };
 function doHeal(){ if (NET.role === 'guest') netSend({t:'heal'}); else startHeal(S.player); }
 function tryRestart(){
