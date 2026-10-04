@@ -644,6 +644,7 @@ function burst(x,y,c,n){
 
 // ---------- Inventory / healing ----------
 // Slot 0 = pickaxe, slots 1-5 = loadout. Bandages stack up to MAXBAND in a single slot.
+function gunToast(type, rar, upgrade){ toast((upgrade ? 'Upgraded to ' : 'Picked up ') + RARITY[rar].name + ' ' + WEAP[type].name, 1800); }
 function giveItem(a, type, rar){
   rar = rar || 0;
   if (type === 'bandage'){
@@ -657,11 +658,12 @@ function giveItem(a, type, rar){
   if (have >= 0){
     if (rar <= a.gr[type]) return false;
     S.loot.push({x:a.x+rnd(-26,26), y:a.y+rnd(-26,26), type, rar:a.gr[type]});
-    a.gr[type] = rar; return true;
+    a.gr[type] = rar; if (a === S.player) gunToast(type, rar, true); return true;
   }
   const i = a.inv.indexOf(null, 1);
   if (i < 0) return false;
   a.inv[i] = type; a.gr[type] = rar; if (a.isPlayer) a.cur = i;
+  if (a === S.player) gunToast(type, rar, false);
   return true;
 }
 function startHeal(a){ if (a.alive && a.heal <= 0 && a.band > 0 && a.hp < 100) a.heal = HEAL_TIME; }
@@ -874,7 +876,7 @@ function update(dt){
     // pickups
     for (let i=S.loot.length-1;i>=0;i--){
       const l = S.loot[i];
-      if (Math.hypot(l.x-a.x,l.y-a.y) > 28) continue;
+      if (Math.hypot(l.x-a.x,l.y-a.y) > 36) continue;     // touching the drop's circle is enough
       let take = false;
       if (WEAP[l.type]){
         take = giveItem(a, l.type, l.rar);
@@ -1153,7 +1155,14 @@ function applySnap(m){
     }
     a.hp = d[3]; a.sh = d[4]; a.wood = d[5]; a.band = d[6]; a.heal = d[7]; a.alive = !!d[9];
     a.kills = d[10]; if (d[11]) a.swing = 0.2; a.place = d[12]; a.inv = decInv(d[13]);
-    if (d[15]) a.gr = {pistol:+d[15][0], shotgun:+d[15][1], ar:+d[15][2]};
+    if (d[15]){
+      const ng = {pistol:+d[15][0], shotgun:+d[15][1], ar:+d[15][2]};
+      if (a === S.player && a._pg) for (const t of ['pistol','shotgun','ar']){
+        if (!a.inv.includes(t)) continue;
+        if (!a._pi.includes(t)) gunToast(t, ng[t], false); else if (ng[t] > a._pg[t]) gunToast(t, ng[t], true);
+      }
+      a.gr = ng; a._pg = Object.assign({}, ng); a._pi = a.inv.slice();
+    }
   }
   S.bullets = m.B.map(b => ({x:b[0], y:b[1], vx:b[2], vy:b[3], color:b[4]}));
   const st = S.storm; st.i = m.st.i; st.state = m.st.s ? 'shrink' : 'wait'; st.t = m.st.t; st.r = m.st.r;
