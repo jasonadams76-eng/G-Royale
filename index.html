@@ -115,7 +115,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · ammo</div>
+      <div class="ver">Version 2026-10-04 · ammo drops</div>
     </div>
 
     <div id="s-join" hidden>
@@ -194,6 +194,7 @@ STACK.shield  = {key:'shd',  max:MAXSHD,  time:SHD_TIME};
 const GR_RANGE = 520, GR_RADIUS = 140, GR_DMG_MAX = 130, GR_DMG_MIN = 60, GR_SPEED = 560, GR_CHANCE = 0.07;   // GR_CHANCE: odds per chest
 // Ammo: each gun type has its own bullets, picked up from the ground (chests drop a box with each gun). No ammo = the gun won't fire.
 const AMMO = {ammo_pistol:{gun:'pistol', box:30, max:150, name:'pistol ammo'}, ammo_shotgun:{gun:'shotgun', box:10, max:50, name:'shells'}, ammo_ar:{gun:'ar', box:60, max:300, name:'rifle ammo'}};
+const START_AMMO = {pistol:30, shotgun:10, ar:60};     // ammo you get the first time you pick up each gun type in a match
 const newAmmo = () => ({pistol:0, shotgun:0, ar:0});
 const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 8;   // flamethrower: reach in px, a burst every 0.1 s, 8 damage each = 80 damage/s to everything in the flame
 const BOOT_MULT = 1.5, BOOT_RAR = 4, bootMul = a => a.inv.includes('boots') ? BOOT_MULT : 1;   // speed boots: 1.5x move speed while in your loadout (one pair per match)
@@ -381,7 +382,7 @@ function newActor(kind, i, h){
   const human = kind === 'human', pid = human ? h.pid : -1;
   const x = Math.round(rnd(200,W-200)), y = Math.round(rnd(200,W-200));
   const a = {x, y, tx:x, ty:y, r:15, hp:100, sh:0, wood:human?60:30,
-    inv:['pickaxe',null,null,null,null,null], gr:newGr(), ammo:newAmmo(), band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
+    inv:['pickaxe',null,null,null,null,null], gr:newGr(), ammo:newAmmo(), started:{}, band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
     isPlayer:human, pid, team:'', in:null,
     name: human ? h.name : 'Bot '+i,
     color: human ? PLAYER_COLORS[pid % PLAYER_COLORS.length] : `hsl(${rnd(0,360)|0},60%,55%)`,
@@ -800,7 +801,7 @@ function explode(g){
 
 // ---------- Inventory / healing ----------
 // Slot 0 = pickaxe, slots 1-5 = loadout. Bandages stack up to MAXBAND in a single slot.
-function gunToast(type, rar, upgrade){ toast((upgrade ? 'Upgraded to ' : 'Picked up ') + RARITY[rar].name + ' ' + WEAP[type].name, 1800); }
+function gunToast(type, rar, upgrade, bonus){ toast((upgrade ? 'Upgraded to ' : 'Picked up ') + RARITY[rar].name + ' ' + WEAP[type].name + (bonus ? ' (+' + bonus + ' ammo)' : ''), 1800); }
 function giveItem(a, type, rar){
   rar = rar || 0;
   const st = STACK[type];
@@ -837,7 +838,9 @@ function giveItem(a, type, rar){
   const i = a.inv.indexOf(null, 1);
   if (i < 0) return false;
   a.inv[i] = type; a.gr[type] = rar; if (a.isPlayer) a.cur = i;
-  if (a === S.player) gunToast(type, rar, false);
+  let bonus = 0;
+  if (!a.started[type]){ a.started[type] = true; bonus = START_AMMO[type]; a.ammo[type] = Math.min(AMMO['ammo_'+type].max, a.ammo[type] + bonus); }   // first time with this gun: it comes loaded
+  if (a === S.player) gunToast(type, rar, false, bonus);
   return true;
 }
 const healTime = a => (STACK[a.inv[a.cur]] || STACK.bandage).time;
@@ -860,6 +863,35 @@ function dropItem(a){
   if (st) a[st.key] = 0;
   if (GUN_W[it]) a.gr[it] = 0;
   a.heal = 0; a.inv[i] = null; a.cur = 0; sfx('pk', a.x, a.y);
+}
+// When ammo gets scarce (little on the ground in the safe zone, little carried), fresh boxes appear at random spots inside the safe zone.
+function ammoCheck(){
+  if (S.over) return;
+  const st = S.storm, R = Math.min(st.r, st.rTo || st.r) * 0.9;
+  if (R < 80) return;
+  const alive = S.actors.filter(a => a.alive), need = Math.max(3, Math.ceil(alive.length * 0.35));      // boxes' worth of each ammo type the map should hold
+  let dropped = 0;
+  for (const g of ['pistol','shotgun','ar']){
+    const key = 'ammo_' + g, m = AMMO[key];
+    let supply = 0;
+    for (const l of S.loot) if (l.type === key && Math.hypot(l.x-CENTER.x, l.y-CENTER.y) < st.r) supply += (l.n || m.box) / m.box;
+    for (const a of alive) supply += a.ammo[g] / m.box;
+    for (const c of S.chests) if (!c.open && Math.hypot(c.x-CENTER.x, c.y-CENTER.y) < st.r) supply += 0.3;
+    if (supply >= need) continue;
+    for (let k = Math.min(3, Math.ceil(need - supply)); k > 0; k--){
+      let x = CENTER.x, y = CENTER.y;
+      for (let tries = 0; tries < 12; tries++){
+        const ang = rnd(0, Math.PI*2), r = Math.sqrt(Math.random()) * R;
+        x = Math.round(Math.max(60, Math.min(W-60, CENTER.x + Math.cos(ang)*r))); y = Math.round(Math.max(60, Math.min(W-60, CENTER.y + Math.sin(ang)*r)));
+        if (S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 40) && !S.walls.has(wallKey(Math.floor(x/G), Math.floor(y/G)))) break;
+      }
+      S.loot.push({x, y, type:key, n:m.box}); burst(x, y, '#ffd84a', 16); dropped++;
+    }
+  }
+  if (dropped){
+    toast('Ammo supplies dropped on the map!', 2500);
+    if (NET.role === 'host') broadcast({t:'tst', x:'Ammo supplies dropped on the map!'});
+  }
 }
 function giveAmmo(a, l){
   const m = AMMO[l.type], n = l.n || m.box;
@@ -1046,6 +1078,9 @@ function update(dt){
       else st.t = 9999;
     }
   }
+  if (S.ammoChk === undefined) S.ammoChk = 40;                 // first supply check 40 s in (chests haven't been looted yet before that)
+  S.ammoChk -= dt;
+  if (S.ammoChk <= 0){ S.ammoChk = 10; ammoCheck(); }
   const stormDps = 8 + st.i*4;   // per second: roughly 12 seconds to eliminate at first, much faster in later phases
 
   for (const a of S.actors){
@@ -1419,6 +1454,9 @@ function onGuestData(m){
       break;
     case 'rejected':
       if (NET.joinFail) NET.joinFail(m.why || 'Could not join that room.');
+      break;
+    case 'tst':
+      if (phase === 'play') toast(String(m.x || '').slice(0, 60), 2500);
       break;
     case 'tolobby':
       phase = 'lobby'; NET.incoming = []; NET.sent = new Set(); showLobbyScreen();
