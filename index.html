@@ -115,7 +115,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · fences</div>
+      <div class="ver">Version 2026-10-04 · ammo</div>
     </div>
 
     <div id="s-join" hidden>
@@ -192,6 +192,9 @@ STACK.med     = {key:'med',  max:MAXMED,  time:MED_TIME};
 STACK.shield  = {key:'shd',  max:MAXSHD,  time:SHD_TIME};
 // Grenades: rare (always Gold) specialty items. One per slot; thrown at a spot within GR_RANGE, they explode there.
 const GR_RANGE = 520, GR_RADIUS = 140, GR_DMG_MAX = 130, GR_DMG_MIN = 60, GR_SPEED = 560, GR_CHANCE = 0.07;   // GR_CHANCE: odds per chest
+// Ammo: each gun type has its own bullets, picked up from the ground (chests drop a box with each gun). No ammo = the gun won't fire.
+const AMMO = {ammo_pistol:{gun:'pistol', box:30, max:150, name:'pistol ammo'}, ammo_shotgun:{gun:'shotgun', box:10, max:50, name:'shells'}, ammo_ar:{gun:'ar', box:60, max:300, name:'rifle ammo'}};
+const newAmmo = () => ({pistol:0, shotgun:0, ar:0});
 const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 8;   // flamethrower: reach in px, a burst every 0.1 s, 8 damage each = 80 damage/s to everything in the flame
 const BOOT_MULT = 1.5, BOOT_RAR = 4, bootMul = a => a.inv.includes('boots') ? BOOT_MULT : 1;   // speed boots: 1.5x move speed while in your loadout (one pair per match)
 const CHEST_COUNT = 32, CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
@@ -209,7 +212,7 @@ function rollRarity(){
   return 0;
 }
 const newGr = () => ({pistol:0, shotgun:0, ar:0});     // rarity of the gun held for each type (you can hold one of each)
-const TYPES = ['pistol','shotgun','ar','bandage','shield','med','wood','grenade','boots','flame'];   // index used on the wire
+const TYPES = ['pistol','shotgun','ar','bandage','shield','med','wood','grenade','boots','flame','ammo_pistol','ammo_shotgun','ammo_ar'];   // index used on the wire
 const PHASES = [
   {wait:20, shrink:20, r:1700}, {wait:15, shrink:15, r:1100},
   {wait:12, shrink:12, r:600},  {wait:10, shrink:10, r:250},
@@ -378,7 +381,7 @@ function newActor(kind, i, h){
   const human = kind === 'human', pid = human ? h.pid : -1;
   const x = Math.round(rnd(200,W-200)), y = Math.round(rnd(200,W-200));
   const a = {x, y, tx:x, ty:y, r:15, hp:100, sh:0, wood:human?60:30,
-    inv:['pickaxe',null,null,null,null,null], gr:newGr(), band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
+    inv:['pickaxe',null,null,null,null,null], gr:newGr(), ammo:newAmmo(), band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
     isPlayer:human, pid, team:'', in:null,
     name: human ? h.name : 'Bot '+i,
     color: human ? PLAYER_COLORS[pid % PLAYER_COLORS.length] : `hsl(${rnd(0,360)|0},60%,55%)`,
@@ -509,11 +512,12 @@ const SFX = {
   ui:  () => { tone(880, 880, .08, 'sine', .3); tone(1175, 1175, .1, 'sine', .3, .08); },
   win: () => [523,659,784,1047].forEach((f,i) => tone(f, f, .3, 'triangle', .4, i*.15)),
   th:  () => noise(.2, .4, 'highpass', 500, 2400),
+  em:  () => { tone(1500, 1100, .03, 'square', .16); noise(.03, .25, 'highpass', 3000, 3000); },       // empty-gun click
   fl:  () => { noise(.17, .55, 'bandpass', 1100, 500); noise(.17, .35, 'lowpass', 1800, 400); },
   bm:  () => { noise(.8, 1, 'lowpass', 2600, 70); tone(110, 28, .65, 'sawtooth', .7); tone(62, 24, .85, 'sine', .9); },
   lose:() => [392,330,262].forEach((f,i) => tone(f, f*.98, .35, 'sawtooth', .25, i*.2))
 };
-const SFX_GAP = {fl:.12, ar:.05, sg:.08, pi:.05, hit:.06, ch:.06, sw:.08};   // min seconds between two of the same sound (stops spam)
+const SFX_GAP = {em:.25, fl:.12, ar:.05, sg:.08, pi:.05, hit:.06, ch:.06, sw:.08};   // min seconds between two of the same sound (stops spam)
 const sfxLast = {};
 // Plays a sound at a world position (louder and more centred the closer it is to the player we're watching).
 function playSnd(t, x, y){
@@ -694,6 +698,7 @@ function damage(a, dmg, owner){
     a.place = S.actors.filter(x => x.alive).length + 1;
     // drop the whole inventory: all wood in one pile, plus every weapon and bandage
     if (a.wood > 0) S.loot.push({x:a.x, y:a.y, type:'wood', n:a.wood});
+    for (const g of ['pistol','shotgun','ar']) if (a.ammo[g] > 0) S.loot.push({x:a.x+rnd(-24,24), y:a.y+rnd(-24,24), type:'ammo_'+g, n:a.ammo[g]});   // their bullets drop too
     a.inv.forEach(w => {
       if (!w || w === 'pickaxe') return;
       const n = STACK[w] ? a[STACK[w].key] : 1;
@@ -728,6 +733,11 @@ function fire(a){
   if (w.heal){ startHeal(a); return; }
   if (w.flame){ flameFire(a); return; }
   if (a.cd > 0) return;
+  if (w.spd){                                         // guns use up their own ammo; with none left they just click
+    const gt = a.inv[a.cur];
+    if ((a.ammo[gt] || 0) <= 0){ a.cd = 0.3; sfx('em', a.x, a.y); if (a === S.player) toast('Out of ' + w.name.toLowerCase() + ' ammo', 900); return; }
+    a.ammo[gt]--;
+  }
   const rm = RARITY[w.melee || w.heal ? 0 : (a.gr[a.inv[a.cur]] || 0)];
   a.cd = w.rate * rm.rate;
   if (w.melee){
@@ -851,8 +861,15 @@ function dropItem(a){
   if (GUN_W[it]) a.gr[it] = 0;
   a.heal = 0; a.inv[i] = null; a.cur = 0; sfx('pk', a.x, a.y);
 }
+function giveAmmo(a, l){
+  const m = AMMO[l.type], n = l.n || m.box;
+  if (a.ammo[m.gun] >= m.max) return false;
+  a.ammo[m.gun] = Math.min(m.max, a.ammo[m.gun] + n);
+  if (a === S.player) toast('+' + n + ' ' + m.name, 1200);
+  return true;
+}
 function bestSlot(a){
-  for (const t of WEAPON_PRIO){ const i = a.inv.indexOf(t); if (i >= 0) return i; }
+  for (const t of WEAPON_PRIO){ const i = a.inv.indexOf(t); if (i >= 0 && a.ammo[t] > 0) return i; }
   return 0;
 }
 
@@ -868,10 +885,12 @@ function openChest(c){
   if (c.boots) drops.push({type:'boots', rar:BOOT_RAR});
   if (c.flame) drops.push({type:'flame', rar:4});
   if (Math.random() < GR_CHANCE) drops.push({type:'grenade', rar:4});   // 7%: a (gold) grenade
+  drops.filter(d => GUN_W[d.type]).forEach(d => drops.push({type:'ammo_'+d.type, n:AMMO['ammo_'+d.type].box}));      // every gun comes with a box of its bullets
+  if (Math.random() < 0.4){ const t = ['ammo_pistol','ammo_shotgun','ammo_ar'][Math.random()*3|0]; drops.push({type:t, n:AMMO[t].box}); }   // 40%: an extra box
   const off = Math.random()*Math.PI*2;
   drops.forEach((dr,i) => {
     const ang = off + i*Math.PI*2/drops.length, d = rnd(40,55);
-    S.loot.push({x:Math.max(20,Math.min(W-20,c.x+Math.cos(ang)*d)), y:Math.max(20,Math.min(W-20,c.y+Math.sin(ang)*d)), type:dr.type, rar:dr.rar || 0});
+    S.loot.push({x:Math.max(20,Math.min(W-20,c.x+Math.cos(ang)*d)), y:Math.max(20,Math.min(W-20,c.y+Math.sin(ang)*d)), type:dr.type, rar:dr.rar || 0, n:dr.n});
   });
   burst(c.x, c.y, '#fc4', 14); sfx('cs', c.x, c.y);
 }
@@ -879,6 +898,7 @@ function openChest(c){
 function canTake(a, l){
   const type = l.type;
   if (type === 'wood') return true;
+  if (AMMO[type]) return a.ammo[AMMO[type].gun] < AMMO[type].max;
   const st = STACK[type];
   if (st) return a[st.key] < st.max && (a.inv.includes(type) || a.inv.includes(null));     // only if there is room for it
   if (type === 'boots' || type === 'flame') return !a.inv.includes(type) && a.inv.includes(null);
@@ -907,7 +927,7 @@ function collide(a){
 
 // ---------- Bot AI ----------
 function botThink(b, dt){
-  const armed = b.inv.some(w => w && WEAP[w] && (WEAP[w].spd || WEAP[w].flame));
+  const armed = b.inv.some(w => w && WEAP[w] && ((WEAP[w].spd && b.ammo[w] > 0) || WEAP[w].flame));
   let target = null, best = armed ? 450 : 110;   // unarmed bots only fight what is right next to them; otherwise they go find a chest
   for (const o of S.actors){
     if (o === b || !o.alive || o.team === b.team) continue;
@@ -1080,6 +1100,7 @@ function update(dt){
       if (WEAP[l.type]){          // guns, bandages, medkits and shield potions all go into the loadout
         take = giveItem(a, l.type, l.rar);
       }
+      else if (AMMO[l.type]) take = giveAmmo(a, l);
       else if (l.type === 'wood'){ a.wood = Math.min(999, a.wood + (l.n || 30)); take = true; }
       if (take){ S.loot.splice(i,1); sfx('pk', a.x, a.y); }
     }
@@ -1133,7 +1154,7 @@ function peerSend(pid, m){
 }
 function encodeActor(a){
   return [Math.round(a.x), Math.round(a.y), +a.angle.toFixed(2), Math.round(a.hp), Math.round(a.sh), a.wood, a.band,
-          +Math.max(0,a.heal).toFixed(2), a.cur, a.alive?1:0, a.kills, a.swing>0?1:0, a.place||0, encInv(a.inv), a.isPlayer?1:0, '' + a.gr.pistol + a.gr.shotgun + a.gr.ar, a.med, a.shd, a.flt > 0 ? Math.round(a.flen) : 0];
+          +Math.max(0,a.heal).toFixed(2), a.cur, a.alive?1:0, a.kills, a.swing>0?1:0, a.place||0, encInv(a.inv), a.isPlayer?1:0, '' + a.gr.pistol + a.gr.shotgun + a.gr.ar, a.med, a.shd, a.flt > 0 ? Math.round(a.flen) : 0, a.isPlayer ? [a.ammo.pistol, a.ammo.shotgun, a.ammo.ar] : 0];
 }
 function sendSnapshot(){
   if (!peerCount()) return;
@@ -1340,7 +1361,7 @@ function buildGuestState(m){
   m.trees.forEach(([x,y], id) => { const t = {id, x, y, r:22, wood:100}; S.allTrees.push(t); S.trees.push(t); });
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
   m.actors.forEach(d => S.actors.push({x:d.x, y:d.y, tx:d.x, ty:d.y, r:15, hp:100, sh:0, wood:0,
-    inv:['pickaxe',null,null,null,null,null], gr:newGr(), band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
+    inv:['pickaxe',null,null,null,null,null], gr:newGr(), ammo:newAmmo(), band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
     isPlayer:!!d.h, pid:d.pid, team:d.tm, name:d.n, color:d.c, shirt:d.s || null, skin:d.k, crown:!!d.cw, seen:false}));
   S.player = S.actors[m.me];
   S.player.seen = true;
@@ -1363,7 +1384,7 @@ function applySnap(m){
     }
     a.hp = d[3]; a.sh = d[4]; a.wood = d[5]; a.band = d[6]; a.heal = d[7]; a.alive = !!d[9];
     a.kills = d[10]; if (d[11]) a.swing = 0.2; a.place = d[12]; a.inv = decInv(d[13]);
-    a.med = d[16] || 0; a.shd = d[17] || 0; a.flen = d[18] || 0;
+    a.med = d[16] || 0; a.shd = d[17] || 0; a.flen = d[18] || 0; if (d[19]) a.ammo = {pistol:d[19][0], shotgun:d[19][1], ar:d[19][2]};
     if (d[15]){
       const ng = {pistol:+d[15][0], shotgun:+d[15][1], ar:+d[15][2]};
       if (a === S.player && a._pg) for (const t of ['pistol','shotgun','ar']){
@@ -1563,6 +1584,15 @@ function drawItem(c, type, s){
     c.moveTo(-19,2); c.quadraticCurveTo(-15,-12,0,-13); c.quadraticCurveTo(15,-12,19,2); c.lineTo(15,2); c.quadraticCurveTo(12,-7,0,-8); c.quadraticCurveTo(-12,-7,-15,2); c.closePath(); c.fill(); c.stroke();   // curved iron head
     rr(-5,-12, 10,7, 2, '#8d979e');                                                                       // socket
     c.fillStyle = 'rgba(255,255,255,0.5)'; c.beginPath(); c.ellipse(-8,-7, 4,1.4, -0.5, 0, 7); c.fill();
+  } else if (type.startsWith('ammo_')){   // box of bullets: pistol (blue, short brass), shotgun (red shells), rifle (green, long rounds)
+    const k = type.slice(5), box = k === 'pistol' ? '#3f7fc4' : k === 'shotgun' ? '#c4402a' : '#3f9a48';
+    for (let i = 0; i < 3; i++){
+      const bx = -8 + i*8;
+      if (k === 'shotgun'){ rr(bx-3,-11, 6,10, 1.2, '#cc3a2a'); rr(bx-3,-4.5, 6,3.8, 0.8, '#d9a92b'); }
+      else if (k === 'ar'){ rr(bx-2,-15, 4,14, 1.8, '#d9a92b'); c.fillStyle = '#b87333'; c.beginPath(); c.moveTo(bx-2,-14); c.quadraticCurveTo(bx,-19,bx+2,-14); c.closePath(); c.fill(); c.stroke(); }
+      else { rr(bx-2.4,-9, 4.8,8, 1.2, '#d9a92b'); c.fillStyle = '#b87333'; c.beginPath(); c.moveTo(bx-2.4,-8.6); c.quadraticCurveTo(bx,-13.5,bx+2.4,-8.6); c.closePath(); c.fill(); c.stroke(); }
+    }
+    rr(-13,-2, 26,14, 2.5, box); rr(-13,2, 26,3, 0, 'rgba(255,255,255,.55)');                              // box + label stripe
   } else if (type === 'flame'){       // flamethrower: fuel tank, hose, gun body, nozzle with a pilot flame (points right)
     rr(-18,-7, 15,14, 6, '#d8402a'); rr(-14,-7, 3,14, 0, '#8e2a1c');                                     // fuel tank + band
     c.strokeStyle = '#000'; c.lineWidth = 3/s; c.beginPath(); c.moveTo(-3,2); c.quadraticCurveTo(0,9,4,3); c.stroke();
@@ -1835,6 +1865,10 @@ function drawHUD(){
       ctx.strokeStyle = '#000'; ctx.lineWidth = 5; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
       ctx.strokeStyle = RARITY[p.gr[id] || 0].col; ctx.lineWidth = 3; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);   // slot border = rarity
       if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(WEAP[id].name, r.x+r.w/2, r.y+r.h*0.9); }
+      const am = (p.ammo && p.ammo[id]) | 0;                                       // how many bullets are left for this gun
+      ctx.font = 'bold ' + (tm ? 11 : 13) + 'px sans-serif'; ctx.textAlign = 'right'; ctx.lineWidth = 3.5; ctx.strokeStyle = '#000'; ctx.lineJoin = 'round';
+      ctx.strokeText(am, r.x+r.w-5, r.y+(tm ? 12 : 14)); ctx.fillStyle = am > 0 ? '#fff' : '#ff5a4a'; ctx.fillText(am, r.x+r.w-5, r.y+(tm ? 12 : 14));
+      ctx.textAlign = 'center';
     } else if (id === 'grenade' || id === 'boots' || id === 'flame'){
       ctx.save(); ctx.translate(r.x + r.w/2, r.y + r.h*(tm ? 0.5 : 0.42)); drawItem(ctx, id, tm ? 0.65 : 0.85); ctx.restore();
       if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(id === 'boots' ? 'Boots' : id === 'flame' ? 'Flame' : 'Grenade', r.x+r.w/2, r.y+r.h*0.9); }
