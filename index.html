@@ -169,11 +169,17 @@ const WEAP = {
   shotgun: {name:'Shotgun', dmg:11, rate:0.9,  spd:850, spread:0.22, pellets:7, life:0.4, color:'#fa5'},
   ar:      {name:'Rifle',   dmg:12, rate:0.11, spd:1100,spread:0.06, pellets:1, life:0.8, color:'#9f6'},
   bandage: {name:'Bandage', heal:true, color:'#fff'},
-  med:     {name:'Medkit',  heal:true, color:'#f55'}
+  med:     {name:'Medkit',  heal:true, color:'#f55'},
+  shield:  {name:'Shield',  heal:true, color:'#58f'}
 };
+const STACK = {};   // stackable loadout items: how many fit in one slot, how long they take to use, and where the count is kept
 const MAXBAND = 3, BANDAGE_HEAL = 25, HEAL_TIME = 1.5, MAXMED = 2, MED_TIME = 3.0,   // a medkit heals to full health but takes longer to use
+  MAXSHD = 2, SHD_TIME = 2.0, SHIELD_GAIN = 40,   // shield potions: two per slot, each adds 40 shield
    WEAPON_PRIO = ['ar','shotgun','pistol'];
-const CHEST_COUNT = 70, CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
+STACK.bandage = {key:'band', max:MAXBAND, time:HEAL_TIME};
+STACK.med     = {key:'med',  max:MAXMED,  time:MED_TIME};
+STACK.shield  = {key:'shd',  max:MAXSHD,  time:SHD_TIME};
+const CHEST_COUNT = 32, CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
 // Gun rarities: the rarer the gun, the harder it hits, the faster it fires and the straighter it shoots.
 const RARITY = [
   {name:'White',  col:'#c3ccd2', dmg:1.00, rate:1.00, spread:1.00, odds:58},
@@ -293,7 +299,7 @@ addEventListener('pointerdown', e => {
       const me = S.player;
       if (me.alive && me.inv[i]){
         selectSlot(i);
-        if (me.inv[i] === 'bandage' || me.inv[i] === 'med') doHeal();   // tapping a healing slot uses it
+        if (STACK[me.inv[i]]) doHeal();   // tapping a healing/shield slot uses it
       }
       return;
     }
@@ -332,7 +338,7 @@ function newActor(kind, i, h){
   const human = kind === 'human', pid = human ? h.pid : -1;
   const x = Math.round(rnd(200,W-200)), y = Math.round(rnd(200,W-200));
   const a = {x, y, tx:x, ty:y, r:15, hp:100, sh:0, wood:human?60:30,
-    inv:['pickaxe',null,null,null,null,null], gr:newGr(), band:0, med:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
+    inv:['pickaxe',null,null,null,null,null], gr:newGr(), band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
     isPlayer:human, pid, team:'', in:null,
     name: human ? h.name : 'Bot '+i,
     color: human ? PLAYER_COLORS[pid % PLAYER_COLORS.length] : `hsl(${rnd(0,360)|0},60%,55%)`,
@@ -602,7 +608,7 @@ function damage(a, dmg, owner){
     if (a.wood > 0) S.loot.push({x:a.x, y:a.y, type:'wood', n:a.wood});
     a.inv.forEach(w => {
       if (!w || w === 'pickaxe') return;
-      const n = w === 'bandage' ? a.band : w === 'med' ? a.med : 1;
+      const n = STACK[w] ? a[STACK[w].key] : 1;
       for (let i=0;i<n;i++) S.loot.push({x:a.x+rnd(-20,20), y:a.y+rnd(-20,20), type:w, rar:GUN_W[w] ? a.gr[w] : 0});
     });
   }
@@ -651,17 +657,12 @@ function burst(x,y,c,n){
 function gunToast(type, rar, upgrade){ toast((upgrade ? 'Upgraded to ' : 'Picked up ') + RARITY[rar].name + ' ' + WEAP[type].name, 1800); }
 function giveItem(a, type, rar){
   rar = rar || 0;
-  if (type === 'bandage'){
-    if (a.band >= MAXBAND) return false;
-    let i = a.inv.indexOf('bandage');
-    if (i < 0){ i = a.inv.indexOf(null, 1); if (i < 0) return false; a.inv[i] = 'bandage'; }
-    a.band++; return true;
-  }
-  if (type === 'med'){                 // medkits stack too (up to MAXMED in one slot)
-    if (a.med >= MAXMED) return false;
-    let i = a.inv.indexOf('med');
-    if (i < 0){ i = a.inv.indexOf(null, 1); if (i < 0) return false; a.inv[i] = 'med'; }
-    a.med++; return true;
+  const st = STACK[type];
+  if (st){                              // bandages, medkits and shield potions stack in a single slot
+    if (a[st.key] >= st.max) return false;
+    let i = a.inv.indexOf(type);
+    if (i < 0){ i = a.inv.indexOf(null, 1); if (i < 0) return false; a.inv[i] = type; }
+    a[st.key]++; return true;
   }
   // guns: one of each type. A better one replaces the one you hold, which drops to the ground.
   const have = a.inv.indexOf(type);
@@ -676,11 +677,13 @@ function giveItem(a, type, rar){
   if (a === S.player) gunToast(type, rar, false);
   return true;
 }
-const healTime = a => a.inv[a.cur] === 'med' ? MED_TIME : HEAL_TIME;
+const healTime = a => (STACK[a.inv[a.cur]] || STACK.bandage).time;
 function startHeal(a){
-  if (!a.alive || a.heal > 0 || a.hp >= 100) return;
-  const it = a.inv[a.cur];
-  if ((it === 'bandage' && a.band > 0) || (it === 'med' && a.med > 0)) a.heal = healTime(a);
+  if (!a.alive || a.heal > 0) return;
+  const it = a.inv[a.cur], st = STACK[it];
+  if (!st || a[st.key] <= 0) return;
+  if (it === 'shield' ? a.sh >= 100 : a.hp >= 100) return;      // nothing to heal
+  a.heal = st.time;
 }
 function bestSlot(a){
   for (const t of WEAPON_PRIO){ const i = a.inv.indexOf(t); if (i >= 0) return i; }
@@ -706,10 +709,9 @@ function openChest(c){
 // can this actor actually use a loot item right now? (keeps bots from chasing things they can't take)
 function canTake(a, l){
   const type = l.type;
-  if (type === 'shield') return a.sh < 100;
-  if (type === 'med') return a.med < MAXMED && (a.inv.includes('med') || a.inv.includes(null));
   if (type === 'wood') return true;
-  if (type === 'bandage') return a.band < MAXBAND && (a.inv.includes('bandage') || a.inv.includes(null));
+  const st = STACK[type];
+  if (st) return a[st.key] < st.max && (a.inv.includes(type) || a.inv.includes(null));     // only if there is room for it
   if (a.inv.includes(type)) return (l.rar || 0) > a.gr[type];     // already holding one: only a better one is worth taking
   return a.inv.includes(null);
 }
@@ -762,8 +764,9 @@ function botThink(b, dt){
     if (b.hp < 50 && b.wood >= 10 && Math.random() < dt*2) build(b);
   } else {
     // heal when no one is nearby
-    if (b.heal > 0 || (b.med > 0 && b.hp < 50) || (b.band > 0 && b.hp < 70)){
-      const cur = b.inv[b.cur], kind = (b.heal > 0 && (cur === 'med' || cur === 'bandage')) ? cur : (b.med > 0 && b.hp < 50 ? 'med' : 'bandage');
+    const want = (b.med > 0 && b.hp < 50) ? 'med' : (b.band > 0 && b.hp < 70) ? 'bandage' : (b.shd > 0 && b.sh < 60) ? 'shield' : null;
+    if (b.heal > 0 || want){
+      const kind = (b.heal > 0 && STACK[b.inv[b.cur]]) ? b.inv[b.cur] : want;
       const bi = b.inv.indexOf(kind);
       if (bi >= 0){ b.cur = bi; startHeal(b); return [0,0]; }
     }
@@ -855,19 +858,16 @@ function update(dt){
     a.cd -= dt; a.swing -= dt;
     // bandage channel: switching items cancels it, finishing heals and uses one bandage
     if (a.heal > 0){
-      const it = a.inv[a.cur];
-      if (it !== 'bandage' && it !== 'med') a.heal = 0;
+      const it = a.inv[a.cur], st = STACK[it];
+      if (!st) a.heal = 0;
       else {
         a.heal -= dt;
         if (a.heal <= 0){
           a.heal = 0; sfx('hl', a.x, a.y);
-          if (it === 'med'){
-            a.hp = 100; a.med--;
-            if (a.med <= 0){ const mi = a.inv.indexOf('med'); if (mi >= 0) a.inv[mi] = null; a.med = 0; a.cur = 0; }
-          } else {
-            a.hp = Math.min(100, a.hp + BANDAGE_HEAL); a.band--;
-            if (a.band <= 0){ const bi = a.inv.indexOf('bandage'); if (bi >= 0) a.inv[bi] = null; a.band = 0; a.cur = 0; }
-          }
+          if (it === 'med') a.hp = 100;
+          else if (it === 'shield') a.sh = Math.min(100, a.sh + SHIELD_GAIN);
+          else a.hp = Math.min(100, a.hp + BANDAGE_HEAL);
+          if (--a[st.key] <= 0){ a[st.key] = 0; const si = a.inv.indexOf(it); if (si >= 0) a.inv[si] = null; a.cur = 0; }   // used the last one: the slot is free again
         }
       }
     }
@@ -901,9 +901,9 @@ function update(dt){
       const l = S.loot[i];
       if (Math.hypot(l.x-a.x,l.y-a.y) > 36) continue;     // touching the drop's circle is enough
       let take = false;
-      if (WEAP[l.type]){          // guns, bandages and medkits all go into the loadout
+      if (WEAP[l.type]){          // guns, bandages, medkits and shield potions all go into the loadout
         take = giveItem(a, l.type, l.rar);
-      } else if (l.type === 'shield' && a.sh < 100){ a.sh = Math.min(100, a.sh+40); take = true; }
+      }
       else if (l.type === 'wood'){ a.wood = Math.min(999, a.wood + (l.n || 30)); take = true; }
       if (take){ S.loot.splice(i,1); sfx('pk', a.x, a.y); }
     }
@@ -939,7 +939,7 @@ function update(dt){
 
 // ---------- Networking: host side ----------
 // Star topology: every guest connects to the host. The host runs the match and streams the state back out.
-const ITEM_CODE = {pickaxe:'1', pistol:'2', shotgun:'3', ar:'4', bandage:'5', med:'6'}, ITEM_BY = [null,'pickaxe','pistol','shotgun','ar','bandage','med'];
+const ITEM_CODE = {pickaxe:'1', pistol:'2', shotgun:'3', ar:'4', bandage:'5', med:'6', shield:'7'}, ITEM_BY = [null,'pickaxe','pistol','shotgun','ar','bandage','med','shield'];
 const encInv = inv => inv.map(w => w ? ITEM_CODE[w] : '0').join('');
 const decInv = str => str.split('').map(c => ITEM_BY[+c] || null);
 const peerCount = () => Object.keys(NET.peers).length;
@@ -950,7 +950,7 @@ function peerSend(pid, m){
 }
 function encodeActor(a){
   return [Math.round(a.x), Math.round(a.y), +a.angle.toFixed(2), Math.round(a.hp), Math.round(a.sh), a.wood, a.band,
-          +Math.max(0,a.heal).toFixed(2), a.cur, a.alive?1:0, a.kills, a.swing>0?1:0, a.place||0, encInv(a.inv), a.isPlayer?1:0, '' + a.gr.pistol + a.gr.shotgun + a.gr.ar, a.med];
+          +Math.max(0,a.heal).toFixed(2), a.cur, a.alive?1:0, a.kills, a.swing>0?1:0, a.place||0, encInv(a.inv), a.isPlayer?1:0, '' + a.gr.pistol + a.gr.shotgun + a.gr.ar, a.med, a.shd];
 }
 function sendSnapshot(){
   if (!peerCount()) return;
@@ -1154,7 +1154,7 @@ function buildGuestState(m){
   m.trees.forEach(([x,y], id) => { const t = {id, x, y, r:22, wood:100}; S.allTrees.push(t); S.trees.push(t); });
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
   m.actors.forEach(d => S.actors.push({x:d.x, y:d.y, tx:d.x, ty:d.y, r:15, hp:100, sh:0, wood:0,
-    inv:['pickaxe',null,null,null,null,null], gr:newGr(), band:0, med:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
+    inv:['pickaxe',null,null,null,null,null], gr:newGr(), band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
     isPlayer:!!d.h, pid:d.pid, team:d.tm, name:d.n, color:d.c, seen:false}));
   S.player = S.actors[m.me];
   S.player.seen = true;
@@ -1177,7 +1177,7 @@ function applySnap(m){
     }
     a.hp = d[3]; a.sh = d[4]; a.wood = d[5]; a.band = d[6]; a.heal = d[7]; a.alive = !!d[9];
     a.kills = d[10]; if (d[11]) a.swing = 0.2; a.place = d[12]; a.inv = decInv(d[13]);
-    a.med = d[16] || 0;
+    a.med = d[16] || 0; a.shd = d[17] || 0;
     if (d[15]){
       const ng = {pistol:+d[15][0], shotgun:+d[15][1], ar:+d[15][2]};
       if (a === S.player && a._pg) for (const t of ['pistol','shotgun','ar']){
@@ -1510,9 +1510,9 @@ function drawHUD(){
       ctx.strokeStyle = '#000'; ctx.lineWidth = 5; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
       ctx.strokeStyle = RARITY[p.gr[id] || 0].col; ctx.lineWidth = 3; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);   // slot border = rarity
       if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(WEAP[id].name, r.x+r.w/2, r.y+r.h*0.9); }
-    } else if (id === 'bandage' || id === 'med'){
+    } else if (STACK[id]){
       ctx.save(); ctx.translate(r.x + r.w/2, r.y + r.h*(tm ? 0.4 : 0.38)); drawItem(ctx, id, tm ? 0.6 : 0.8); ctx.restore();
-      ctx.fillText('x'+(id === 'med' ? p.med : p.band), r.x+r.w/2, r.y+r.h*(tm ? 0.88 : 0.9));
+      ctx.fillText('x'+p[STACK[id].key], r.x+r.w/2, r.y+r.h*(tm ? 0.88 : 0.9));
     } else ctx.fillText(id ? WEAP[id].name : '-', r.x+r.w/2, r.y+r.h*0.68);
   }
 
@@ -1559,7 +1559,7 @@ function drawHUD(){
   } else {
     ctx.textAlign='left'; ctx.fillStyle='#fff'; ctx.font='12px sans-serif';
     ctx.fillText('WASD move · Mouse aim/shoot · 1-6 select slot', 20, 20);
-    ctx.fillText('Hold click with Bandage or Medkit to heal · Q / Right-click build wall', 20, 36);
+    ctx.fillText('Hold click with a healing item or shield to use it · Q / Right-click build wall', 20, 36);
   }
 
   // end screen / spectating banner
