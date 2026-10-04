@@ -58,6 +58,8 @@
     font-weight:700;color:#fff;background:rgba(0,0,0,.45);border:1px solid #fff6;border-radius:8px;touch-action:manipulation}
   #snd{position:fixed;top:6px;left:calc(50% + 46px);z-index:30;width:34px;height:30px;padding:0;font-size:16px;line-height:1;color:#fff;
     background:rgba(0,0,0,.45);border:1px solid #fff6;border-radius:8px;touch-action:manipulation}
+  #mus{position:fixed;top:6px;left:calc(50% + 86px);z-index:30;width:34px;height:30px;padding:0;font-size:16px;line-height:1;color:#fff;
+    background:rgba(0,0,0,.45);border:1px solid #fff6;border-radius:8px;touch-action:manipulation}
   #toast{display:none;position:fixed;top:44px;left:50%;transform:translateX(-50%);z-index:20;pointer-events:none;
     background:rgba(0,0,0,.8);color:#fff;padding:8px 14px;border-radius:10px;font-size:14px;text-align:center;max-width:90%}
 </style>
@@ -101,6 +103,7 @@
   </div>
 </div>
 <button id="snd" title="Sound on/off (M)">🔊</button>
+<button id="mus" title="Music on/off">🎵</button>
 <button id="exit">Menu</button>
 <div id="toast"></div>
 
@@ -434,6 +437,100 @@ function sfx(t, x, y){
   if (NET.role === 'host' && peerCount()){ if (!S.sn) S.sn = []; if (S.sn.length < 40) S.sn.push([t, Math.round(x), Math.round(y)]); }
 }
 addEventListener('keydown', e => { if (e.key.toLowerCase() === 'm' && (!e.target || e.target.tagName !== 'INPUT')) $('snd').click(); });
+
+// ---------- Music (three looping themes, also synthesized: menu, lobby and battle) ----------
+const mtof = m => 440 * Math.pow(2, (m-69)/12);
+const MUSIC = {
+  // calm, hopeful: slow arpeggios over soft pads
+  menu: {bpm:84, chords:[[48,52,55],[43,47,50],[45,48,52],[41,45,48]], roots:[36,31,33,29],
+    lead:[[76,0,0,0,79,0,0,0,76,0,74,0,72,0,0,0],[74,0,0,0,71,0,0,0,74,0,0,0,67,0,0,0],
+          [72,0,0,0,76,0,0,0,81,0,79,0,76,0,0,0],[77,0,0,0,76,0,74,0,72,0,0,0,0,0,0,0]],
+    step(m, st, bar, i){
+      const ch = this.chords[bar];
+      if (i === 0) ch.forEach(n => { m.tone(mtof(n), mtof(n), 16*m.spb*1.05, 'triangle', .07); });
+      if (i % 8 === 0) m.tone(mtof(this.roots[bar]), mtof(this.roots[bar]), .5, 'sine', .22);
+      if (i % 2 === 0) { const n = ch[(i/2) % 3] + 12; m.tone(mtof(n), mtof(n), .28, 'triangle', .1); }
+      const l = this.lead[bar][i]; if (l) m.tone(mtof(l), mtof(l), .6, 'sine', .13);
+      if (i === 0 || i === 8) m.drum('k', .35);
+    }},
+  // bouncy and friendly: four-on-the-floor, offbeat chord stabs, plucky lead
+  lobby: {bpm:112, chords:[[60,64,67],[57,60,64],[53,57,60],[55,59,62]], roots:[48,45,41,43],
+    lead:[[79,0,76,0,79,0,0,76,0,0,74,0,72,0,0,0],[76,0,72,0,76,0,0,72,0,0,71,0,69,0,0,0],
+          [77,0,74,0,77,0,0,74,0,0,72,0,69,0,0,0],[74,0,71,0,74,0,79,0,77,0,74,0,71,0,0,0]],
+    step(m, st, bar, i){
+      const ch = this.chords[bar];
+      if (i % 4 === 0) m.drum('k', .6);
+      if (i % 4 === 2) { m.drum('h', .3); ch.forEach(n => m.tone(mtof(n), mtof(n), .11, 'square', .035)); }
+      if (i === 4 || i === 12) m.drum('s', .35);
+      if (i % 2 === 0){ const r = this.roots[bar] + (i % 8 === 6 ? 12 : 0); m.tone(mtof(r), mtof(r), .16, 'triangle', .3); }
+      const l = this.lead[bar][i]; if (l) m.tone(mtof(l), mtof(l), .22, 'square', .07);
+    }},
+  // fast and tense: A minor, driving bass, big drums, saw riff
+  battle: {bpm:152, chords:[[57,60,64],[53,57,60],[55,59,62],[52,56,59]], roots:[45,41,43,40],
+    lead:[[69,0,72,0,76,0,72,0,69,0,72,0,77,0,76,0],[65,0,69,0,72,0,69,0,65,0,69,0,74,0,72,0],
+          [67,0,71,0,74,0,71,0,67,0,71,0,76,0,74,0],[68,0,71,0,76,0,71,0,68,0,71,0,75,0,76,0]],
+    step(m, st, bar, i){
+      const ch = this.chords[bar], r = this.roots[bar];
+      if (i % 4 === 0 || i === 10) m.drum('k', .85);
+      if (i === 4 || i === 12) m.drum('s', .6);
+      if (i % 2 === 0) m.drum('h', i % 4 === 2 ? .35 : .2);
+      if (bar === 3 && i >= 12) m.drum('h', .3);
+      if (i % 2 === 0){ const n = r + (i % 8 === 6 ? 12 : 0); m.tone(mtof(n), mtof(n)*.99, .17, 'sawtooth', .17); }
+      if (i === 0 || i === 8) ch.forEach(n => m.tone(mtof(n), mtof(n), .32, 'sawtooth', .04));
+      const l = this.lead[bar][i]; if (l) m.tone(mtof(l), mtof(l), .15, 'square', .075);
+    }}
+};
+const M = {cur:null, gain:null, timer:0, off:false};
+try { M.off = localStorage.getItem('sr-nomusic') === '1'; } catch(_){}
+$('mus').textContent = M.off ? '🚫' : '🎵';
+function setMusicOff(o){
+  M.off = o; try { localStorage.setItem('sr-nomusic', o ? '1' : '0'); } catch(_){}
+  if (M.gain) M.gain.gain.setTargetAtTime(o ? 0 : 0.5, AC.currentTime, 0.1);
+  $('mus').textContent = o ? '🚫' : '🎵';
+}
+$('mus').onclick = e => { e.stopPropagation(); audioUnlock(); setMusicOff(!M.off); };
+function musicWanted(){
+  if (phase === 'play') return S && S.over ? null : 'battle';   // the end-of-match jingle plays over silence
+  return phase === 'lobby' ? 'lobby' : 'menu';
+}
+function musicSwitch(name){
+  if (M.cur){                                   // fade the old theme out
+    const old = M.cur.bus, t = AC.currentTime;
+    old.gain.cancelScheduledValues(t); old.gain.setValueAtTime(old.gain.value, t); old.gain.linearRampToValueAtTime(0, t + 0.8);
+    setTimeout(() => { try { old.disconnect(); } catch(_){} }, 1500);
+    M.cur = null;
+  }
+  if (!name) return;
+  if (!M.gain){ M.gain = AC.createGain(); M.gain.gain.value = M.off ? 0 : 0.5; M.gain.connect(master); }
+  const bus = AC.createGain(), t = AC.currentTime;
+  bus.gain.setValueAtTime(0, t); bus.gain.linearRampToValueAtTime(1, t + 0.8); bus.connect(M.gain);
+  const tr = MUSIC[name];
+  M.cur = {name, tr, bus, step:0, next:t + 0.1, spb:60 / tr.bpm / 4};
+}
+function musicTick(){
+  if (!AC || AC.state !== 'running') return;
+  const want = musicWanted();
+  if ((M.cur ? M.cur.name : null) !== want) musicSwitch(want);
+  const c = M.cur; if (!c) return;
+  if (c.next < AC.currentTime - 0.2) c.next = AC.currentTime + 0.05;   // we fell behind (tab was busy): skip ahead
+  const api = {spb:c.spb,
+    tone:(f0, f1, dur, type, vol) => { sOut = c.bus; tone(f0, f1, dur, type, vol, c.at - AC.currentTime); },
+    drum:(k, v) => { sOut = c.bus; const d = c.at - AC.currentTime;
+      if (k === 'k'){ tone(150, 42, .16, 'sine', v*.9, d); }
+      else if (k === 's'){ noise(.13, v*.5, 'bandpass', 2200, 1500, d); tone(210, 130, .08, 'triangle', v*.3, d); }
+      else noise(.04, v*.22, 'highpass', 7000, 7000, d); }};
+  while (c.next < AC.currentTime + 0.3){
+    c.at = c.next;
+    const st = c.step++, i = st % 16, bar = (st >> 4) % 4;
+    try { c.tr.step(api, st, bar, i); } catch(_){}
+    c.next += c.spb;
+  }
+}
+setInterval(musicTick, 60);
+document.addEventListener('visibilitychange', () => {
+  if (!AC) return;
+  if (document.hidden) AC.suspend(); else AC.resume();
+});
 
 // ---------- Helpers ----------
 const wallKey = (gx,gy) => gx+','+gy;
