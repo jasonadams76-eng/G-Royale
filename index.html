@@ -1214,6 +1214,35 @@ function camera(){
   return {x: Math.max(0, Math.min(W-VW, p.x - VW/2)), y: Math.max(0, Math.min(W-VH, p.y - VH/2))};
 }
 const LOOT_COL = {pistol:'#9cf', shotgun:'#fa5', ar:'#9f6', shield:'#58f', med:'#f55', wood:'#a73', bandage:'#fff'};
+// ---------- Tree pictures (pre-drawn once into small sprites so drawing 100s of trees stays fast) ----------
+// The canopy fills the same 22-unit circle trees always had, so the cover they give from bullets is unchanged.
+const TREE_VARIANTS = 6, TREE_SPRITE = {};
+function makeTree(variant, chopped){
+  const S2 = 2, size = 64, c = document.createElement('canvas'); c.width = c.height = size * S2;
+  const g = c.getContext('2d'); g.scale(S2, S2); g.translate(size/2, size/2);
+  let seed = 1234 + variant * 7919; const rnd2 = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const pal = chopped ? {dark:'#2a6a35', mid:'#378443', light:'#4c9c55', hi:'#6cb872', line:'#12401b'}
+                      : {dark:'#16692a', mid:'#238a37', light:'#35a847', hi:'#62cf6c', line:'#0b3a14'};
+  g.fillStyle = 'rgba(0,0,0,0.25)'; g.beginPath(); g.ellipse(3, 5, 23, 21, 0, 0, 7); g.fill();       // ground shadow
+  const lobes = 7 + (variant % 2), base = rnd2() * 6.28, lobe = [];
+  for (let i = 0; i < lobes; i++){ const a = base + i * 6.28318 / lobes + (rnd2()-0.5)*0.25; lobe.push([Math.cos(a)*(12.5+rnd2()*1.5), Math.sin(a)*(12.5+rnd2()*1.5), 8.6 + rnd2()*1.2]); }
+  g.lineWidth = 2; g.strokeStyle = pal.line;
+  g.fillStyle = pal.dark; g.beginPath(); g.arc(0, 0, 18, 0, 7); g.fill();
+  for (const [x,y,r] of lobe){ g.fillStyle = pal.dark; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke(); }
+  g.fillStyle = pal.dark; g.beginPath(); g.arc(0, 0, 17, 0, 7); g.fill();                              // hide the seams between lobes
+  for (const [x,y,r] of lobe){ g.fillStyle = pal.mid; g.beginPath(); g.arc(x*0.92-1.5, y*0.92-1.8, r*0.72, 0, 7); g.fill(); }
+  g.fillStyle = pal.light; g.beginPath(); g.arc(-3, -3.5, 11, 0, 7); g.fill();
+  for (let i = 0; i < 5; i++){ g.fillStyle = pal.hi; g.beginPath(); g.arc(-9 + rnd2()*14, -10 + rnd2()*12, 1.6 + rnd2()*2, 0, 7); g.fill(); }   // sunlit leaf clusters
+  g.fillStyle = 'rgba(0,0,0,0.18)'; g.beginPath(); g.arc(5, 6, 8, 0, 7); g.fill();                    // soft shade on the far side
+  if (chopped){ g.fillStyle = '#7a5530'; g.beginPath(); g.arc(0, 0, 3.4, 0, 7); g.fill(); g.strokeStyle = '#3a2410'; g.lineWidth = 1.2; g.stroke(); }   // trunk shows through a thinned canopy
+  else { g.fillStyle = '#5a3a1a'; g.beginPath(); g.arc(0.5, 0.5, 2.2, 0, 7); g.fill(); }
+  return c;
+}
+function treeSprite(t){
+  const k = (t.id % TREE_VARIANTS) + (t.wood < 100 ? 'c' : '');
+  return TREE_SPRITE[k] || (TREE_SPRITE[k] = makeTree(t.id % TREE_VARIANTS, t.wood < 100));
+}
+
 // ---------- Gun drawing: side-view silhouettes pointing along +x (origin at the grip), used for loot, held weapons and the slots ----------
 const GUN_W  = {pistol:24, shotgun:56, ar:52};     // overall length in drawing units
 const GUN_CX = {pistol:11, shotgun:14, ar:13};     // centre of that length (for centring icons)
@@ -1336,9 +1365,7 @@ function draw(){
     ctx.strokeStyle='#432'; ctx.lineWidth=3; ctx.strokeRect(x+1,y+1,G-2,G-2); }
   // trees
   for (const t of S.trees){ if (!vis(t.x,t.y,40)) continue;
-    ctx.fillStyle='#5a3a1a'; ctx.beginPath(); ctx.arc(t.x,t.y,6,0,7); ctx.fill();
-    ctx.fillStyle = t.wood < 100 ? '#2d6a2d' : '#1f7a2a'; ctx.beginPath(); ctx.arc(t.x,t.y,t.r,0,7); ctx.fill();
-    ctx.strokeStyle='#0d3d12'; ctx.lineWidth=2; ctx.stroke(); }
+    ctx.drawImage(treeSprite(t), t.x-32, t.y-32, 64, 64); }
   // bullets
   for (const b of S.bullets){ ctx.strokeStyle=b.color; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-b.vx*0.025, b.y-b.vy*0.025); ctx.stroke(); }
   // actors
