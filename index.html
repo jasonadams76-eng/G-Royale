@@ -115,7 +115,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · flame heat</div>
+      <div class="ver">Version 2026-10-04 · lakes</div>
     </div>
 
     <div id="s-join" hidden>
@@ -169,8 +169,22 @@ document.addEventListener('touchmove', e => { if (!(e.target.closest && e.target
 document.addEventListener('gesturestart', e => e.preventDefault(), {passive:false});
 
 // ---------- Config ----------
-const W = 4000, G = 48, BOTS = 24, CENTER = {x: W/2, y: W/2};
-const TREE_COUNT = 320;
+const W = 6000, G = 48, BOTS = 24, CENTER = {x: W/2, y: W/2};     // the board (it used to be 4000; bigger now for 24+ players)
+const MS = W / 4000;                                           // map scale compared with the original board
+// Two big lakes, each with a small island (and a chest) in the middle and a boat waiting on the shore.
+const LAKE_R = 520, ISLAND_R = 95, BOAT_MULT = 1.3, SHORE = 6;
+const lakesOf = () => (S && S.lakes) || [];
+const inWater = (x, y) => lakesOf().some(l => { const d = Math.hypot(x-l.x, y-l.y); return d < l.r && d > l.i; });      // open water (boats only)
+const nearLake = (x, y, m) => lakesOf().some(l => Math.hypot(x-l.x, y-l.y) < l.r + m);                                 // anywhere in or beside a lake (incl. island)
+// walkers can't stand on water: push them to whichever bank (the lake shore or the island shore) is closer
+function pushOutOfWater(a){
+  for (const l of lakesOf()){
+    const dx = a.x - l.x, dy = a.y - l.y, d = Math.hypot(dx, dy) || 1, lo = l.i - SHORE, hi = l.r + SHORE;
+    if (d > lo && d < hi){ const t = (hi - d) < (d - lo) ? hi : lo; a.x = l.x + dx/d*t; a.y = l.y + dy/d*t; }
+  }
+}
+const TREE_COUNT = Math.round(320 * MS * MS);                  // same tree density as before
+const STORM_R0 = Math.round(2900 * MS);                        // the storm starts outside the whole board
 const WEAP = {
   pickaxe: {name:'Pickaxe', melee:true, dmg:20, rate:0.5, range:55, color:'#bbb'},
   pistol:  {name:'Pistol',  dmg:18, rate:0.33, spd:950, spread:0.03, pellets:1, life:0.7, color:'#9cf'},
@@ -199,7 +213,7 @@ const newAmmo = () => ({pistol:0, shotgun:0, ar:0});
 const FL_MAX = 5, FL_COOL = 1;      // the flamethrower burns for at most 5 s at a time, then needs a 1 s pause
 const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 8;   // flamethrower: reach in px, a burst every 0.1 s, 8 damage each = 80 damage/s to everything in the flame
 const BOOT_MULT = 1.5, BOOT_RAR = 4, bootMul = a => a.inv.includes('boots') ? BOOT_MULT : 1;   // speed boots: 1.5x move speed while in your loadout (one pair per match)
-const CHEST_COUNT = 32, CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
+const CHEST_COUNT = Math.round(32 * MS), CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
 // Gun rarities: the rarer the gun, the harder it hits, the faster it fires and the straighter it shoots.
 const RARITY = [
   {name:'White',  col:'#c3ccd2', dmg:1.00, rate:1.00, spread:1.00, odds:58},
@@ -216,9 +230,9 @@ function rollRarity(){
 const newGr = () => ({pistol:0, shotgun:0, ar:0});     // rarity of the gun held for each type (you can hold one of each)
 const TYPES = ['pistol','shotgun','ar','bandage','shield','med','wood','grenade','boots','flame','ammo_pistol','ammo_shotgun','ammo_ar'];   // index used on the wire
 const PHASES = [
-  {wait:20, shrink:20, r:1700}, {wait:15, shrink:15, r:1100},
-  {wait:12, shrink:12, r:600},  {wait:10, shrink:10, r:250},
-  {wait:8,  shrink:8,  r:60}
+  {wait:25, shrink:25, r:Math.round(1700*MS)}, {wait:18, shrink:20, r:Math.round(1100*MS)},
+  {wait:14, shrink:14, r:Math.round(600*MS)},  {wait:11, shrink:11, r:Math.round(250*MS)},
+  {wait:8,  shrink:8,  r:Math.round(60*MS)}
 ];
 
 // ---------- Game / network state ----------
@@ -409,15 +423,30 @@ function botPlan(humans){
 // humans = [{pid, name, mate}] (pid 0 is the host)
 function init(humans){
   humans = humans || [{pid:0, name:cleanName($('pname').value) || 'Player 1', mate:null, shirt:look.shirt, skin:look.skin, crown:soloCrown}];
-  S = {actors:[], players:[], bullets:[], trees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[],
+  S = {actors:[], players:[], bullets:[], trees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[], lakes:[], boats:[],
     over:false, winTeam:null, overAt:0,
-    storm:{i:0, state:'wait', t:PHASES[0].wait, r:2900, rFrom:2900, rTo:PHASES[0].r}};
-  for (let i=0;i<TREE_COUNT;i++) S.trees.push({id:i, x:Math.round(rnd(100,W-100)), y:Math.round(rnd(100,W-100)), r:22, wood:100});
+    storm:{i:0, state:'wait', t:PHASES[0].wait, r:STORM_R0, rFrom:STORM_R0, rTo:PHASES[0].r}};
+  {   // two lakes on opposite sides of the board (random direction each match), each with an island and a boat on its shore
+    const th = Math.random()*Math.PI*2;
+    for (let i = 0; i < 2; i++){
+      const ang = th + i*Math.PI + rnd(-0.35, 0.35), dist = 1750 + rnd(-150, 150);
+      const l = {x:Math.round(CENTER.x + Math.cos(ang)*dist), y:Math.round(CENTER.y + Math.sin(ang)*dist), r:LAKE_R, i:ISLAND_R};
+      S.lakes.push(l);
+      const ba = rnd(0, Math.PI*2);
+      S.boats.push({x:Math.round(l.x + Math.cos(ba)*(l.r-26)), y:Math.round(l.y + Math.sin(ba)*(l.r-26)), ang:ba + Math.PI/2, rider:null});
+    }
+  }
+  for (let i=0;i<TREE_COUNT;i++){
+    let x, y, tries = 0;
+    do { x = Math.round(rnd(100,W-100)); y = Math.round(rnd(100,W-100)); } while (nearLake(x, y, 30) && ++tries < 40);
+    S.trees.push({id:i, x, y, r:22, wood:100});
+  }
   // no loot lies on the ground at the start: everything comes from chests (or from eliminated players)
+  for (const l of S.lakes) S.chests.push({x:l.x, y:l.y, open:false, island:true});       // the island chests: only reachable by boat
   for (let n=0;n<CHEST_COUNT;n++){
     for (let tries=0;tries<30;tries++){
       const x = Math.round(rnd(150,W-150)), y = Math.round(rnd(150,W-150));
-      if (S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 50)){ S.chests.push({x, y, open:false}); break; }
+      if (!nearLake(x, y, 40) && S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 50)){ S.chests.push({x, y, open:false}); break; }
     }
   }
   if (S.chests.length){                        // exactly one chest holds the speed boots and a different one holds the flamethrower
@@ -431,12 +460,6 @@ function init(humans){
     a.team = teamIdOf(h);
     S.actors.push(a); S.players.push(a); byPid[h.pid] = a;
   }
-  for (const h of humans){          // human duo partners start together
-    if (h.mate != null && h.pid < h.mate && byPid[h.mate]){
-      const a = byPid[h.pid], b = byPid[h.mate];
-      b.x = clampW(a.x + rnd(-80,80)); b.y = clampW(a.y + rnd(-80,80)); b.tx = b.x; b.ty = b.y;
-    }
-  }
   S.player = byPid[0] || S.players[0];
   const plan = botPlan(humans);
   let n = 0;
@@ -447,14 +470,35 @@ function init(humans){
       b.team = 'B'+t;
       if (plan.size === 2){           // bot duos: partners spawn together and share a colour hue
         if (k === 0){ lead = b; b.color = `hsl(${hue},65%,45%)`; }
-        else {
-          b.x = clampW(lead.x + rnd(-70,70)); b.y = clampW(lead.y + rnd(-70,70)); b.tx = b.x; b.ty = b.y;
-          b.color = `hsl(${hue},65%,68%)`;
-        }
+        else b.color = `hsl(${hue},65%,68%)`;
       }
       S.actors.push(b);
     }
   }
+  placeSpawns();
+}
+// Every team (a solo player, a co-op duo, a bot duo) gets its own starting spot. The spots are spread evenly over the board
+// (a sunflower spiral gives equal spacing in every direction), handed out in random order, and partners always start together.
+function placeSpawns(){
+  const teams = [...new Set(S.actors.map(a => a.team))];
+  const U = teams.length, R = W/2 - 300;
+  const pts = [];
+  for (let i = 0; i < U; i++){
+    const r = R * Math.sqrt((i + 0.5) / U), ang = i * 2.39996323;
+    pts.push({x:CENTER.x + Math.cos(ang)*r, y:CENTER.y + Math.sin(ang)*r});
+  }
+  for (let i = U - 1; i > 0; i--){ const j = Math.random()*(i+1)|0; [pts[i], pts[j]] = [pts[j], pts[i]]; }       // random order: nobody always gets the middle
+  const free = (x, y) => S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 45);
+  teams.forEach((tm, ti) => {
+    let px = pts[ti].x, py = pts[ti].y;
+    for (const l of S.lakes){ const dx = px-l.x, dy = py-l.y, d = Math.hypot(dx,dy) || 1; if (d < l.r + 90){ px = l.x + dx/d*(l.r+90); py = l.y + dy/d*(l.r+90); } }     // never start in or beside a lake
+    for (let tries = 0; tries < 20 && !free(px, py); tries++){ px = pts[ti].x + rnd(-120,120); py = pts[ti].y + rnd(-120,120); }
+    S.actors.filter(a => a.team === tm).forEach((a, k) => {
+      const ang = rnd(0, Math.PI*2), d = k === 0 ? 0 : rnd(40, 70);                                                 // partners stand right next to each other
+      a.x = Math.max(100, Math.min(W-100, Math.round(px + Math.cos(ang)*d))); a.y = Math.max(100, Math.min(W-100, Math.round(py + Math.sin(ang)*d)));
+      a.tx = a.x; a.ty = a.y;
+    });
+  });
 }
 
 // ---------- Sound effects (all synthesized with Web Audio, so there are no audio files to load) ----------
@@ -683,7 +727,7 @@ function build(a){
   if (!a.alive || a.wood < 10) return;
   const gx = Math.floor((a.x + Math.cos(a.angle)*62)/G), gy = Math.floor((a.y + Math.sin(a.angle)*62)/G);
   const k = wallKey(gx,gy);
-  if (S.walls.has(k) || gx<0 || gy<0 || gx*G>=W || gy*G>=W) return;
+  if (S.walls.has(k) || gx<0 || gy<0 || gx*G>=W || gy*G>=W || nearLake(gx*G+G/2, gy*G+G/2, 0)) return;       // no fences on the lakes or islands
   S.walls.set(k, {gx, gy, hp:150}); a.wood -= 10; sfx('bd', a.x, a.y);
 }
 function damage(a, dmg, owner){
@@ -887,7 +931,7 @@ function ammoCheck(){
       for (let tries = 0; tries < 12; tries++){
         const ang = rnd(0, Math.PI*2), r = Math.sqrt(Math.random()) * R;
         x = Math.round(Math.max(60, Math.min(W-60, CENTER.x + Math.cos(ang)*r))); y = Math.round(Math.max(60, Math.min(W-60, CENTER.y + Math.sin(ang)*r)));
-        if (S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 40) && !S.walls.has(wallKey(Math.floor(x/G), Math.floor(y/G)))) break;
+        if (!nearLake(x, y, 15) && S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 40) && !S.walls.has(wallKey(Math.floor(x/G), Math.floor(y/G)))) break;
       }
       S.loot.push({x, y, type:key, n:m.box}); burst(x, y, '#ffd84a', 16); dropped++;
     }
@@ -895,6 +939,44 @@ function ammoCheck(){
   if (dropped){
     toast('Ammo supplies dropped on the map!', 2500);
     if (NET.role === 'host') broadcast({t:'tst', x:'Ammo supplies dropped on the map!'});
+  }
+}
+// ---- boats ----
+function leaveBoat(a){
+  const b = a.boat; if (!b) return;
+  b.rider = null; a.boat = null; a.boatCool = 1.0;      // can't hop straight back on
+  if (a.pid > 0) a.tpHold = 0;
+}
+// the player at this machine drives the boat; stepping onto land ends the ride
+function rideBoat(a, vx, vy, dt){
+  const b = a.boat, sp = Math.hypot(vx, vy);
+  if (sp > 5) b.ang = Math.atan2(vy, vx);
+  const nx = b.x + vx*dt, ny = b.y + vy*dt;
+  if (inWater(nx, ny)){ b.x = nx; b.y = ny; a.x = nx; a.y = ny; return; }
+  const ux = sp > 5 ? vx/sp : 0, uy = sp > 5 ? vy/sp : 0;                            // ran into land: climb out onto it
+  a.x = nx + ux*14; a.y = ny + uy*14; leaveBoat(a); pushOutOfWater(a);
+}
+// boarding (walk up to a free boat) and remote riders (their reported position drives the boat)
+function nearLakeWater(x,y){ for (const l of lakesOf()){ const d=Math.hypot(x-l.x,y-l.y); if (d < l.r+8 && d > l.i-8) return true; } return false; }
+function boatStep(a){
+  if (!a.isPlayer) return;
+  const b = a.boat;
+  if (b){
+    if (!a.alive){ leaveBoat(a); return; }
+    if (a.pid > 0 && a.tpHold > 0 && Math.hypot(a.x-b.x, a.y-b.y) < 60) a.tpHold = 0;   // guest has arrived on the boat
+    if (a.pid > 0 && !(a.tpHold > 0)){
+      if (!nearLakeWater(a.x, a.y)){ pushOutOfWater(a); leaveBoat(a); }
+      else { const dx = a.x - b.x, dy = a.y - b.y; if (Math.hypot(dx, dy) > 0.5) b.ang = Math.atan2(dy, dx); b.x = a.x; b.y = a.y; }
+    }
+    return;
+  }
+  if (!a.alive || a.boatCool > 0) return;
+  for (const bt of S.boats){
+    if (bt.rider || Math.hypot(bt.x-a.x, bt.y-a.y) > 44) continue;
+    bt.rider = a; a.boat = bt; a.x = a.tx = bt.x; a.y = a.ty = bt.y;
+    const msg = 'You are on the boat! Steer into land to get out';
+    if (a.pid === 0) toast(msg, 3000); else { a.tpHold = 1.2; peerSend(a.pid, {t:'tp', x:Math.round(bt.x), y:Math.round(bt.y), m:msg}); }
+    break;
   }
 }
 function giveAmmo(a, l){
@@ -923,6 +1005,7 @@ function openChest(c){
   if (Math.random() < GR_CHANCE) drops.push({type:'grenade', rar:4});   // 7%: a (gold) grenade
   drops.filter(d => GUN_W[d.type]).forEach(d => drops.push({type:'ammo_'+d.type, n:AMMO['ammo_'+d.type].box}));      // every gun comes with a box of its bullets
   if (Math.random() < 0.4){ const t = ['ammo_pistol','ammo_shotgun','ammo_ar'][Math.random()*3|0]; drops.push({type:t, n:AMMO[t].box}); }   // 40%: an extra box
+  if (c.island){ drops.push({type:pick(), rar:Math.max(rollRarity(), rollRarity())}); drops.push({type:'shield'}); }      // island chests are richer: a better gun and a shield potion
   const off = Math.random()*Math.PI*2;
   drops.forEach((dr,i) => {
     const ang = off + i*Math.PI*2/drops.length, d = rnd(40,55);
@@ -958,6 +1041,7 @@ function collide(a){
       else a.y -= a.r;
     }
   }
+  if (!a.boat) pushOutOfWater(a);
   a.x = Math.max(a.r, Math.min(W-a.r, a.x)); a.y = Math.max(a.r, Math.min(W-a.r, a.y));
 }
 
@@ -1009,14 +1093,14 @@ function botThink(b, dt){
     }
     // seek loot / chests or wander
     let near = null, nd = armed ? 700 : 1800;   // an unarmed bot heads for the nearest chest, even a long way off
-    for (const l of S.loot){ if (!canTake(b, l)) continue; const d = Math.hypot(l.x-b.x,l.y-b.y); if (d < nd){ nd = d; near = l; } }
-    for (const c of S.chests){ if (c.open) continue; const d = Math.hypot(c.x-b.x,c.y-b.y); if (d < nd){ nd = d; near = c; } }
+    for (const l of S.loot){ if (!canTake(b, l) || nearLake(l.x, l.y, 0)) continue; const d = Math.hypot(l.x-b.x,l.y-b.y); if (d < nd){ nd = d; near = l; } }
+    for (const c of S.chests){ if (c.open || c.island) continue; const d = Math.hypot(c.x-b.x,c.y-b.y); if (d < nd){ nd = d; near = c; } }
     // duo partners stick together: regroup if they have drifted apart
     const mate = S.actors.find(o => o !== b && o.alive && o.team === b.team);
     if (mate && near && Math.hypot(near.x-mate.x, near.y-mate.y) > 380) near = null;   // don't wander off to loot far from the partner
     if (mate && Math.hypot(mate.x-b.x, mate.y-b.y) > 240) b.wp = {x:mate.x, y:mate.y};
     else if (near) b.wp = {x:near.x,y:near.y};
-    else { b.wpT -= dt; if (!b.wp || b.wpT <= 0){ b.wp = {x:CENTER.x+rnd(-S.storm.r,S.storm.r)*0.8, y:CENTER.y+rnd(-S.storm.r,S.storm.r)*0.8}; b.wpT = rnd(4,9); } }
+    else { b.wpT -= dt; if (!b.wp || b.wpT <= 0){ for (let tr = 0; tr < 8; tr++){ b.wp = {x:CENTER.x+rnd(-S.storm.r,S.storm.r)*0.8, y:CENTER.y+rnd(-S.storm.r,S.storm.r)*0.8}; if (!nearLake(b.wp.x, b.wp.y, 20)) break; } b.wpT = rnd(4,9); } }
     const a = Math.atan2(b.wp.y-b.y, b.wp.x-b.x); mx = Math.cos(a); my = Math.sin(a);
     b.angle = a; b.cur = bestSlot(b);
     // harvest trees in the way
@@ -1082,12 +1166,12 @@ function update(dt){
   st.t -= dt;
   if (st.state === 'wait'){
     if (st.t <= 0){ st.state = 'shrink'; st.t = PHASES[st.i].shrink; st.rFrom = st.r; st.rTo = PHASES[st.i].r; }
-  } else {
+  } else if (st.state === 'shrink'){
     st.r = st.rFrom + (st.rTo - st.rFrom) * (1 - Math.max(0, st.t)/PHASES[st.i].shrink);
     if (st.t <= 0){
       st.r = st.rTo;
       if (st.i < PHASES.length-1){ st.i++; st.state = 'wait'; st.t = PHASES[st.i].wait; }
-      else st.t = 9999;
+      else { st.state = 'final'; st.t = 9999; }               // the last circle stays put (before this fix the radius blew up after the final phase)
     }
   }
   if (S.ammoChk === undefined) S.ammoChk = 40;                 // first supply check 40 s in (chests haven't been looted yet before that)
@@ -1098,6 +1182,7 @@ function update(dt){
   for (const a of S.actors){
     if (!a.alive) continue;
     a.cd -= dt; a.swing -= dt; if (a.flLock > 0) a.flLock -= dt;
+    if (a.boatCool > 0) a.boatCool -= dt; if (a.tpHold > 0) a.tpHold -= dt;
     if (a.flGap > 0){ a.flGap -= dt; if (a.flGap <= 0) a.flBurn = 0; }          // let go for a moment and the burn timer starts over
     if (a.flt > 0){ a.flt -= dt; if (a.inv[a.cur] !== 'flame') a.flt = 0; }     // the flame only burns while the flamethrower is the selected item
     // bandage channel: switching items cancels it, finishing heals and uses one bandage
@@ -1122,7 +1207,7 @@ function update(dt){
     } else if (a.isPlayer){
       // remote human: they move themselves, we trust their position and just apply their aim/fire
       const g = a.in;
-      if (g){ a.tx = g.x; a.ty = g.y; a.angle = g.a; if (g.f) fire(a); }
+      if (g){ if (!(a.tpHold > 0)){ a.tx = g.x; a.ty = g.y; } a.angle = g.a; if (g.f) fire(a); }
     } else [vx,vy] = botThink(a, dt);
 
     if (a.isPlayer && a.pid > 0){
@@ -1131,8 +1216,10 @@ function update(dt){
       a.x = Math.max(a.r, Math.min(W-a.r, a.x)); a.y = Math.max(a.r, Math.min(W-a.r, a.y));
     } else {
       if (a.heal > 0){ vx *= 0.5; vy *= 0.5; }   // slowed while healing
-      a.x += vx*dt; a.y += vy*dt; collide(a);
+      if (a.boat) rideBoat(a, vx*BOAT_MULT, vy*BOAT_MULT, dt);
+      else { a.x += vx*dt; a.y += vy*dt; collide(a); }
     }
+    boatStep(a);
     // storm damage
     if (Math.hypot(a.x-CENTER.x, a.y-CENTER.y) > st.r){
       a.stormAcc = (a.stormAcc||0) + dt;
@@ -1211,7 +1298,7 @@ function sendSnapshot(){
   const msg = {t:'snap', st:{i:st.i, s:st.state === 'wait' ? 0 : 1, t:+st.t.toFixed(2), r:Math.round(st.r)},
     A:S.actors.map(encodeActor),
     B:S.bullets.map(b => [Math.round(b.x), Math.round(b.y), Math.round(b.vx), Math.round(b.vy), b.color]),
-    ev:S.ev, sn:S.sn || [], G:S.grenades.map(g => [Math.round(g.x), Math.round(g.y), +(g.t/g.dur).toFixed(2)]), bm:S.bm || [], o:S.over?1:0, wt:S.winTeam};
+    ev:S.ev, sn:S.sn || [], G:S.grenades.map(g => [Math.round(g.x), Math.round(g.y), +(g.t/g.dur).toFixed(2)]), bm:S.bm || [], Bt:S.boats.map(b => [Math.round(b.x), Math.round(b.y), +b.ang.toFixed(2), b.rider ? S.actors.indexOf(b.rider) : -1]), o:S.over?1:0, wt:S.winTeam};
   S.ev = []; S.sn = []; S.bm = [];
   // slow-changing world data is only sent when it actually changed
   const Wl = S.walls.size ? [...S.walls.values()].map(w => [w.gx, w.gy, Math.round(w.hp)]) : [];
@@ -1226,7 +1313,7 @@ function sendSnapshot(){
 }
 function sendInit(){
   const base = {t:'init',
-    trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]),
+    trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]), lakes:S.lakes.map(l => [l.x, l.y]), boats:S.boats.map(b => [b.x, b.y, b.ang]),
     actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, s:a.shirt || null, k:a.skin, cw:a.crown ? 1 : 0, x:Math.round(a.x), y:Math.round(a.y)}))};
   for (const pid in NET.peers){
     const me = S.actors.findIndex(a => a.isPlayer && a.pid === +pid);
@@ -1405,8 +1492,8 @@ function onLobbyMsg(m){
 
 // ---------- Networking: guest side ----------
 function buildGuestState(m){
-  S = {actors:[], players:[], bullets:[], trees:[], allTrees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[],
-    over:false, winTeam:null, overAt:0, storm:{i:0, state:'wait', t:20, r:2900, rFrom:2900, rTo:1700}};
+  S = {actors:[], players:[], bullets:[], trees:[], allTrees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[], lakes:(m.lakes || []).map(([x,y]) => ({x, y, r:LAKE_R, i:ISLAND_R})), boats:(m.boats || []).map(([x,y,ang]) => ({x, y, tx:x, ty:y, ang, rider:null})),
+    over:false, winTeam:null, overAt:0, storm:{i:0, state:'wait', t:PHASES[0].wait, r:STORM_R0, rFrom:STORM_R0, rTo:PHASES[0].r}};
   m.trees.forEach(([x,y], id) => { const t = {id, x, y, r:22, wood:100}; S.allTrees.push(t); S.trees.push(t); });
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
   m.actors.forEach(d => S.actors.push({x:d.x, y:d.y, tx:d.x, ty:d.y, r:15, hp:100, sh:0, wood:0,
@@ -1443,6 +1530,14 @@ function applySnap(m){
       a.gr = ng; a._pg = Object.assign({}, ng); a._pi = a.inv.slice();
     }
   }
+  if (m.Bt){                                                          // boats: positions, and who is riding which
+    for (const a of S.actors) a.boat = null;
+    m.Bt.forEach((d, i) => {
+      const b = S.boats[i]; if (!b) return;
+      b.tx = d[0]; b.ty = d[1]; b.ang = d[2]; b.rider = null;
+      if (d[3] >= 0 && S.actors[d[3]]){ b.rider = S.actors[d[3]]; S.actors[d[3]].boat = b; }
+    });
+  }
   S.bullets = m.B.map(b => ({x:b[0], y:b[1], vx:b[2], vy:b[3], color:b[4]}));
   S.grenades = (m.G || []).map(g => ({x:g[0], y:g[1], p:g[2]}));
   if (m.bm) for (const q of m.bm) S.blasts.push({x:q[0], y:q[1], t0:performance.now()});
@@ -1468,6 +1563,9 @@ function onGuestData(m){
       break;
     case 'rejected':
       if (NET.joinFail) NET.joinFail(m.why || 'Could not join that room.');
+      break;
+    case 'tp':
+      if (phase === 'play' && S.player){ S.player.x = +m.x || S.player.x; S.player.y = +m.y || S.player.y; toast(String(m.m || '').slice(0, 80), 3000); }
       break;
     case 'tst':
       if (phase === 'play') toast(String(m.x || '').slice(0, 60), 2500);
@@ -1506,6 +1604,7 @@ function updateGuest(dt){
     const inp = localInput(me, dt);
     let vx = inp.vx*bootMul(me), vy = inp.vy*bootMul(me);
     if (me.heal > 0){ vx *= 0.5; vy *= 0.5; }
+    if (me.boat){ vx *= BOAT_MULT; vy *= BOAT_MULT; if (Math.hypot(vx, vy) > 5) me.boat.ang = Math.atan2(vy, vx); }
     me.x += vx*dt; me.y += vy*dt; collide(me);
     NET.inAcc += dt;
     if (NET.inAcc >= 1/30){ NET.inAcc = 0; netSend({t:'in', x:Math.round(me.x), y:Math.round(me.y), a:+me.angle.toFixed(3), f:inp.fire?1:0}); }
@@ -1518,6 +1617,7 @@ function updateGuest(dt){
     a.x += (a.tx - a.x)*k; a.y += (a.ty - a.y)*k;
     if (a.tang !== undefined) a.angle += Math.atan2(Math.sin(a.tang-a.angle), Math.cos(a.tang-a.angle))*k;
   }
+  for (const bt of S.boats){ if (bt.tx !== undefined){ bt.x += (bt.tx - bt.x)*k; bt.y += (bt.ty - bt.y)*k; } }
   for (const b of S.bullets){ b.x += b.vx*dt; b.y += b.vy*dt; }
   st.t -= dt;
   stepParticles(dt);
@@ -1680,6 +1780,17 @@ const LOOT_LBL = {pistol:'P', shotgun:'S', ar:'R', shield:'+', med:'♥', wood:'
 
 // a little person seen from above, facing right (shared by the game and the menu preview)
 const flameHeat = p => NET.role === 'guest' ? (p.flHeat || 0) : (p.flLock > 0 ? 2 + p.flLock : (p.flBurn || 0) / FL_MAX);     // 0..1 while burning, 2..3 while cooling down
+function drawBoat(c, x, y, ang, used, tt){      // small wooden rowing boat seen from above, bow pointing along its heading
+  c.save(); c.translate(x, y); c.rotate(ang); c.lineJoin = 'round';
+  c.fillStyle = 'rgba(255,255,255,.35)'; c.beginPath(); c.ellipse(-4, 0, 30, 17, 0, 0, 7); c.fill();                     // foam ring on the water
+  const hull = k => { c.beginPath(); c.moveTo(25*k,0); c.quadraticCurveTo(14*k,-14*k,-18*k,-12.5*k); c.lineTo(-23*k,-8*k); c.lineTo(-23*k,8*k); c.lineTo(-18*k,12.5*k); c.quadraticCurveTo(14*k,14*k,25*k,0); c.closePath(); };
+  c.fillStyle = '#8a5a2b'; c.strokeStyle = '#25140a'; c.lineWidth = 2.2; hull(1); c.fill(); c.stroke();
+  c.fillStyle = '#c4915a'; hull(0.78); c.fill();
+  c.strokeStyle = 'rgba(60,30,10,.55)'; c.lineWidth = 1.2; c.beginPath(); for (const px of [-12, -2, 8, 16]){ c.moveTo(px, -9); c.lineTo(px, 9); } c.stroke();     // planks
+  c.fillStyle = '#7a4f26'; c.strokeStyle = '#25140a'; c.lineWidth = 1.5; c.fillRect(-5, -10, 6, 20); c.strokeRect(-5, -10, 6, 20);                        // seat
+  if (!used){ c.fillStyle = '#e53935'; c.beginPath(); c.arc(18, 0, 2.2, 0, 7); c.fill(); }                                                              // little red marker so a free boat stands out
+  c.restore();
+}
 function drawCrownIcon(c, x, y, k){      // little upright crown shown above a champion
   c.save(); c.translate(x, y); c.scale(k, k); c.fillStyle = '#ffc400'; c.strokeStyle = '#000'; c.lineWidth = 1.6/k; c.lineJoin = 'round';
   c.beginPath(); c.moveTo(-9,4); c.lineTo(-10,-6); c.lineTo(-4.5,-1); c.lineTo(0,-8); c.lineTo(4.5,-1); c.lineTo(10,-6); c.lineTo(9,4); c.closePath(); c.fill(); c.stroke();
@@ -1751,6 +1862,25 @@ function draw(){
   // map edge
   ctx.strokeStyle = '#000'; ctx.lineWidth = 4; ctx.strokeRect(0,0,W,W);
   const vis = (x,y,m=60) => x>cam.x-m && x<cam.x+vw+m && y>cam.y-m && y<cam.y+vh+m;
+  // lakes: sandy bank, water with drifting ripples, and an island in the middle
+  const tt = performance.now()/1000;
+  for (const l of S.lakes){
+    if (l.x+l.r+40 < cam.x || l.x-l.r-40 > cam.x+vw || l.y+l.r+40 < cam.y || l.y-l.r-40 > cam.y+vh) continue;
+    ctx.fillStyle = '#dcc98e'; ctx.beginPath(); ctx.arc(l.x, l.y, l.r+SHORE+4, 0, 7); ctx.fill();
+    ctx.fillStyle = '#2f82d4'; ctx.beginPath(); ctx.arc(l.x, l.y, l.r, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(15,60,140,.22)'; ctx.beginPath(); ctx.arc(l.x, l.y, l.r*0.7, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 2; ctx.beginPath();
+    for (let i = 0; i < 70; i++){
+      const ang = i*2.39996, rr = l.i + 40 + ((i*137) % Math.max(10, l.r - l.i - 70)), x = l.x + Math.cos(ang)*rr, y = l.y + Math.sin(ang)*rr;
+      if (!vis(x, y, 30)) continue;
+      const ph = Math.sin(tt*1.4 + i)*4; ctx.moveTo(x-12+ph, y); ctx.quadraticCurveTo(x+ph, y-4, x+12+ph, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = '#dcc98e'; ctx.beginPath(); ctx.arc(l.x, l.y, l.i+SHORE, 0, 7); ctx.fill();                 // island: sand rim, grass top
+    ctx.fillStyle = '#5d9f4b'; ctx.beginPath(); ctx.arc(l.x, l.y, l.i-4, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 2; ctx.stroke();
+  }
+  for (const b of S.boats){ const r = b.rider; drawBoat(ctx, r ? r.x : b.x, r ? r.y : b.y, b.ang || 0, !!r, tt); }
   // chests
   for (const c of S.chests){ if (!vis(c.x,c.y)) continue;
     ctx.save(); ctx.translate(c.x,c.y); ctx.lineWidth=2; ctx.strokeStyle='#000';
@@ -1951,6 +2081,7 @@ function drawHUD(){
   ctx.fillStyle='#d9f';
   ctx.fillText((st.state==='wait'?'Storm shrinks in ':'Storm closing ')+Math.max(0,st.t|0)+'s', tx, ty+lh*2);
   ctx.fillStyle='#0a3a12cc'; ctx.fillRect(mx,my,ms,ms);
+  for (const l of S.lakes){ ctx.fillStyle = '#3b8ee0'; ctx.beginPath(); ctx.arc(mx+l.x*k, my+l.y*k, l.r*k, 0, 7); ctx.fill(); ctx.fillStyle = '#6fbf5a'; ctx.beginPath(); ctx.arc(mx+l.x*k, my+l.y*k, Math.max(1.5, l.i*k), 0, 7); ctx.fill(); }
   ctx.strokeStyle='#c6f'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(mx+CENTER.x*k,my+CENTER.y*k,st.r*k,0,7); ctx.stroke();
   ctx.fillStyle='#fc4';
   for (const c of S.chests){ if (c.open || Math.hypot(c.x-p.x,c.y-p.y) > 900) continue; ctx.fillRect(mx+c.x*k-2, my+c.y*k-2, 4, 4); }
