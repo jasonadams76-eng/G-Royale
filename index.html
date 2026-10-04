@@ -107,7 +107,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · pickaxe</div>
+      <div class="ver">Version 2026-10-04 · victory song</div>
     </div>
 
     <div id="s-join" hidden>
@@ -558,6 +558,40 @@ const MUSIC = {
       const l = this.lead[bar][i]; if (l) m.tone(mtof(l), mtof(l), .15, 'square', .075);
     }}
 };
+// victory: a ~24 second triumphant fanfare (plays once): brass intro, a big march-like theme, then a soaring finale
+MUSIC.victory = {bpm:120, len:192,
+  chords:[[60,64,67],[55,59,62],[57,60,64],[53,57,60],[60,64,67],[55,59,62],[53,57,60],[55,59,62],[57,60,64],[53,57,60],[55,59,62],[60,64,67]],
+  roots:[36,31,33,29,36,31,29,31,33,29,31,36],
+  lead:[[72,0,0,72,0,0,72,0,76,0,0,0,79,0,0,0],[79,0,0,77,0,0,76,0,74,0,0,0,71,0,0,0],
+        [72,0,0,76,0,0,81,0,0,0,79,0,76,0,0,0],[77,0,0,0,76,0,74,0,72,0,0,0,69,0,0,0],
+        [79,0,0,76,0,79,0,84,0,0,0,83,0,81,0,79],[78,0,0,0,74,0,79,0,0,0,83,0,86,0,0,0],
+        [81,0,0,77,0,81,0,84,0,0,0,83,0,81,0,77],[79,0,0,0,83,0,86,0,0,0,83,0,79,0,0,0],
+        [81,0,0,84,0,88,0,0,0,0,86,0,84,0,81,0],[84,0,0,0,81,0,84,0,89,0,0,0,88,0,86,0],
+        [86,0,0,0,83,0,86,0,91,0,0,0,0,0,0,0],[84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]],
+  step(m, st, bar, i){
+    const ch = this.chords[bar], r = this.roots[bar], row = this.lead[bar], big = bar >= 4, fin = bar >= 8;
+    if (bar === 11){
+      if (i === 0){ [48,52,55,60,64,67,72,76].forEach(n => m.tone(mtof(n), mtof(n), 15*m.spb, 'sawtooth', .05)); m.tone(mtof(36), mtof(36), 15*m.spb, 'sine', .35); m.drum('k', .9); m.drum('c', .9); }
+    } else if (i === 0) ch.forEach(n => m.tone(mtof(n), mtof(n), 15*m.spb, big ? 'sawtooth' : 'triangle', big ? .045 : .07));
+    if (i % (big ? 4 : 8) === 0 && bar < 11) m.tone(mtof(r), mtof(r), .3, 'triangle', .32);
+    if (bar === 3 && i >= 8) m.drum('s', .2 + (i-8)*.07);                       // snare roll into the theme
+    if (bar === 3 && i === 0) m.drum('k', .5);
+    if (big && bar < 11){
+      if (i % 4 === 0) m.drum('k', .8);
+      if (i === 4 || i === 12) m.drum('s', .55);
+      if (i % 2 === 0) m.drum('h', .25);
+      if (i === 0 && (bar === 4 || bar === 8)) m.drum('c', .6);
+    }
+    if (fin && bar < 11 && i % 2 === 0){ const n = ch[(i/2) % 3] + 24; m.tone(mtof(n), mtof(n), .2, 'sine', .06); }   // sparkling arpeggio
+    const l = row[i];
+    if (l){
+      let len = 1; while (i+len < 16 && !row[i+len] && len < 8) len++;
+      if (bar === 11) len = 14;
+      const d = len * m.spb * .95;
+      m.tone(mtof(l), mtof(l), d, 'sawtooth', .085); m.tone(mtof(l), mtof(l), d, 'square', .05);
+      if (fin) m.tone(mtof(l-12), mtof(l-12), d, 'square', .04);
+    }
+  }};
 const M = {cur:null, gain:null, timer:0, off:false};
 try { M.off = localStorage.getItem('sr-nomusic') === '1'; } catch(_){}
 $('mus').textContent = M.off ? '🚫' : '🎵';
@@ -568,7 +602,10 @@ function setMusicOff(o){
 }
 $('mus').onclick = e => { e.stopPropagation(); audioUnlock(); setMusicOff(!M.off); };
 function musicWanted(){
-  if (phase === 'play') return S && S.over ? null : 'battle';   // the end-of-match jingle plays over silence
+  if (phase === 'play'){
+    if (S && S.over) return S.winTeam !== null && S.winTeam === S.player.team ? 'victory' : null;   // winners get the fanfare, others a short jingle over silence
+    return 'battle';
+  }
   return phase === 'lobby' ? 'lobby' : 'menu';
 }
 function musicSwitch(name){
@@ -596,8 +633,9 @@ function musicTick(){
     drum:(k, v) => { sOut = c.bus; const d = c.at - AC.currentTime;
       if (k === 'k'){ tone(150, 42, .16, 'sine', v*.9, d); }
       else if (k === 's'){ noise(.13, v*.5, 'bandpass', 2200, 1500, d); tone(210, 130, .08, 'triangle', v*.3, d); }
+      else if (k === 'c'){ noise(1.3, v*.35, 'highpass', 5000, 3000, d); }
       else noise(.04, v*.22, 'highpass', 7000, 7000, d); }};
-  while (c.next < AC.currentTime + 0.3){
+  while (c.next < AC.currentTime + 0.3 && !(c.tr.len && c.step >= c.tr.len)){
     c.at = c.next;
     const st = c.step++, i = st % 16, bar = (st >> 4) % 4;
     try { c.tr.step(api, st, bar, i); } catch(_){}
@@ -1893,7 +1931,7 @@ function loop(now){
   if (phase === 'play' && S.over && !S.sfxDone){
     S.sfxDone = true;
     if (NET.role === 'host') creditWins();
-    playSnd(S.winTeam !== null && S.winTeam === S.player.team ? 'win' : 'lose');
+    if (!(S.winTeam !== null && S.winTeam === S.player.team)) playSnd('lose');     // winners hear the victory fanfare (music) instead
   }
   draw();
   requestAnimationFrame(loop);
