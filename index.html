@@ -1190,6 +1190,45 @@ function camera(){
   return {x: Math.max(0, Math.min(W-VW, p.x - VW/2)), y: Math.max(0, Math.min(W-VH, p.y - VH/2))};
 }
 const LOOT_COL = {pistol:'#9cf', shotgun:'#fa5', ar:'#9f6', shield:'#58f', med:'#f55', wood:'#a73', bandage:'#fff'};
+// ---------- Gun drawing: side-view silhouettes pointing along +x (origin at the grip), used for loot, held weapons and the slots ----------
+const GUN_W  = {pistol:24, shotgun:56, ar:52};     // overall length in drawing units
+const GUN_CX = {pistol:11, shotgun:14, ar:13};     // centre of that length (for centring icons)
+function drawGun(c, type, s, accent){
+  c.save(); c.scale(s, s); c.lineWidth = 1.6/s; c.strokeStyle = '#000'; c.lineJoin = 'round';
+  const poly = (pts, fill) => { c.fillStyle = fill; c.beginPath(); c.moveTo(pts[0], pts[1]);
+    for (let i=2;i<pts.length;i+=2) c.lineTo(pts[i], pts[i+1]); c.closePath(); c.fill(); c.stroke(); };
+  const box = (x, y, w, h, fill) => poly([x,y, x+w,y, x+w,y+h, x,y+h], fill);
+  if (type === 'pistol'){
+    poly([3,0, 13,0, 11,11, 3,11], '#3b3b3b');          // grip
+    box(0,-6, 21,6, '#aab4bd');                         // slide
+    box(21,-5, 3,4, '#555');                            // muzzle
+    box(1,-8, 3,2, '#222'); box(17,-8, 2,2, '#222');    // sights
+    box(11,0, 5,1.5, '#222');                           // trigger guard
+    if (accent){ c.fillStyle = accent; c.fillRect(6,-4, 9,1.6); }
+  } else if (type === 'shotgun'){
+    poly([-14,-3, 2,-4, 2,3, -11,6], '#8a5a2b');        // wooden stock
+    box(2,-5, 13,8, '#555');                            // receiver
+    box(15,-4, 27,2.6, '#2b2b2b');                      // long barrel
+    box(15,-1.4, 27,2.2, '#777');                       // magazine tube
+    box(18,0.8, 13,4, '#8a5a2b');                       // pump grip
+    box(41,-6, 2,2.6, '#222');                          // front sight
+    poly([4,2, 8,2, 7,8, 3,8], '#3b3b3b');             // pistol grip
+    if (accent){ c.fillStyle = accent; c.fillRect(4,-3, 9,1.6); }
+  } else if (type === 'ar'){
+    poly([-12,-2, 0,-4, 0,3, -10,5], '#333');           // stock
+    box(0,-5, 17,7, '#444');                            // receiver
+    box(17,-4, 10,5, '#666');                           // handguard
+    box(27,-2.6, 13,2.4, '#222');                       // barrel
+    box(39,-4, 2,3, '#222');                            // muzzle brake
+    box(5,-8, 10,3, '#222');                            // scope / rail sight
+    poly([8,2, 14,2, 15,11, 9,12], '#222');             // magazine
+    poly([1,2, 5,2, 4,8, 0,8], '#333');                 // pistol grip
+    if (accent){ c.fillStyle = accent; c.fillRect(2,-3, 12,1.6); }
+  }
+  c.restore();
+}
+const LOOT_PLATE = {pistol:'#9cf', shotgun:'#fa5', ar:'#9f6'};
+
 const LOOT_LBL = {pistol:'P', shotgun:'S', ar:'R', shield:'+', med:'♥', wood:'W', bandage:'B'};
 
 function draw(){
@@ -1224,6 +1263,13 @@ function draw(){
     ctx.restore(); }
   // loot
   for (const l of S.loot){ if (!vis(l.x,l.y)) continue;
+    if (GUN_W[l.type]){        // guns lie on a coloured plate so they stand out on the grass
+      ctx.fillStyle = '#000b'; ctx.strokeStyle = LOOT_PLATE[l.type]; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(l.x, l.y, 19, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.save(); ctx.translate(l.x, l.y); ctx.rotate(-0.35);
+      const gs = 28 / GUN_W[l.type]; ctx.translate(-GUN_CX[l.type]*gs, 0); drawGun(ctx, l.type, gs, LOOT_PLATE[l.type]); ctx.restore();
+      continue;
+    }
     ctx.fillStyle = LOOT_COL[l.type]; ctx.fillRect(l.x-10,l.y-10,20,20);
     ctx.strokeStyle='#000'; ctx.lineWidth=2; ctx.strokeRect(l.x-10,l.y-10,20,20);
     ctx.fillStyle='#000'; ctx.font='bold 13px sans-serif'; ctx.textAlign='center'; ctx.fillText(LOOT_LBL[l.type], l.x, l.y+5); }
@@ -1245,7 +1291,10 @@ function draw(){
     ctx.fillStyle = w.color; ctx.strokeStyle='#000'; ctx.lineWidth=2;
     if (w.melee){ const sw = a.swing > 0 ? 0.8 : 0; ctx.save(); ctx.rotate(-0.4+sw); ctx.fillRect(10,-3,32,6); ctx.strokeRect(10,-3,32,6); ctx.restore(); }
     else if (w.heal){ ctx.fillRect(14,-5,12,10); ctx.strokeRect(14,-5,12,10); }
-    else { ctx.fillRect(8,-4,26,8); ctx.strokeRect(8,-4,26,8); }
+    else {
+      ctx.save(); if (Math.cos(a.angle) < 0) ctx.scale(1,-1);      // keep the gun the right way up when aiming left
+      ctx.translate(a.inv[a.cur] === 'pistol' ? 10 : 18, 0); drawGun(ctx, a.inv[a.cur], a.inv[a.cur] === 'pistol' ? 1 : 0.78, w.color); ctx.restore();
+    }
     ctx.fillStyle = a.color; ctx.beginPath(); ctx.arc(0,0,a.r,0,7); ctx.fill(); ctx.stroke();
     ctx.restore();
     // healing progress ring
@@ -1303,8 +1352,12 @@ function drawHUD(){
     ctx.fillStyle = i===p.cur ? '#fc4' : '#0009'; ctx.fillRect(r.x,r.y,r.w,r.h);
     ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.strokeRect(r.x,r.y,r.w,r.h);
     ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.font='10px sans-serif'; ctx.textAlign='left'; ctx.fillText(i+1, r.x+4, r.y+11);
-    ctx.textAlign='center'; ctx.font = tm ? 'bold 9px sans-serif' : 'bold 12px sans-serif';
-    ctx.fillText(id ? WEAP[id].name : '-', r.x+r.w/2, r.y+r.h*(id === 'bandage' ? 0.55 : 0.68));
+    ctx.textAlign='center'; ctx.font = tm ? 'bold 9px sans-serif' : 'bold 11px sans-serif';
+    if (id && GUN_W[id]){        // guns show their picture (plus the name on desktop)
+      const gs = Math.min(1.1, (r.w - 10) / GUN_W[id]);
+      ctx.save(); ctx.translate(r.x + r.w/2 - GUN_CX[id]*gs, r.y + r.h*(tm ? 0.55 : 0.42)); drawGun(ctx, id, gs, WEAP[id].color); ctx.restore();
+      if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(WEAP[id].name, r.x+r.w/2, r.y+r.h*0.9); }
+    } else ctx.fillText(id ? WEAP[id].name : '-', r.x+r.w/2, r.y+r.h*(id === 'bandage' ? 0.55 : 0.68));
     if (id === 'bandage') ctx.fillText('x'+p.band, r.x+r.w/2, r.y+r.h*0.88);
   }
 
@@ -1350,7 +1403,8 @@ function drawHUD(){
     drawStick(touch.aim, vw-95, vh-115, 'AIM / FIRE');
   } else {
     ctx.textAlign='left'; ctx.fillStyle='#fff'; ctx.font='12px sans-serif';
-    ctx.fillText('WASD move · Mouse aim/shoot · 1-6 select slot · Hold click with Bandage to heal · Q / Right-click build wall', 20, 24);
+    ctx.fillText('WASD move · Mouse aim/shoot · 1-6 select slot', 20, 20);
+    ctx.fillText('Hold click with Bandage to heal · Q / Right-click build wall', 20, 36);
   }
 
   // end screen / spectating banner
