@@ -316,10 +316,6 @@ function newActor(kind, i, h){
     name: human ? h.name : 'Bot '+i,
     color: human ? PLAYER_COLORS[pid % PLAYER_COLORS.length] : `hsl(${rnd(0,360)|0},60%,55%)`,
     strafe:1, strafeT:0, wp:null, wpT:0};
-  if (!human){
-    const t = ['pistol','shotgun','ar',null][Math.random()*4|0];
-    if (t){ a.inv[1] = t; a.cur = 1; }
-  }
   return a;
 }
 
@@ -692,7 +688,8 @@ function collide(a){
 
 // ---------- Bot AI ----------
 function botThink(b, dt){
-  let target = null, best = 450;
+  const armed = b.inv.some(w => w && WEAP[w] && !WEAP[w].melee && !WEAP[w].heal);
+  let target = null, best = armed ? 450 : 110;   // unarmed bots only fight what is right next to them; otherwise they go find a chest
   for (const o of S.actors){
     if (o === b || !o.alive || o.team === b.team) continue;
     const d = Math.hypot(o.x-b.x, o.y-b.y);
@@ -724,7 +721,7 @@ function botThink(b, dt){
       if (bi >= 0){ b.cur = bi; startHeal(b); return [0,0]; }
     }
     // seek loot / chests or wander
-    let near = null, nd = 700;
+    let near = null, nd = armed ? 700 : 1800;   // an unarmed bot heads for the nearest chest, even a long way off
     for (const l of S.loot){ if (!canTake(b, l.type)) continue; const d = Math.hypot(l.x-b.x,l.y-b.y); if (d < nd){ nd = d; near = l; } }
     for (const c of S.chests){ if (c.open) continue; const d = Math.hypot(c.x-b.x,c.y-b.y); if (d < nd){ nd = d; near = c; } }
     // duo partners stick together: regroup if they have drifted apart
@@ -1291,7 +1288,7 @@ function draw(){
   // loot
   for (const l of S.loot){ if (!vis(l.x,l.y)) continue;
     if (GUN_W[l.type]){        // guns lie on a coloured plate so they stand out on the grass
-      ctx.fillStyle = '#000b'; ctx.strokeStyle = LOOT_PLATE[l.type]; ctx.lineWidth = 3;
+      ctx.fillStyle = '#fffffff0'; ctx.strokeStyle = LOOT_PLATE[l.type]; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(l.x, l.y, 19, 0, 7); ctx.fill(); ctx.stroke();
       ctx.save(); ctx.translate(l.x, l.y); ctx.rotate(-0.35);
       const gs = 28 / GUN_W[l.type]; ctx.translate(-GUN_CX[l.type]*gs, 0); drawGun(ctx, l.type, gs, LOOT_PLATE[l.type]); ctx.restore();
