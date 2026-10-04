@@ -1253,6 +1253,41 @@ function drawGun(c, type, s, accent){
 }
 const LOOT_PLATE = {pistol:'#9cf', shotgun:'#fa5', ar:'#9f6'};
 
+// Icons for the non-gun drops, drawn about 28 units across and centred on the origin.
+function drawItem(c, type, s){
+  c.save(); c.scale(s, s); c.lineWidth = 1.6/s; c.strokeStyle = '#000'; c.lineJoin = 'round';
+  const rr = (x, y, w, h, r, fill) => { c.fillStyle = fill; c.beginPath(); c.roundRect(x, y, w, h, r); c.fill(); c.stroke(); };
+  if (type === 'bandage'){            // adhesive bandage
+    c.rotate(-0.6);
+    rr(-14,-6, 28,12, 5, '#f0cfa0');
+    rr(-5,-6, 10,12, 1, '#ffffff');
+    c.fillStyle = '#c9a070'; for (const [x,y] of [[-10,-2],[-10,2],[10,-2],[10,2],[-8,0],[8,0]]){ c.beginPath(); c.arc(x,y,0.9,0,7); c.fill(); }
+    c.fillStyle = '#e5533c'; c.fillRect(-1,-3, 2,6); c.fillRect(-3,-1, 6,2);
+  } else if (type === 'shield'){      // blue shield potion
+    c.fillStyle = '#7a4a1e'; c.fillRect(-3.5,-15, 7,4); c.strokeRect(-3.5,-15, 7,4);                 // cork
+    c.fillStyle = '#4a8bff'; c.beginPath();
+    c.moveTo(-3,-11); c.lineTo(3,-11); c.lineTo(3,-6); c.quadraticCurveTo(12,-1, 12,6); c.quadraticCurveTo(12,14, 0,14);
+    c.quadraticCurveTo(-12,14, -12,6); c.quadraticCurveTo(-12,-1, -3,-6); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle = '#bfe0ff'; c.beginPath(); c.ellipse(-5,5, 2.4,4.6, 0.3, 0, 7); c.fill();               // shine
+    c.fillStyle = '#fff'; c.beginPath(); c.moveTo(0,1); c.lineTo(5,3); c.lineTo(4,8); c.lineTo(0,11); c.lineTo(-4,8); c.lineTo(-5,3); c.closePath(); c.fill();   // shield badge
+  } else if (type === 'med'){         // first-aid kit
+    rr(-6,-14, 12,6, 2, '#888');                                                                          // handle
+    rr(-14,-10, 28,22, 4, '#e8362f');
+    c.fillStyle = '#fff'; c.fillRect(-2.6,-6, 5.2,14); c.fillRect(-7.4,-1.6, 14.8,5.2);
+  } else if (type === 'wood'){        // bundle of logs tied with rope
+    for (const [y,off] of [[-8.5,0],[0,0],[8.5,0]]){
+      rr(-14+off, y-4, 28, 8, 4, '#a5692c');
+      c.fillStyle = '#e0b070'; c.beginPath(); c.ellipse(14+off, y, 2.4, 4, 0, 0, 7); c.fill(); c.stroke();
+      c.strokeStyle = '#6a4318'; c.lineWidth = 0.9/s; c.beginPath(); c.moveTo(-10+off, y-1); c.lineTo(8+off, y-1); c.stroke();
+      c.strokeStyle = '#000'; c.lineWidth = 1.6/s;
+    }
+    c.fillStyle = '#d6b36a'; c.fillRect(-4,-13, 3.4, 26); c.strokeRect(-4,-13, 3.4, 26);                    // rope
+    c.fillStyle = '#d6b36a'; c.fillRect(6,-13, 3.4, 26); c.strokeRect(6,-13, 3.4, 26);
+  }
+  c.restore();
+}
+const ITEM_RING = {shield:'#58f', med:'#f55', wood:'#a73', bandage:'#f9a'};
+
 const LOOT_LBL = {pistol:'P', shotgun:'S', ar:'R', shield:'+', med:'♥', wood:'W', bandage:'B'};
 
 function draw(){
@@ -1287,16 +1322,14 @@ function draw(){
     ctx.restore(); }
   // loot
   for (const l of S.loot){ if (!vis(l.x,l.y)) continue;
-    if (GUN_W[l.type]){        // guns lie on a coloured plate so they stand out on the grass
-      ctx.fillStyle = '#fffffff0'; ctx.strokeStyle = LOOT_PLATE[l.type]; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(l.x, l.y, 19, 0, 7); ctx.fill(); ctx.stroke();
-      ctx.save(); ctx.translate(l.x, l.y); ctx.rotate(-0.35);
-      const gs = 28 / GUN_W[l.type]; ctx.translate(-GUN_CX[l.type]*gs, 0); drawGun(ctx, l.type, gs, LOOT_PLATE[l.type]); ctx.restore();
-      continue;
-    }
-    ctx.fillStyle = LOOT_COL[l.type]; ctx.fillRect(l.x-10,l.y-10,20,20);
-    ctx.strokeStyle='#000'; ctx.lineWidth=2; ctx.strokeRect(l.x-10,l.y-10,20,20);
-    ctx.fillStyle='#000'; ctx.font='bold 13px sans-serif'; ctx.textAlign='center'; ctx.fillText(LOOT_LBL[l.type], l.x, l.y+5); }
+    // every drop lies on a white plate with a coloured ring so it stands out on the grass
+    ctx.fillStyle = '#fffffff0'; ctx.strokeStyle = LOOT_PLATE[l.type] || ITEM_RING[l.type] || '#888'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(l.x, l.y, 19, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.save(); ctx.translate(l.x, l.y);
+    if (GUN_W[l.type]){
+      ctx.rotate(-0.35); const gs = 28 / GUN_W[l.type]; ctx.translate(-GUN_CX[l.type]*gs, 0); drawGun(ctx, l.type, gs, LOOT_PLATE[l.type]);
+    } else drawItem(ctx, l.type, 0.85);
+    ctx.restore(); }
   // walls
   for (const w of S.walls.values()){ const x=w.gx*G, y=w.gy*G; if (!vis(x,y)) continue;
     ctx.fillStyle = `rgb(${120+w.hp/3|0},${90+w.hp/4|0},60)`; ctx.fillRect(x,y,G,G);
@@ -1381,8 +1414,10 @@ function drawHUD(){
       const gs = Math.min(1.1, (r.w - 10) / GUN_W[id]);
       ctx.save(); ctx.translate(r.x + r.w/2 - GUN_CX[id]*gs, r.y + r.h*(tm ? 0.55 : 0.42)); drawGun(ctx, id, gs, WEAP[id].color); ctx.restore();
       if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(WEAP[id].name, r.x+r.w/2, r.y+r.h*0.9); }
-    } else ctx.fillText(id ? WEAP[id].name : '-', r.x+r.w/2, r.y+r.h*(id === 'bandage' ? 0.55 : 0.68));
-    if (id === 'bandage') ctx.fillText('x'+p.band, r.x+r.w/2, r.y+r.h*0.88);
+    } else if (id === 'bandage'){
+      ctx.save(); ctx.translate(r.x + r.w/2, r.y + r.h*(tm ? 0.4 : 0.38)); drawItem(ctx, 'bandage', tm ? 0.6 : 0.8); ctx.restore();
+      ctx.fillText('x'+p.band, r.x+r.w/2, r.y+r.h*(tm ? 0.88 : 0.9));
+    } else ctx.fillText(id ? WEAP[id].name : '-', r.x+r.w/2, r.y+r.h*0.68);
   }
 
   // top-right info + minimap
