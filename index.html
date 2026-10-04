@@ -43,6 +43,7 @@
   .prow.me{border-color:#fc4}
   .prow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tag{font-size:11px;color:#9ab;margin-left:6px}
+  .tag.win{color:#fc4;font-weight:700}
   .team{border:2px solid #6c6;border-radius:12px;padding:3px 6px 4px;margin:6px 0;background:#17301d}
   .team .tl{font-size:11px;color:#8f8;text-transform:uppercase;letter-spacing:1px;margin:2px 4px}
   .team .prow{margin:3px 0}
@@ -910,8 +911,26 @@ function hostBeginMatch(){
   sendInit();
   phase = 'play'; hideMenu(); NET.snapAcc = 0;
 }
+// Wins are kept per hosted room: the host counts them and the lobby shows them. A new room starts everyone at 0.
+function creditWins(){
+  if (S.winTeam === null) return;
+  for (const p of S.players){
+    const e = lp(p.pid);
+    if (e && p.team === S.winTeam) e.wins = (e.wins || 0) + 1;
+  }
+}
+// After a hosted match everyone returns to the lobby (teams are kept, so the host can just start again).
+function hostToLobby(){
+  phase = 'lobby'; NET.invites = []; NET.incoming = []; NET.sent = new Set();
+  broadcast({t:'tolobby'});
+  showLobbyScreen();
+  lobbyBroadcast();
+}
+function showLobbyScreen(){
+  $('menu').classList.remove('hide'); $('exit').style.display = 'none'; showScreen('s-lobby');
+}
 function hostRestart(){
-  if (NET.role === 'host'){ init(currentHumans()); sendInit(); }
+  if (NET.role === 'host') hostToLobby();
   else init();
 }
 function onHostData(pid, m){
@@ -971,7 +990,7 @@ function hostAcceptConnection(conn){
     pid = NET.nextPid++;
     const name = uniqueName(cleanName(m.name) || 'Player ' + (pid+1));
     NET.peers[pid] = {conn, name};
-    NET.lobby.push({pid, name, mate:null});
+    NET.lobby.push({pid, name, mate:null, wins:0});   // wins only count inside this room
     try { conn.send({t:'welcome', pid, name}); } catch(_){}
     lobbyBroadcast();
     toast(name + ' joined'); playSnd('ui');
@@ -997,7 +1016,7 @@ function onPeerLeft(pid){
 // ----- lobby: who is in the room and who is teamed with whom (the host's copy is the truth) -----
 const lp = id => NET.lobby.find(p => p.pid === id);
 function lobbyBroadcast(){
-  const players = NET.lobby.map(p => ({pid:p.pid, name:p.name, mate:p.mate}));
+  const players = NET.lobby.map(p => ({pid:p.pid, name:p.name, mate:p.mate, wins:p.wins || 0}));
   broadcast({t:'lobby', players});
   onLobbyMsg({t:'lobby', players});
 }
@@ -1105,6 +1124,9 @@ function onGuestData(m){
       break;
     case 'rejected':
       if (NET.joinFail) NET.joinFail(m.why || 'Could not join that room.');
+      break;
+    case 'tolobby':
+      phase = 'lobby'; NET.incoming = []; NET.sent = new Set(); showLobbyScreen();
       break;
     case 'init':
       buildGuestState(m); phase = 'play'; hideMenu(); NET.lastSnap = performance.now(); NET.lost = false;
@@ -1338,7 +1360,7 @@ function drawHUD(){
     ctx.textAlign='center'; ctx.fillStyle = win ? '#fc4' : '#f66'; ctx.font='bold '+Math.min(64, vw/10)+'px sans-serif';
     ctx.fillText(win ? 'VICTORY ROYALE' : 'ELIMINATED', vw/2, vh/2-20);
     ctx.fillStyle='#fff'; ctx.font=Math.min(24, vw/22)+'px sans-serif';
-    ctx.fillText((win ? '#1' : '#'+p.place)+' · '+p.kills+' kills · '+(tm ? 'Tap' : 'Press R')+' to play again', vw/2, vh/2+30);
+    ctx.fillText((win ? '#1' : '#'+p.place)+' · '+p.kills+' kills · '+(tm ? 'Tap' : 'Press R')+(NET.role === 'solo' ? ' to play again' : ' to return to the lobby'), vw/2, vh/2+30);
   } else if (!p.alive){
     ctx.fillStyle='#000a'; ctx.fillRect(vw/2-170, 44, 340, 46);
     ctx.textAlign='center'; ctx.fillStyle='#f66'; ctx.font='bold 16px sans-serif';
@@ -1376,6 +1398,7 @@ function renderLobby(){
     const nm = el('span', 'nm', p.name);
     if (p.pid === NET.myPid) nm.appendChild(el('span', 'tag', '(you)'));
     if (p.pid === 0) nm.appendChild(el('span', 'tag', 'host'));
+    nm.appendChild(el('span', 'tag win', '🏆 ' + (p.wins || 0)));
     r.appendChild(nm);
     if (iAmSolo && p.pid !== NET.myPid && p.mate == null){
       const b = el('button', 'mini');
@@ -1449,7 +1472,7 @@ function createRoom(tries){
   const code = genCode(), peer = new Peer('stormroyale-'+code);
   NET.peer = peer;
   peer.on('open', () => {
-    Object.assign(NET, {role:'host', code, myPid:0, nextPid:1, peers:{}, lobby:[{pid:0, name:myName() || 'Player 1', mate:null}],
+    Object.assign(NET, {role:'host', code, myPid:0, nextPid:1, peers:{}, lobby:[{pid:0, name:myName() || 'Player 1', mate:null, wins:0}],
       invites:[], incoming:[], sent:new Set()});
     phase = 'lobby'; $('roomcode').textContent = code; showScreen('s-lobby'); lobbyBroadcast();
   });
@@ -1501,7 +1524,9 @@ function loop(now){
     }
   }
   if (phase === 'play' && S.over && !S.sfxDone){
-    S.sfxDone = true; playSnd(S.winTeam !== null && S.winTeam === S.player.team ? 'win' : 'lose');
+    S.sfxDone = true;
+    if (NET.role === 'host') creditWins();
+    playSnd(S.winTeam !== null && S.winTeam === S.player.team ? 'win' : 'lose');
   }
   draw();
   requestAnimationFrame(loop);
