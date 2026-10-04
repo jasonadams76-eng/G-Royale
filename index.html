@@ -115,7 +115,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · lakes</div>
+      <div class="ver">Version 2026-10-04 · wild lakes</div>
     </div>
 
     <div id="s-join" hidden>
@@ -172,15 +172,30 @@ document.addEventListener('gesturestart', e => e.preventDefault(), {passive:fals
 const W = 6000, G = 48, BOTS = 24, CENTER = {x: W/2, y: W/2};     // the board (it used to be 4000; bigger now for 24+ players)
 const MS = W / 4000;                                           // map scale compared with the original board
 // Two big lakes, each with a small island (and a chest) in the middle and a boat waiting on the shore.
-const LAKE_R = 520, ISLAND_R = 95, BOAT_MULT = 1.3, SHORE = 6;
+const LAKE_R = 500, ISLAND_R = 95, BOAT_MULT = 1.3, SHORE = 6;
 const lakesOf = () => (S && S.lakes) || [];
-const inWater = (x, y) => lakesOf().some(l => { const d = Math.hypot(x-l.x, y-l.y); return d < l.r && d > l.i; });      // open water (boats only)
-const nearLake = (x, y, m) => lakesOf().some(l => Math.hypot(x-l.x, y-l.y) < l.r + m);                                 // anywhere in or beside a lake (incl. island)
+// lakes are irregular blobs (a few smooth bumps on a circle) with the island off-centre; l.r is the largest reach (for quick culling)
+function makeLake(x, y, h, ox, oy){
+  const l = {x, y, h, ox, oy, i:ISLAND_R, ix:x+ox, iy:y+oy, E:[]};
+  let mx = 0;
+  for (let k = 0; k < 72; k++){ const e = lakeEdge(l, k/72*Math.PI*2); l.E.push(e); if (e > mx) mx = e; }
+  l.r = mx;
+  return l;
+}
+function lakeEdge(l, th){
+  const h = l.h; return LAKE_R*(1 + h[0]*Math.cos(2*th+h[1]) + h[2]*Math.cos(3*th+h[3]) + h[4]*Math.cos(4*th+h[5]));
+}
+const lakeIn = (l, x, y, m) => { const dx = x-l.x, dy = y-l.y; if (dx*dx+dy*dy > (l.r+m)*(l.r+m)) return false; return Math.hypot(dx, dy) < lakeEdge(l, Math.atan2(dy, dx)) + m; };
+const onIsland = (l, x, y, m) => Math.hypot(x-l.ix, y-l.iy) < l.i + m;
+const inWater = (x, y) => lakesOf().some(l => lakeIn(l, x, y, 0) && !onIsland(l, x, y, 0));       // open water (boats only)
+const nearLake = (x, y, m) => lakesOf().some(l => lakeIn(l, x, y, m));                           // anywhere in or beside a lake (incl. island)
 // walkers can't stand on water: push them to whichever bank (the lake shore or the island shore) is closer
 function pushOutOfWater(a){
   for (const l of lakesOf()){
-    const dx = a.x - l.x, dy = a.y - l.y, d = Math.hypot(dx, dy) || 1, lo = l.i - SHORE, hi = l.r + SHORE;
-    if (d > lo && d < hi){ const t = (hi - d) < (d - lo) ? hi : lo; a.x = l.x + dx/d*t; a.y = l.y + dy/d*t; }
+    if (!lakeIn(l, a.x, a.y, SHORE) || onIsland(l, a.x, a.y, -SHORE)) continue;
+    const dx = a.x - l.x, dy = a.y - l.y, d = Math.hypot(dx, dy) || 1, hi = lakeEdge(l, Math.atan2(dy, dx)) + SHORE;
+    const ex = a.x - l.ix, ey = a.y - l.iy, di = Math.hypot(ex, ey) || 1, lo = l.i - SHORE;
+    if (hi - d < di - lo){ a.x = l.x + dx/d*hi; a.y = l.y + dy/d*hi; } else { a.x = l.ix + ex/di*lo; a.y = l.iy + ey/di*lo; }
   }
 }
 const TREE_COUNT = Math.round(320 * MS * MS);                  // same tree density as before
@@ -427,13 +442,22 @@ function init(humans){
     over:false, winTeam:null, overAt:0,
     storm:{i:0, state:'wait', t:PHASES[0].wait, r:STORM_R0, rFrom:STORM_R0, rTo:PHASES[0].r}};
   {   // two lakes on opposite sides of the board (random direction each match), each with an island and a boat on its shore
-    const th = Math.random()*Math.PI*2;
+    const th = Math.random()*Math.PI*2, r3 = v => Math.round(v*1000)/1000;
     for (let i = 0; i < 2; i++){
       const ang = th + i*Math.PI + rnd(-0.35, 0.35), dist = 1750 + rnd(-150, 150);
-      const l = {x:Math.round(CENTER.x + Math.cos(ang)*dist), y:Math.round(CENTER.y + Math.sin(ang)*dist), r:LAKE_R, i:ISLAND_R};
+      const lx = Math.round(CENTER.x + Math.cos(ang)*dist), ly = Math.round(CENTER.y + Math.sin(ang)*dist);
+      let l;
+      for (let tries = 0; tries < 60; tries++){       // random blob + off-centre island; retry until the island sits well inside the water
+        const h = [r3(rnd(0.06,0.15)), r3(rnd(0,6.28)), r3(rnd(0.04,0.10)), r3(rnd(0,6.28)), r3(rnd(0.02,0.06)), r3(rnd(0,6.28))];
+        const oa = rnd(0, Math.PI*2), od = rnd(60, 190);
+        l = makeLake(lx, ly, h, Math.round(Math.cos(oa)*od), Math.round(Math.sin(oa)*od));
+        let ok = true;
+        for (let k = 0; k < 72 && ok; k++){ const t = k/72*Math.PI*2, e = l.E[k], px = l.ix + Math.cos(t)*(l.i+85), py = l.iy + Math.sin(t)*(l.i+85); if (!lakeIn(l, px, py, -50)) ok = false; }
+        if (ok && Math.min(...l.E) > 330) break;
+      }
       S.lakes.push(l);
-      const ba = rnd(0, Math.PI*2);
-      S.boats.push({x:Math.round(l.x + Math.cos(ba)*(l.r-26)), y:Math.round(l.y + Math.sin(ba)*(l.r-26)), ang:ba + Math.PI/2, rider:null});
+      const ba = rnd(0, Math.PI*2), be = lakeEdge(l, ba) - 26;
+      S.boats.push({x:Math.round(l.x + Math.cos(ba)*be), y:Math.round(l.y + Math.sin(ba)*be), ang:ba + Math.PI/2, rider:null});
     }
   }
   for (let i=0;i<TREE_COUNT;i++){
@@ -442,7 +466,7 @@ function init(humans){
     S.trees.push({id:i, x, y, r:22, wood:100});
   }
   // no loot lies on the ground at the start: everything comes from chests (or from eliminated players)
-  for (const l of S.lakes) S.chests.push({x:l.x, y:l.y, open:false, island:true});       // the island chests: only reachable by boat
+  for (const l of S.lakes) S.chests.push({x:l.ix, y:l.iy, open:false, island:true});       // the island chests: only reachable by boat
   for (let n=0;n<CHEST_COUNT;n++){
     for (let tries=0;tries<30;tries++){
       const x = Math.round(rnd(150,W-150)), y = Math.round(rnd(150,W-150));
@@ -491,7 +515,7 @@ function placeSpawns(){
   const free = (x, y) => S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 45);
   teams.forEach((tm, ti) => {
     let px = pts[ti].x, py = pts[ti].y;
-    for (const l of S.lakes){ const dx = px-l.x, dy = py-l.y, d = Math.hypot(dx,dy) || 1; if (d < l.r + 90){ px = l.x + dx/d*(l.r+90); py = l.y + dy/d*(l.r+90); } }     // never start in or beside a lake
+    for (const l of S.lakes){ const dx = px-l.x, dy = py-l.y, d = Math.hypot(dx,dy) || 1; const e = lakeEdge(l, Math.atan2(dy,dx)) + 90; if (d < e){ px = l.x + dx/d*e; py = l.y + dy/d*e; } }     // never start in or beside a lake
     for (let tries = 0; tries < 20 && !free(px, py); tries++){ px = pts[ti].x + rnd(-120,120); py = pts[ti].y + rnd(-120,120); }
     S.actors.filter(a => a.team === tm).forEach((a, k) => {
       const ang = rnd(0, Math.PI*2), d = k === 0 ? 0 : rnd(40, 70);                                                 // partners stand right next to each other
@@ -957,7 +981,7 @@ function rideBoat(a, vx, vy, dt){
   a.x = nx + ux*14; a.y = ny + uy*14; leaveBoat(a); pushOutOfWater(a);
 }
 // boarding (walk up to a free boat) and remote riders (their reported position drives the boat)
-function nearLakeWater(x,y){ for (const l of lakesOf()){ const d=Math.hypot(x-l.x,y-l.y); if (d < l.r+8 && d > l.i-8) return true; } return false; }
+function nearLakeWater(x,y){ return lakesOf().some(l => lakeIn(l, x, y, 8) && !onIsland(l, x, y, -8)); }
 function boatStep(a){
   if (!a.isPlayer) return;
   const b = a.boat;
@@ -1313,7 +1337,7 @@ function sendSnapshot(){
 }
 function sendInit(){
   const base = {t:'init',
-    trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]), lakes:S.lakes.map(l => [l.x, l.y]), boats:S.boats.map(b => [b.x, b.y, b.ang]),
+    trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]), lakes:S.lakes.map(l => [l.x, l.y, ...l.h, l.ox, l.oy]), boats:S.boats.map(b => [b.x, b.y, b.ang]),
     actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, s:a.shirt || null, k:a.skin, cw:a.crown ? 1 : 0, x:Math.round(a.x), y:Math.round(a.y)}))};
   for (const pid in NET.peers){
     const me = S.actors.findIndex(a => a.isPlayer && a.pid === +pid);
@@ -1492,7 +1516,7 @@ function onLobbyMsg(m){
 
 // ---------- Networking: guest side ----------
 function buildGuestState(m){
-  S = {actors:[], players:[], bullets:[], trees:[], allTrees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[], lakes:(m.lakes || []).map(([x,y]) => ({x, y, r:LAKE_R, i:ISLAND_R})), boats:(m.boats || []).map(([x,y,ang]) => ({x, y, tx:x, ty:y, ang, rider:null})),
+  S = {actors:[], players:[], bullets:[], trees:[], allTrees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[], lakes:(m.lakes || []).map(a => makeLake(a[0], a[1], a.slice(2,8), a[8], a[9])), boats:(m.boats || []).map(([x,y,ang]) => ({x, y, tx:x, ty:y, ang, rider:null})),
     over:false, winTeam:null, overAt:0, storm:{i:0, state:'wait', t:PHASES[0].wait, r:STORM_R0, rFrom:STORM_R0, rTo:PHASES[0].r}};
   m.trees.forEach(([x,y], id) => { const t = {id, x, y, r:22, wood:100}; S.allTrees.push(t); S.trees.push(t); });
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
@@ -1866,18 +1890,19 @@ function draw(){
   const tt = performance.now()/1000;
   for (const l of S.lakes){
     if (l.x+l.r+40 < cam.x || l.x-l.r-40 > cam.x+vw || l.y+l.r+40 < cam.y || l.y-l.r-40 > cam.y+vh) continue;
-    ctx.fillStyle = '#dcc98e'; ctx.beginPath(); ctx.arc(l.x, l.y, l.r+SHORE+4, 0, 7); ctx.fill();
-    ctx.fillStyle = '#2f82d4'; ctx.beginPath(); ctx.arc(l.x, l.y, l.r, 0, 7); ctx.fill();
-    ctx.fillStyle = 'rgba(15,60,140,.22)'; ctx.beginPath(); ctx.arc(l.x, l.y, l.r*0.7, 0, 7); ctx.fill();
+    const blob = (grow) => { ctx.beginPath(); for (let k = 0; k <= 72; k++){ const t = (k%72)/72*Math.PI*2, e = l.E[k%72] + grow; k ? ctx.lineTo(l.x + Math.cos(t)*e, l.y + Math.sin(t)*e) : ctx.moveTo(l.x + e, l.y); } ctx.closePath(); };
+    ctx.fillStyle = '#dcc98e'; blob(SHORE+4); ctx.fill();
+    ctx.fillStyle = '#2f82d4'; blob(0); ctx.fill();
+    ctx.save(); blob(-60); ctx.fillStyle = 'rgba(15,60,140,.22)'; ctx.fill(); ctx.restore();
     ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 2; ctx.beginPath();
-    for (let i = 0; i < 70; i++){
-      const ang = i*2.39996, rr = l.i + 40 + ((i*137) % Math.max(10, l.r - l.i - 70)), x = l.x + Math.cos(ang)*rr, y = l.y + Math.sin(ang)*rr;
-      if (!vis(x, y, 30)) continue;
+    for (let i = 0; i < 90; i++){
+      const ang = i*2.39996, rr = 40 + ((i*137) % Math.max(10, l.r - 70)), x = l.x + Math.cos(ang)*rr, y = l.y + Math.sin(ang)*rr;
+      if (!vis(x, y, 30) || !lakeIn(l, x, y, -30) || onIsland(l, x, y, 40)) continue;
       const ph = Math.sin(tt*1.4 + i)*4; ctx.moveTo(x-12+ph, y); ctx.quadraticCurveTo(x+ph, y-4, x+12+ph, y);
     }
     ctx.stroke();
-    ctx.fillStyle = '#dcc98e'; ctx.beginPath(); ctx.arc(l.x, l.y, l.i+SHORE, 0, 7); ctx.fill();                 // island: sand rim, grass top
-    ctx.fillStyle = '#5d9f4b'; ctx.beginPath(); ctx.arc(l.x, l.y, l.i-4, 0, 7); ctx.fill();
+    ctx.fillStyle = '#dcc98e'; ctx.beginPath(); ctx.arc(l.ix, l.iy, l.i+SHORE, 0, 7); ctx.fill();                 // island: sand rim, grass top
+    ctx.fillStyle = '#5d9f4b'; ctx.beginPath(); ctx.arc(l.ix, l.iy, l.i-4, 0, 7); ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 2; ctx.stroke();
   }
   for (const b of S.boats){ const r = b.rider; drawBoat(ctx, r ? r.x : b.x, r ? r.y : b.y, b.ang || 0, !!r, tt); }
@@ -2081,7 +2106,7 @@ function drawHUD(){
   ctx.fillStyle='#d9f';
   ctx.fillText((st.state==='wait'?'Storm shrinks in ':'Storm closing ')+Math.max(0,st.t|0)+'s', tx, ty+lh*2);
   ctx.fillStyle='#0a3a12cc'; ctx.fillRect(mx,my,ms,ms);
-  for (const l of S.lakes){ ctx.fillStyle = '#3b8ee0'; ctx.beginPath(); ctx.arc(mx+l.x*k, my+l.y*k, l.r*k, 0, 7); ctx.fill(); ctx.fillStyle = '#6fbf5a'; ctx.beginPath(); ctx.arc(mx+l.x*k, my+l.y*k, Math.max(1.5, l.i*k), 0, 7); ctx.fill(); }
+  for (const l of S.lakes){ ctx.fillStyle = '#3b8ee0'; ctx.beginPath(); for (let q = 0; q < 36; q++){ const t = q/36*Math.PI*2, e = l.E[q*2]; const X = mx+(l.x+Math.cos(t)*e)*k, Y = my+(l.y+Math.sin(t)*e)*k; q ? ctx.lineTo(X,Y) : ctx.moveTo(X,Y); } ctx.closePath(); ctx.fill(); ctx.fillStyle = '#6fbf5a'; ctx.beginPath(); ctx.arc(mx+l.ix*k, my+l.iy*k, Math.max(1.5, l.i*k), 0, 7); ctx.fill(); }
   ctx.strokeStyle='#c6f'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(mx+CENTER.x*k,my+CENTER.y*k,st.r*k,0,7); ctx.stroke();
   ctx.fillStyle='#fc4';
   for (const c of S.chests){ if (c.open || Math.hypot(c.x-p.x,c.y-p.y) > 900) continue; ctx.fillRect(mx+c.x*k-2, my+c.y*k-2, 4, 4); }
