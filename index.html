@@ -36,6 +36,7 @@
     padding:8px;border-radius:10px;border:2px solid #3a5a40;background:#0d1610;color:#fff;
     -webkit-user-select:text;user-select:text}
   .txt.name{font-size:20px;letter-spacing:1px;text-transform:none;padding:9px;margin-bottom:6px}
+  .ver{font-size:10px;color:#6a7;margin:2px 0 4px;opacity:.8}
   .lbl{display:block;text-align:left;font-size:12px;color:#9ab;margin:0 0 3px 2px}
   .card .small{font-size:12px;margin:2px 0;color:#9ab}
   #plist{margin:8px 0;text-align:left}
@@ -106,6 +107,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
+      <div class="ver">Version 2026-10-04 · slot colours</div>
     </div>
 
     <div id="s-join" hidden>
@@ -1475,6 +1477,9 @@ function drawHUD(){
   for (let i=0;i<6;i++){
     const r = slotRect(i), id = p.inv[i];
     ctx.fillStyle = i===p.cur ? '#fc4' : '#0009'; ctx.fillRect(r.x,r.y,r.w,r.h);
+    if (id && GUN_W[id]){        // the whole slot is tinted with the gun's rarity colour
+      ctx.globalAlpha = i===p.cur ? 0.55 : 0.4; ctx.fillStyle = RARITY[p.gr[id] || 0].col; ctx.fillRect(r.x,r.y,r.w,r.h); ctx.globalAlpha = 1;
+    }
     ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.strokeRect(r.x,r.y,r.w,r.h);
     ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.font='10px sans-serif'; ctx.textAlign='left'; ctx.fillText(i+1, r.x+4, r.y+11);
     ctx.textAlign='center'; ctx.font = tm ? 'bold 9px sans-serif' : 'bold 11px sans-serif';
