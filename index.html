@@ -1286,6 +1286,16 @@ function botThink(b, dt){
     // harvest trees in the way
     if (b.wood < 40 && mapOf().build) for (const t of S.trees){ if (t.solid) continue; if (Math.hypot(t.x-b.x,t.y-b.y) < 70){ b.angle = Math.atan2(t.y-b.y,t.x-b.x); const c=b.cur; b.cur=0; fire(b); b.cur=c; break; } }
   }
+  // stuck on a wall, building or fence? sidestep along it for a moment, and after repeated failures head somewhere else
+  if (mx || my){
+    b.stT = (b.stT || 0) + dt;
+    if (b.stT >= 0.6){
+      if (Math.hypot(b.x-(b.stx ?? b.x), b.y-(b.sty ?? b.y)) < 18){ b.stN = (b.stN || 0) + 1; b.avT = 0.9 + Math.random()*0.8; b.avA = (Math.random() < 0.5 ? 1 : -1) * (1.2 + Math.random()*0.9); if (b.stN >= 3){ b.stN = 0; b.wp = null; b.wpT = 0; } }
+      else b.stN = 0;
+      b.stx = b.x; b.sty = b.y; b.stT = 0;
+    }
+    if (b.avT > 0){ b.avT -= dt; const c = Math.cos(b.avA), sn = Math.sin(b.avA), nx = mx*c - my*sn, ny = mx*sn + my*c; mx = nx; my = ny; }
+  }
   speed *= bootMul(b);
   return [mx*speed, my*speed];
 }
