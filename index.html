@@ -2015,11 +2015,14 @@ function specStep(d){
 }
 function specRects(){
   const w = Math.min(360, SW - 16), x0 = SW/2 - w/2, y0 = touchMode ? SH - 112 : SH - 130;
-  return {bar:{x:x0, y:y0, w, h:46}, prev:{x:x0, y:y0, w:56, h:46}, next:{x:x0 + w - 56, y:y0, w:56, h:46}};
+  return {newGame:{x:SW/2 - 90, y:y0 - 46, w:180, h:36}, bar:{x:x0, y:y0, w, h:46}, prev:{x:x0, y:y0, w:56, h:46}, next:{x:x0 + w - 56, y:y0, w:56, h:46}};
 }
+const canNewGame = () => NET.role === 'solo' && !S.player.alive && !S.koth && !S.over;      // eliminated in a solo game: you may skip the rest and start over
 function specClick(x, y){
-  if (S.player.alive || S.koth || S.over || !specList().length) return false;
+  if (S.player.alive || S.koth || S.over) return false;
   const r = specRects();
+  if (canNewGame() && inRect(r.newGame, x, y)){ hostRestart(); return true; }
+  if (!specList().length) return false;
   if (inRect(r.prev, x, y)){ specStep(-1); return true; }
   if (inRect(r.next, x, y)){ specStep(1); return true; }
   return false;
@@ -2751,6 +2754,12 @@ function drawHUD(){
   } else if (p.alive && !S.over){
     const rt = reviveTarget(p);
     if (rt){ ctx.textAlign = 'center'; ctx.fillStyle = '#000a'; ctx.fillRect(vw/2-130, 44, 260, 26); ctx.fillStyle = '#7f9'; ctx.font = 'bold 13px sans-serif'; ctx.fillText((touchMode ? 'Hold REVIVE' : 'Hold E') + ' to revive ' + rt.name + (rt.rv > 0 ? ' · ' + Math.round(100*rt.rv/REVIVE_TIME) + '%' : ''), vw/2, 62); }
+  }
+  if (canNewGame()){
+    const g = specRects().newGame;
+    ctx.fillStyle = 'rgba(70,170,110,0.9)'; ctx.beginPath(); ctx.roundRect(g.x, g.y, g.w, g.h, 10); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('▶ New game' + (touchMode ? '' : '  (R)'), g.x + g.w/2, g.y + 23);
   }
   if (!p.alive && !S.koth && !S.over && specT && specT.alive){      // spectating controls
     const r = specRects(), b = r.bar, killer = p.killedBy && specT.name === p.killedBy.by;
