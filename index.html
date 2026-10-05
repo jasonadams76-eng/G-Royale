@@ -215,16 +215,18 @@ function pushOutOfWater(a){
 const MAPS = {
   grass:{name:'Grassland', build:true,  water:true,  ground:'#4c8c4a', mini:'#0a3a12cc'},
   desert:{name:'Desert',   build:false, water:false, ground:'#e0c07a', mini:'#6a4a14cc'},
-  city:{name:'War-Torn City', build:true, water:false, ground:'#6f6b64', mini:'#2a2a30cc', res:'Metal', fenceHp:300}
+  city:{name:'War-Torn City', build:true, water:false, ground:'#6f6b64', mini:'#2a2a30cc', res:'Metal', fenceHp:300},
+  ocean:{name:'Ocean', build:false, water:false, ground:'#2a78b4', mini:'#0a3a6acc'}
 };
-const MAP_IDS = ['grass','desert','city'];
+const MAP_IDS = ['grass','desert','city','ocean'];
 const okMap = m => m === 'random' || MAPS[m] ? m : 'random';
 const DESERT_COUNT = Math.round(220 * MS * MS), CITY_COUNT = Math.round(240 * MS * MS);
-const obsCount = m => m === 'desert' ? DESERT_COUNT : m === 'city' ? CITY_COUNT : TREE_COUNT;
+const OCEAN_COUNT = Math.round(90 * MS * MS);
+const obsCount = m => m === 'ocean' ? OCEAN_COUNT : m === 'desert' ? DESERT_COUNT : m === 'city' ? CITY_COUNT : TREE_COUNT;
 const RD = 750, RHALF = 75;      // city streets: one every 750 px, 150 px wide
 const mapOf = () => MAPS[(S && S.map) || 'grass'] || MAPS.grass;
 // desert obstacles reuse the tree list: every third one is a rock, the rest are cacti (solid: the pickaxe cannot remove them)
-const mkObstacle = (map, id, x, y) => map === 'city' ? (id % 4 === 0 ? {id, x, y, r:22, wood:100, solid:true} : {id, x, y, r:22, wood:100}) : map === 'desert' ? {id, x, y, r:id % 3 === 0 ? 26 : 17, wood:100, solid:true} : {id, x, y, r:22, wood:100};
+const mkObstacle = (map, id, x, y) => map === 'ocean' ? {id, x, y, r:id % 3 === 0 ? 30 : 22, wood:100, solid:true} : map === 'city' ? (id % 4 === 0 ? {id, x, y, r:22, wood:100, solid:true} : {id, x, y, r:22, wood:100}) : map === 'desert' ? {id, x, y, r:id % 3 === 0 ? 26 : 17, wood:100, solid:true} : {id, x, y, r:22, wood:100};
 const TREE_COUNT = Math.round(320 * MS * MS);                  // same tree density as before
 const STORM_R0 = Math.round(2900 * MS);                        // the storm starts outside the whole board
 const WEAP = {
@@ -1922,7 +1924,19 @@ function bldSprite(v){
   x.fillStyle = 'rgba(20,16,12,0.7)'; x.fillRect(0,0,G,3); x.fillRect(0,G-3,G,3);
   return _bld[k] = c;
 }
+function makeReef(big, v){
+  const S2 = 2, size = 64, c = document.createElement('canvas'); c.width = c.height = size * S2;
+  const g = c.getContext('2d'); g.scale(S2, S2); g.translate(size/2, size/2); g.lineJoin = 'round';
+  g.fillStyle = 'rgba(255,255,255,0.35)'; g.beginPath(); g.arc(0, 0, big ? 31 : 24, 0, 7); g.fill();       // foam where the waves break
+  g.fillStyle = 'rgba(0,30,60,0.25)'; g.beginPath(); g.arc(3, 5, big ? 24 : 18, 0, 7); g.fill();
+  const R = big ? 24 : 17, pts = []; for (let i = 0; i < 10; i++){ const a = i/10*6.283 + v*0.9, r = R - 3 + ((i*53 + v*17) % 7); pts.push([Math.cos(a)*r, Math.sin(a)*r*0.9]); }
+  g.lineWidth = 2; g.strokeStyle = '#1a2128'; g.fillStyle = '#5a6670'; g.beginPath(); pts.forEach(([x,y],i) => i ? g.lineTo(x,y) : g.moveTo(x,y)); g.closePath(); g.fill(); g.stroke();
+  g.fillStyle = '#7b8893'; g.beginPath(); g.moveTo(-R*0.5,-R*0.2); g.lineTo(-R*0.1,-R*0.6); g.lineTo(R*0.35,-R*0.35); g.lineTo(0,R*0.1); g.closePath(); g.fill();
+  g.fillStyle = '#3f8a5a'; g.beginPath(); g.arc(R*0.3, R*0.35, 3.5, 0, 7); g.fill();                         // a little seaweed
+  return c;
+}
 function obstacleSprite(t){
+  if (S.map === 'ocean'){ const big = t.id % 3 === 0, k = 'o'+(big?'b':'s')+(t.id%4); return OB_SPRITE[k] || (OB_SPRITE[k] = makeReef(big, t.id % 4)); }
   if (S.map === 'city'){ if (t.solid) return OB_SPRITE['b'+(t.id%4)] || (OB_SPRITE['b'+(t.id%4)] = makeBarrier(t.id % 4)); const k = 's'+(t.id%5)+(t.wood < 100 ? 'c' : ''); return OB_SPRITE[k] || (OB_SPRITE[k] = makeScrap(t.id % 5, t.wood < 100)); }
   const rock = t.id % 3 === 0, v = t.id % 4, k = (rock ? 'r' : 'c') + v; return OB_SPRITE[k] || (OB_SPRITE[k] = makeObstacle(rock, v)); }
 function treeSprite(t){
@@ -2133,8 +2147,8 @@ function draw(){
   ctx.save(); ctx.translate(-cam.x, -cam.y);
   // grid
   ctx.strokeStyle = 'rgba(0,0,0,0.07)'; ctx.lineWidth = 1; ctx.beginPath();
-  for (let x = Math.floor(cam.x/G)*G; x < cam.x+vw; x += G){ ctx.moveTo(x,cam.y); ctx.lineTo(x,cam.y+vh); }
-  for (let y = Math.floor(cam.y/G)*G; y < cam.y+vh; y += G){ ctx.moveTo(cam.x,y); ctx.lineTo(cam.x+vw,y); }
+  if (S.map !== 'ocean') for (let x = Math.floor(cam.x/G)*G; x < cam.x+vw; x += G){ ctx.moveTo(x,cam.y); ctx.lineTo(x,cam.y+vh); }
+  if (S.map !== 'ocean') for (let y = Math.floor(cam.y/G)*G; y < cam.y+vh; y += G){ ctx.moveTo(cam.x,y); ctx.lineTo(cam.x+vw,y); }
   ctx.stroke();
   if (S.map === 'desert'){   // dunes and pebbles: deterministic from the grid cell, so they never flicker
     const CS = 140; ctx.lineCap = 'round';
@@ -2143,6 +2157,14 @@ function draw(){
       const px = cx*CS + (h & 127), py = cy*CS + ((h>>>7) & 127), k = (h>>>14) & 7;
       if (k < 3){ ctx.strokeStyle = 'rgba(150,100,30,0.22)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(px, py, 26 + (k*9), 3.5, 5.6); ctx.stroke(); }
       else if (k < 5){ ctx.fillStyle = 'rgba(120,80,30,0.3)'; ctx.beginPath(); ctx.ellipse(px, py, 5, 3, 0, 0, 7); ctx.fill(); }
+    }
+  }
+  if (S.map === 'ocean'){     // drifting swells
+    const CS = 110, tw = performance.now()/1000; ctx.lineCap = 'round'; ctx.lineWidth = 3;
+    for (let cx = Math.floor(cam.x/CS)-1; cx < (cam.x+vw)/CS+1; cx++) for (let cy = Math.floor(cam.y/CS)-1; cy < (cam.y+vh)/CS+1; cy++){
+      let h = (cx*73856093 ^ cy*19349663) >>> 0; h = (h ^ (h>>>13)) * 1274126177 >>> 0;
+      const px = cx*CS + (h & 127) + Math.sin(tw*0.6 + (h&31))*8, py = cy*CS + ((h>>>7) & 127), k = (h>>>14) & 3;
+      ctx.strokeStyle = k === 0 ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.14)'; ctx.beginPath(); ctx.arc(px, py, 14 + k*4, 3.6, 5.8); ctx.stroke();
     }
   }
   if (S.map === 'city'){
@@ -2189,6 +2211,7 @@ function draw(){
   // chests
   for (const c of S.chests){ if (!vis(c.x,c.y)) continue;
     ctx.save(); ctx.translate(c.x,c.y); ctx.lineWidth=2; ctx.strokeStyle='#000';
+    if (S.map === 'ocean'){ const bt = performance.now()/1000 + c.x; ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.ellipse(0, 4, 26 + Math.sin(bt*2)*2, 17 + Math.sin(bt*2)*1.5, 0, 0, 7); ctx.stroke(); ctx.strokeStyle='#000'; ctx.translate(0, Math.sin(bt*1.7)*3); }      // bobbing on the waves
     if (!c.open){
       ctx.fillStyle='rgba(255,210,60,0.25)'; ctx.beginPath(); ctx.arc(0,0,30,0,7); ctx.fill();
       ctx.fillStyle='#d9a22b'; ctx.fillRect(-16,-11,32,22);
@@ -2235,6 +2258,7 @@ function draw(){
   for (const b of S.bullets){ ctx.strokeStyle=b.color; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-b.vx*0.025, b.y-b.vy*0.025); ctx.stroke(); }
   // actors
   for (const a of S.actors){ if (!a.alive || !vis(a.x,a.y)) continue;
+    if (S.map === 'ocean'){ if (a.lx !== undefined && Math.hypot(a.x-a.lx, a.y-a.ly) > 0.3) a.bang = Math.atan2(a.y-a.ly, a.x-a.lx); a.lx = a.x; a.ly = a.y; drawBoat(ctx, a.x, a.y, a.bang || 0, true, tt); }      // everyone is out on a boat
     if (!a.boat && inWater(a.x, a.y)){                       // swimmers: ripples around them
       const tw = performance.now()/400; ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
       for (let q = 0; q < 2; q++){ const rr = a.r + 4 + ((tw + q*0.5) % 1)*12; ctx.globalAlpha = 0.7*(1 - ((tw + q*0.5) % 1)); ctx.beginPath(); ctx.arc(a.x, a.y, rr, 0, 7); ctx.stroke(); }
