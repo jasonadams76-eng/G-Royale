@@ -115,7 +115,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · sniper</div>
+      <div class="ver">Version 2026-10-04 · swimming</div>
     </div>
 
     <div id="s-join" hidden>
@@ -193,6 +193,7 @@ const inWater = (x, y) => lakesOf().some(l => lakeIn(l, x, y, 0) && !onIsland(l,
 const nearLake = (x, y, m) => lakesOf().some(l => lakeIn(l, x, y, m));                           // anywhere in or beside a lake (incl. island)
 // walkers can't stand on water: push them to whichever bank (the lake shore or the island shore) is closer
 function pushOutOfWater(a){
+  return;                                // swimming is allowed now (very slowly), so nobody gets pushed out of the water
   for (const l of lakesOf()){
     if (!lakeIn(l, a.x, a.y, SHORE) || onIsland(l, a.x, a.y, -SHORE)) continue;
     const dx = a.x - l.x, dy = a.y - l.y, d = Math.hypot(dx, dy) || 1, hi = lakeEdge(l, Math.atan2(dy, dx)) + SHORE;
@@ -231,7 +232,8 @@ const newAmmo = () => ({pistol:0, shotgun:0, ar:0});
 const FL_MAX = 3, FL_COOL = 1;      // the flamethrower burns for at most 3 s at a time, then needs a 1 s pause
 const SN_RANGE = 2800, SN_DMG = 150, SN_CD = 5, SN_ZOOM = 0.5;   // sniper: reach in px, damage, seconds between shots, how far the view zooms out
 const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 12.5;   // flamethrower: reach in px, a burst every 0.1 s, 12.5 damage each = 125 damage/s to everything in the flame
-const BOOT_MULT = 1.5, BOOT_RAR = 4, bootMul = a => a.inv.includes('boots') ? BOOT_MULT : 1;   // speed boots: 1.5x move speed while in your loadout (one pair per match)
+const SWIM_MULT = 0.25;     // swimming (anyone in open water, not on a boat) moves at a quarter of walking speed
+const BOOT_MULT = 1.5, BOOT_RAR = 4, bootMul = a => (a.inv.includes('boots') ? BOOT_MULT : 1) * (!a.boat && inWater(a.x, a.y) ? SWIM_MULT : 1);   // speed boots: 1.5x move speed while in your loadout (one pair per match)
 const CHEST_COUNT = Math.round(32 * MS), CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
 // Gun rarities: the rarer the gun, the harder it hits, the faster it fires and the straighter it shoots.
 const RARITY = [
@@ -2016,6 +2018,11 @@ function draw(){
   for (const b of S.bullets){ ctx.strokeStyle=b.color; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-b.vx*0.025, b.y-b.vy*0.025); ctx.stroke(); }
   // actors
   for (const a of S.actors){ if (!a.alive || !vis(a.x,a.y)) continue;
+    if (!a.boat && inWater(a.x, a.y)){                       // swimmers: ripples around them
+      const tw = performance.now()/400; ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
+      for (let q = 0; q < 2; q++){ const rr = a.r + 4 + ((tw + q*0.5) % 1)*12; ctx.globalAlpha = 0.7*(1 - ((tw + q*0.5) % 1)); ctx.beginPath(); ctx.arc(a.x, a.y, rr, 0, 7); ctx.stroke(); }
+      ctx.globalAlpha = 1;
+    }
     if (a.inv.includes('boots')){ ctx.fillStyle = 'rgba(255,230,60,0.28)'; ctx.beginPath(); ctx.arc(a.x,a.y,a.r+6+Math.sin(performance.now()/120)*1.5,0,7); ctx.fill(); }   // speed-boot glow
     ctx.save(); ctx.translate(a.x,a.y); ctx.rotate(a.angle);
     const w = WEAP[a.inv[a.cur]] || WEAP.pickaxe;
