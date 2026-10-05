@@ -472,16 +472,20 @@ function newActor(kind, i, h){
 }
 
 // Team id of a human: partners share one, everyone else is on their own.
-const teamIdOf = h => 'H' + (h.mate != null ? Math.min(h.pid, h.mate) : h.pid);
+const teamIdOf = h => 'H' + (h.tm != null ? h.tm : h.pid);       // tm = the team's id (the pid of whoever started it); null = playing alone
+const MAX_TEAM = 4;
+// a human can bring bot teammates (bm) so a lone player can face a duo; they count towards the team's size
+const teamSizes = (list, withBots = true) => { const sz = {}; for (const h of list){ const id = teamIdOf(h); sz[id] = (sz[id] || 0) + 1 + (withBots ? (h.bm || 0) : 0); } return Object.values(sz); };
+const teamsEven = (list, withBots = true) => new Set(teamSizes(list, withBots)).size <= 1;       // every team must be the same size
 // How many bot teams play, and how big they are.
 // Bots play in duos once any human duo exists (otherwise solo). The field keeps the same number of teams:
 // every human team beyond the first replaces one bot team.
 const KOTH_PLAYERS = 10;
 function botPlan(humans, humansOnly, koth){
-  if (koth) return {size:1, teams:Math.max(0, KOTH_PLAYERS - humans.length)};      // King of the Hill: 10 players in total, bots fill the rest
+  if (koth) return {size:1, teams:Math.max(0, KOTH_PLAYERS - humans.length)};      // King of the Hill: solo players only, 10 in total, bots fill the rest
   if (humansOnly) return {size:1, teams:0};              // humans-only mode: no bots at all
   const humanTeams = new Set(humans.map(teamIdOf)).size;
-  const size = humans.some(h => h.mate != null) ? 2 : 1, base = BOTS / size;
+  const size = Math.max(1, ...teamSizes(humans, true)), base = Math.floor(BOTS / size);
   return {size, teams: Math.max(0, base - Math.max(0, humanTeams - 1))};
 }
 
@@ -528,7 +532,7 @@ function genCity(){
 }
 function init(humans, humansOnly, mapId, koth){
   mapId = okMap(mapId); if (mapId === 'random') mapId = MAP_IDS[Math.random()*MAP_IDS.length|0];
-  humans = humans || [{pid:0, name:cleanName($('pname').value) || 'Player 1', mate:null, shirt:look.shirt, skin:look.skin, crown:soloCrown}];
+  humans = humans || [{pid:0, name:cleanName($('pname').value) || 'Player 1', tm:null, shirt:look.shirt, skin:look.skin, crown:soloCrown}];
   S = {actors:[], players:[], bullets:[], trees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[], lakes:[], boats:[],
     over:false, winTeam:null, overAt:0,
     map:mapId, koth:!!koth, humansOnly:!!humansOnly && !koth, hasBots:!humansOnly || !!koth, phases:koth ? KOTH_PHASES : PHASES,
@@ -585,14 +589,18 @@ function init(humans, humansOnly, mapId, koth){
   S.player = byPid[0] || S.players[0];
   const plan = botPlan(humans, humansOnly, S.koth);
   let n = 0;
+  if (!humansOnly) for (const h of humans){                     // bot teammates a player brought along
+    const hue = rnd(0, 360)|0;
+    for (let k = 0; k < Math.min(MAX_TEAM - 1, h.bm || 0); k++){ const b = newActor('bot', ++n); b.team = teamIdOf(h); b.color = `hsl(${hue},65%,${50 + k*10}%)`; S.actors.push(b); }
+  }
   for (let t=1; t<=plan.teams; t++){
     const hue = rnd(0,360)|0; let lead = null;
     for (let k=0; k<plan.size; k++){
       const b = newActor('bot', ++n);
       b.team = 'B'+t;
-      if (plan.size === 2){           // bot duos: partners spawn together and share a colour hue
+      if (plan.size >= 2){            // bot teams: partners spawn together and share a colour hue
         if (k === 0){ lead = b; b.color = `hsl(${hue},65%,45%)`; }
-        else b.color = `hsl(${hue},65%,68%)`;
+        else b.color = `hsl(${hue},65%,${Math.min(82, 45 + k*12)}%)`;
       }
       S.actors.push(b);
     }
@@ -1431,7 +1439,8 @@ function kothRespawn(a){
 }
 function kothEnd(){
   S.board = S.actors.map(a => [a.name, Math.floor(a.pts || 0), a.kills || 0, a.deaths || 0, a.isPlayer ? a.pid : -1, a.team]).sort((p, q) => q[1] - p[1] || q[2] - p[2]);
-  S.over = true; S.overAt = performance.now(); S.winTeam = S.board.length ? S.board[0][5] : null;
+  S.over = true; S.overAt = performance.now(); const tp = {}; for (const r of S.board) tp[r[5]] = (tp[r[5]] || 0) + r[1];      // teammates pool their points
+  S.winTeam = S.board.length ? Object.keys(tp).sort((x, y) => tp[y] - tp[x])[0] : null;
 }
 function update(dt){
   if (S.koth && S.over){ stepParticles(dt); return; }
@@ -1608,9 +1617,10 @@ function sendInit(){
   }
   NET.last = {W:'',L:'',C:'',T:''};
 }
-const currentHumans = () => NET.lobby.map(p => ({pid:p.pid, name:p.name, mate:p.mate, shirt:p.shirt, skin:p.skin, crown:!!p.crown}));
+const currentHumans = () => NET.lobby.map(p => ({pid:p.pid, name:p.name, tm:NET.mode === 'koth' ? null : p.tm, bm:NET.mode === 'humans' || NET.mode === 'koth' ? 0 : p.bm || 0, shirt:p.shirt, skin:p.skin, crown:!!p.crown}));
 function hostBeginMatch(){
   if (NET.role !== 'host' || phase !== 'lobby') return;
+  if (!teamsEven(currentHumans(), NET.mode !== 'humans')){ toast('Teams must all be the same size', 2500); return; }
   if (NET.mode === 'humans' && new Set(currentHumans().map(teamIdOf)).size < 2){ toast('Humans only needs at least 2 players or teams', 2500); return; }
   init(currentHumans(), NET.mode === 'humans', NET.map, NET.mode === 'koth');
   sendInit();
@@ -1702,7 +1712,7 @@ function hostAcceptConnection(conn){
     pid = NET.nextPid++;
     const name = uniqueName(cleanName(m.name) || 'Player ' + (pid+1));
     NET.peers[pid] = {conn, name};
-    NET.lobby.push({pid, name, mate:null, wins:0, shirt:okIdx(m.shirt, SHIRTS.length, 0), skin:okIdx(m.skin, SKINS.length, 1)});   // wins only count inside this room
+    NET.lobby.push({pid, name, tm:null, bm:0, wins:0, shirt:okIdx(m.shirt, SHIRTS.length, 0), skin:okIdx(m.skin, SKINS.length, 1)});   // wins only count inside this room
     try { conn.send({t:'welcome', pid, name}); } catch(_){}
     lobbyBroadcast();
     toast(name + ' joined'); playSnd('ui');
@@ -1728,7 +1738,7 @@ function onPeerLeft(pid){
 // ----- lobby: who is in the room and who is teamed with whom (the host's copy is the truth) -----
 const lp = id => NET.lobby.find(p => p.pid === id);
 function lobbyBroadcast(){
-  const players = NET.lobby.map(p => ({pid:p.pid, name:p.name, mate:p.mate, wins:p.wins || 0}));
+  const players = NET.lobby.map(p => ({pid:p.pid, name:p.name, tm:p.tm, bm:p.bm || 0, wins:p.wins || 0}));
   broadcast({t:'lobby', players, mode:NET.mode || 'bots', map:NET.map || 'random'});
   onLobbyMsg({t:'lobby', players, mode:NET.mode || 'bots', map:NET.map || 'random'});
 }
@@ -1742,28 +1752,41 @@ function clearInvites(pid){
 function lobbyRemove(pid){
   clearInvites(pid);
   NET.lobby = NET.lobby.filter(p => p.pid !== pid);
-  for (const p of NET.lobby) if (p.mate === pid) p.mate = null;
+  fixTeams();
+}
+const teamOf = p => p.tm == null ? [p] : NET.lobby.filter(x => x.tm === p.tm);
+const teamTotal = p => teamOf(p).reduce((n, x) => n + 1 + (x.bm || 0), 0);      // humans plus their bot teammates
+function fixTeams(){      // a team of one is not a team
+  const n = {}; for (const p of NET.lobby) if (p.tm != null) n[p.tm] = (n[p.tm] || 0) + 1;
+  for (const p of NET.lobby) if (p.tm != null && n[p.tm] < 2) p.tm = null;
 }
 function lobbyAction(pid, m){
   const me = lp(pid); if (!me || !m) return;
+  if (NET.mode === 'koth' && m.t !== 'decline' && m.t !== 'leaveteam') return;      // King of the Hill is solo only
   if (m.t === 'invite'){
     const to = lp(m.to);
-    if (!to || to.pid === pid || me.mate != null || to.mate != null) return;
+    if (!to || to.pid === pid || to.tm != null || teamTotal(me) + 1 + (to.bm || 0) > MAX_TEAM) return;
     if (NET.invites.some(iv => iv.from === pid && iv.to === to.pid)) return;
     NET.invites.push({from:pid, to:to.pid});
     peerSend(to.pid, {t:'invited', from:pid, name:me.name});
   } else if (m.t === 'accept'){
     const from = lp(m.from);
-    if (!from || me.mate != null || from.mate != null) return;
+    if (!from || me.tm != null || teamTotal(from) + 1 + (me.bm || 0) > MAX_TEAM) return;
     if (!NET.invites.some(iv => iv.from === m.from && iv.to === pid)) return;
-    me.mate = from.pid; from.mate = pid;
-    clearInvites(pid); clearInvites(from.pid);
+    if (from.tm == null) from.tm = from.pid;
+    me.tm = from.tm;
+    clearInvites(pid);
+    if (teamTotal(from) >= MAX_TEAM) for (const q of teamOf(from)) clearInvites(q.pid);      // the team is full
     lobbyBroadcast();
   } else if (m.t === 'decline'){
     const i = NET.invites.findIndex(iv => iv.from === m.from && iv.to === pid);
     if (i >= 0){ NET.invites.splice(i, 1); peerSend(m.from, {t:'declined', by:pid, name:me.name}); }
+  } else if (m.t === 'addbot'){
+    if (NET.mode !== 'humans' && teamTotal(me) < MAX_TEAM){ me.bm = (me.bm || 0) + 1; lobbyBroadcast(); }
+  } else if (m.t === 'rembot'){
+    if ((me.bm || 0) > 0){ me.bm--; lobbyBroadcast(); }
   } else if (m.t === 'leaveteam'){
-    if (me.mate != null){ const mate = lp(me.mate); me.mate = null; if (mate) mate.mate = null; lobbyBroadcast(); }
+    if (me.tm != null){ me.tm = null; fixTeams(); lobbyBroadcast(); }
   }
 }
 function sendLobbyMsg(m){ if (NET.role === 'host') lobbyAction(0, m); else netSend(m); }
@@ -1772,7 +1795,7 @@ function onLobbyMsg(m){
   if (m.t === 'lobby'){
     NET.view = m.players; NET.viewMode = m.mode || 'bots'; NET.viewMap = okMap(m.map);
     const me = m.players.find(p => p.pid === NET.myPid);
-    if (me && me.mate != null){ NET.incoming = []; NET.sent.clear(); }   // teamed up: pending invites no longer apply
+    if (me && me.tm != null) NET.incoming = [];   // teamed up: invitations to me no longer apply
     renderLobby();
   }
   else if (m.t === 'invited'){
@@ -2756,10 +2779,12 @@ function buildLookPickers(){
 buildLookPickers();
 
 function renderLobby(){
-  const list = NET.view || [];
+  const kothSolo = NET.viewMode === 'koth';      // King of the Hill: no teams
+  const list = (NET.view || []).map(p => kothSolo ? Object.assign({}, p, {tm:null, bm:0}) : p);
   const me = list.find(p => p.pid === NET.myPid);
-  const iAmSolo = !!me && me.mate == null;
-  for (const id of [...NET.sent]){ const p = list.find(x => x.pid === id); if (!p || p.mate != null) NET.sent.delete(id); }
+  const humansMode = NET.viewMode === 'humans';
+  const iAmSolo = !!me && me.tm == null, myTeam = me ? list.filter(x => me.tm != null ? x.tm === me.tm : x.pid === me.pid) : [], myTotal = myTeam.reduce((n, x) => n + 1 + (humansMode ? 0 : x.bm || 0), 0), canInvite = !!me && !kothSolo && myTotal < MAX_TEAM;
+  for (const id of [...NET.sent]){ const p = list.find(x => x.pid === id); if (!p || p.tm != null) NET.sent.delete(id); }
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
   const mkRow = p => {
@@ -2768,8 +2793,13 @@ function renderLobby(){
     if (p.pid === NET.myPid) nm.appendChild(el('span', 'tag', '(you)'));
     if (p.pid === 0) nm.appendChild(el('span', 'tag', 'host'));
     nm.appendChild(el('span', 'tag win', '🏆 ' + (p.wins || 0)));
+    if (!humansMode && p.bm) nm.appendChild(el('span', 'tag', '🤖 ×' + p.bm));
     r.appendChild(nm);
-    if (iAmSolo && p.pid !== NET.myPid && p.mate == null){
+    if (p.pid === NET.myPid && !humansMode && !kothSolo){
+      if (p.bm){ const rb = el('button', 'mini no', '− Bot'); rb.onclick = () => sendLobbyMsg({t:'rembot'}); r.appendChild(rb); }
+      if (canInvite){ const ab = el('button', 'mini', '+ Bot teammate'); ab.onclick = () => sendLobbyMsg({t:'addbot'}); r.appendChild(ab); }
+    }
+    if (canInvite && p.pid !== NET.myPid && p.tm == null){
       const b = el('button', 'mini');
       if (NET.sent.has(p.pid)){ b.textContent = 'Invited'; b.disabled = true; }
       else {
@@ -2786,18 +2816,17 @@ function renderLobby(){
   for (const p of list){
     if (seen.has(p.pid)) continue;
     seen.add(p.pid);
-    if (p.mate != null){
-      const mate = list.find(x => x.pid === p.mate);
-      const t = el('div', 'team'); t.appendChild(el('div', 'tl', 'Team'));
-      t.appendChild(mkRow(p));
-      if (mate){ seen.add(mate.pid); t.appendChild(mkRow(mate)); }
+    if (p.tm != null){
+      const members = list.filter(x => x.tm === p.tm);
+      const t = el('div', 'team'); t.appendChild(el('div', 'tl', 'Team of ' + members.reduce((n, x) => n + 1 + (humansMode ? 0 : x.bm || 0), 0)));
+      for (const m2 of members){ seen.add(m2.pid); t.appendChild(mkRow(m2)); }
       box.appendChild(t);
     } else box.appendChild(mkRow(p));
   }
 
   // invitations other players have sent me
   const inv = $('invites'); inv.textContent = '';
-  NET.incoming = NET.incoming.filter(x => list.some(p => p.pid === x.from && p.mate == null));
+  NET.incoming = NET.incoming.filter(x => list.some(p => p.pid === x.from));
   if (iAmSolo) for (const iv of NET.incoming){
     const row = el('div', 'inv'); row.appendChild(el('span', null, iv.name + ' wants to team up'));
     const bt = el('span', 'bt');
@@ -2808,7 +2837,7 @@ function renderLobby(){
   }
 
   const humansOnly = NET.viewMode === 'humans';
-  const humans = list.map(p => ({pid:p.pid, mate:p.mate})), plan = botPlan(humans, humansOnly);
+  const humans = list.map(p => ({pid:p.pid, tm:p.tm, bm:humansMode ? 0 : p.bm || 0})), plan = botPlan(humans, humansOnly, NET.viewMode === 'koth'), even = teamsEven(humans);
   const teams = new Set(humans.map(teamIdOf)).size, s = n => n === 1 ? '' : 's';
   $('lobby-info').textContent = list.length + ' player' + s(list.length) + ' in ' + teams + ' team' + s(teams) +
     (NET.viewMode === 'koth' ? '. King of the Hill: 10 players in total, bots fill the rest. Stand in the circle to score; when the storm closes on it the top score wins. You respawn when knocked out.' : humansOnly ? (teams < 2 ? '. Humans only: waiting for at least one more player or team.' : '. Humans only: no bots, a smaller starting area.')
@@ -2816,10 +2845,11 @@ function renderLobby(){
   const isHost = NET.role === 'host';
   document.querySelectorAll('#modebox .mini').forEach(bt => { bt.classList.toggle('sel', bt.dataset.mode === (NET.viewMode || 'bots')); bt.disabled = !isHost; });
   document.querySelectorAll('#mapbox-lobby .mini').forEach(bt => { bt.classList.toggle('sel', bt.dataset.map === (NET.viewMap || 'random')); bt.disabled = !isHost; });
-  $('b-start').disabled = humansOnly && teams < 2;
+  $('b-start').disabled = (humansOnly && teams < 2) || !even;
+  if (!even) $('lobby-info').textContent = 'Teams must all be the same size (bot teammates count): add a bot teammate or invite players to even things out.';
   $('b-start').hidden = !isHost;
   $('wait-host').hidden = isHost;
-  $('b-leaveteam').hidden = !(me && me.mate != null);
+  $('b-leaveteam').hidden = !(me && me.tm != null);
 }
 
 // The multiplayer library is only fetched when someone actually uses it, so solo play works fully offline.
@@ -2846,7 +2876,7 @@ function createRoom(tries){
   const code = genCode(), peer = new Peer('stormroyale-'+code);
   NET.peer = peer;
   peer.on('open', () => {
-    Object.assign(NET, {role:'host', code, myPid:0, nextPid:1, peers:{}, lobby:[{pid:0, name:myName() || 'Player 1', mate:null, wins:0, shirt:look.shirt, skin:look.skin}],
+    Object.assign(NET, {role:'host', code, myPid:0, nextPid:1, peers:{}, lobby:[{pid:0, name:myName() || 'Player 1', tm:null, bm:0, wins:0, shirt:look.shirt, skin:look.skin}],
       invites:[], incoming:[], sent:new Set(), mode:'bots', map:soloMap});
     phase = 'lobby'; $('roomcode').textContent = code; showScreen('s-lobby'); lobbyBroadcast();
   });
@@ -2879,7 +2909,7 @@ $('b-go').onclick = () => {
 };
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('b-go').click(); });
 $('b-start').onclick = hostBeginMatch;
-document.querySelectorAll('#modebox .mini').forEach(bt => bt.onclick = () => { if (NET.role !== 'host' || phase !== 'lobby') return; NET.mode = bt.dataset.mode; lobbyBroadcast(); });
+document.querySelectorAll('#modebox .mini').forEach(bt => bt.onclick = () => { if (NET.role !== 'host' || phase !== 'lobby') return; NET.mode = bt.dataset.mode; if (NET.mode === 'koth'){ NET.lobby.forEach(q => { q.tm = null; q.bm = 0; }); NET.invites = []; } lobbyBroadcast(); });
 let soloMode = 'classic'; try { soloMode = localStorage.getItem('sr-smode') === 'koth' ? 'koth' : 'classic'; } catch(_){}
 const markSoloMode = () => document.querySelectorAll('#modebox-main .mini').forEach(bt => bt.classList.toggle('sel', bt.dataset.smode === soloMode));
 document.querySelectorAll('#modebox-main .mini').forEach(bt => bt.onclick = () => { soloMode = bt.dataset.smode; try { localStorage.setItem('sr-smode', soloMode); } catch(_){} markSoloMode(); });
