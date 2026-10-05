@@ -1532,9 +1532,13 @@ function nameAllowed(){
   if (rawName() && !cleanName(rawName())){ menuMsg('That name isn\'t allowed. Please pick a different one.'); $('pname').focus(); return false; }
   return true;
 }
+// every name in a room is unique (ignoring capitals and spaces), and nobody can pose as a bot ("Bot 7")
+const nameKey = n => String(n).toLowerCase().replace(/\s+/g, '');
 function uniqueName(name){
+  const taken = n => NET.lobby.some(p => nameKey(p.name) === nameKey(n));
+  if (/^bot\d*$/.test(nameKey(name))) name = 'Player';          // 'Bot 7' is reserved for the bots
   let n = name, i = 2;
-  while (NET.lobby.some(p => p.name.toLowerCase() === n.toLowerCase())) n = name.slice(0, 10) + ' ' + (i++);
+  while (taken(n)){ const suf = ' ' + (i++); n = name.slice(0, 12 - suf.length) + suf; }
   return n;
 }
 function hostAcceptConnection(conn){
@@ -1700,6 +1704,7 @@ function onGuestData(m){
   switch (m.t){
     case 'welcome':
       NET.myPid = m.pid; NET.role = 'guest'; if (NET.joinOk) NET.joinOk();
+      if (m.name && myName() && m.name !== myName()) setTimeout(() => toast('That name was taken in this room, so you are ' + m.name, 4000), 300);
       phase = 'lobby'; $('roomcode').textContent = NET.code; showScreen('s-lobby');
       break;
     case 'lobby': case 'invited': case 'invitegone': case 'declined':
