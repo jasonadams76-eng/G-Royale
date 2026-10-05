@@ -42,6 +42,7 @@
   .sw{width:21px;height:21px;border-radius:50%;border:2px solid #000a;padding:0;cursor:pointer;touch-action:manipulation}
   .sw.on{border-color:#fff;box-shadow:0 0 0 2px #fc4}
   .txt.name{font-size:20px;letter-spacing:1px;text-transform:none;padding:9px;margin-bottom:6px}
+  #winsbox{text-align:center;font-weight:700;color:#ffd34d;font-size:15px;margin:0 0 8px;letter-spacing:.5px}
   .ver{font-size:10px;color:#6a7;margin:2px 0 4px;opacity:.8}
   .lbl{display:block;text-align:left;font-size:12px;color:#9ab;margin:0 0 3px 2px}
   .card .small{font-size:12px;margin:2px 0;color:#9ab}
@@ -110,6 +111,7 @@
     </svg>
 
     <div id="s-main">
+      <div id="winsbox" title="Royale wins in solo and bot matches">🏆 Royale wins: <b id="wincount">0</b></div>
       <label class="lbl" for="pname">Your name</label>
       <input id="pname" class="txt name" maxlength="12" placeholder="Enter a name" autocomplete="off" spellcheck="false">
       <div class="look"><canvas id="lookprev" width="112" height="112"></canvas>
@@ -451,7 +453,7 @@ function init(humans, humansOnly){
   humans = humans || [{pid:0, name:cleanName($('pname').value) || 'Player 1', mate:null, shirt:look.shirt, skin:look.skin, crown:soloCrown}];
   S = {actors:[], players:[], bullets:[], trees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[], lakes:[], boats:[],
     over:false, winTeam:null, overAt:0,
-    humansOnly:!!humansOnly, phases:PHASES,
+    humansOnly:!!humansOnly, hasBots:!humansOnly, phases:PHASES,
     storm:{i:0, state:'wait', t:PHASES[0].wait, r:STORM_R0, cx:CENTER.x, cy:CENTER.y, rFrom:STORM_R0, cxFrom:CENTER.x, cyFrom:CENTER.y, rTo:PHASES[0].r, cxTo:CENTER.x, cyTo:CENTER.y, nx:CENTER.x, ny:CENTER.y, nr:PHASES[0].r}};
   {   // three lakes spread around the board (random direction each match), each with an island and a boat on its shore
     const th = Math.random()*Math.PI*2, r3 = v => Math.round(v*1000)/1000;
@@ -1434,7 +1436,7 @@ function sendSnapshot(){
 }
 function sendInit(){
   const base = {t:'init',
-    trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]), lakes:S.lakes.map(l => [l.x, l.y, ...l.h, l.ox, l.oy]), boats:S.boats.map(b => [b.x, b.y, b.ang]),
+    bots:S.hasBots ? 1 : 0, trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]), lakes:S.lakes.map(l => [l.x, l.y, ...l.h, l.ox, l.oy]), boats:S.boats.map(b => [b.x, b.y, b.ang]),
     actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, s:a.shirt || null, k:a.skin, cw:a.crown ? 1 : 0, x:Math.round(a.x), y:Math.round(a.y)}))};
   for (const pid in NET.peers){
     const me = S.actors.findIndex(a => a.isPlayer && a.pid === +pid);
@@ -1616,6 +1618,7 @@ function onLobbyMsg(m){
 function buildGuestState(m){
   S = {actors:[], players:[], bullets:[], trees:[], allTrees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[], lakes:(m.lakes || []).map(a => makeLake(a[0], a[1], a.slice(2,8), a[8], a[9])), boats:(m.boats || []).map(([x,y,ang]) => ({x, y, tx:x, ty:y, ang, rider:null})),
     over:false, winTeam:null, overAt:0, storm:{i:0, state:'wait', t:PHASES[0].wait, r:STORM_R0, cx:CENTER.x, cy:CENTER.y, nx:CENTER.x, ny:CENTER.y, nr:PHASES[0].r, rFrom:STORM_R0, rTo:PHASES[0].r}};
+  S.hasBots = !!m.bots;
   m.trees.forEach(([x,y], id) => { const t = {id, x, y, r:22, wood:100}; S.allTrees.push(t); S.trees.push(t); });
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
   m.actors.forEach(d => S.actors.push({x:d.x, y:d.y, tx:d.x, ty:d.y, r:15, hp:100, sh:0, wood:0,
@@ -2319,6 +2322,11 @@ function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); menu
 function menuMsg(t){ $('msg').textContent = t || ''; }
 function hideMenu(){ $('menu').classList.add('hide'); $('exit').style.display = 'block'; }
 
+// total Royale wins in solo and bot matches (kept on this device)
+function getWins(){ try { return Math.max(0, parseInt(localStorage.getItem('sr-wins'), 10) || 0); } catch(_){ return 0; } }
+function showWins(){ const e = $('wincount'); if (e) e.textContent = getWins(); }
+function addRoyaleWin(){ try { localStorage.setItem('sr-wins', String(getWins() + 1)); } catch(_){} showWins(); }
+showWins();
 // the player's chosen name (remembered on this device)
 try { $('pname').value = localStorage.getItem('sr-name') || ''; } catch(_){}
 $('pname').addEventListener('input', () => { try { localStorage.setItem('sr-name', cleanName($('pname').value)); } catch(_){} });
@@ -2486,6 +2494,7 @@ function loop(now){
   if (phase === 'play' && S.over && !S.sfxDone){
     S.sfxDone = true;
     if (NET.role === 'host') creditWins(); else if (NET.role === 'solo') soloCrown = S.winTeam !== null && S.winTeam === S.player.team;
+    if (S.hasBots && S.winTeam !== null && S.winTeam === S.player.team) addRoyaleWin();       // solo and bot matches count toward your total (humans-only matches don't)
     if (!(S.winTeam !== null && S.winTeam === S.player.team)) playSnd('lose');     // winners hear the victory fanfare (music) instead
   }
   { const pl = (phase === 'play' && S && S.player) ? S.player : null, want = pl && pl.alive && pl.inv[pl.cur] === 'sniper' ? SN_ZOOM : 1;
