@@ -472,7 +472,9 @@ const teamIdOf = h => 'H' + (h.mate != null ? Math.min(h.pid, h.mate) : h.pid);
 // How many bot teams play, and how big they are.
 // Bots play in duos once any human duo exists (otherwise solo). The field keeps the same number of teams:
 // every human team beyond the first replaces one bot team.
-function botPlan(humans, humansOnly){
+const KOTH_PLAYERS = 10;
+function botPlan(humans, humansOnly, koth){
+  if (koth) return {size:1, teams:Math.max(0, KOTH_PLAYERS - humans.length)};      // King of the Hill: 10 players in total, bots fill the rest
   if (humansOnly) return {size:1, teams:0};              // humans-only mode: no bots at all
   const humanTeams = new Set(humans.map(teamIdOf)).size;
   const size = humans.some(h => h.mate != null) ? 2 : 1, base = BOTS / size;
@@ -557,7 +559,7 @@ function init(humans, humansOnly, mapId, koth){
   // no loot lies on the ground at the start: everything comes from chests (or from eliminated players)
   for (const l of S.lakes) S.chests.push({x:l.ix, y:l.iy, open:false, island:true});       // the island chests: only reachable by boat
   if (S.bldgs) for (const b of S.bldgs.slice(0, 14)) S.chests.push({x:b.cx, y:b.cy, open:false});      // loot waits inside the ruined buildings
-  for (let n=0;n<CHEST_COUNT;n++){
+  for (let n=0, nCh = S.koth ? 14 : CHEST_COUNT; n<nCh;n++){
     for (let tries=0;tries<30;tries++){
       const x = Math.round(rnd(150,W-150)), y = Math.round(rnd(150,W-150));
       if (!nearLake(x, y, 40) && !inBldg(x, y, 40) && !onIce(x, y, 20) && S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 50)){ S.chests.push({x, y, open:false}); break; }
@@ -566,7 +568,7 @@ function init(humans, humansOnly, mapId, koth){
   if (S.chests.length){                        // exactly one chest holds the speed boots and a different one holds the flamethrower
     const bi = Math.random()*S.chests.length|0; S.chests[bi].boots = true;
     let fi = bi;
-    if (S.chests.length > 1){ do fi = Math.random()*S.chests.length|0; while (fi === bi); S.chests[fi].flame = true; }
+    if (S.chests.length > 1 && !S.koth){ do fi = Math.random()*S.chests.length|0; while (fi === bi); S.chests[fi].flame = true; }      // (no flamethrower in King of the Hill)
     if (S.chests.length > 2){ let si; do si = Math.random()*S.chests.length|0; while (si === bi || si === fi); S.chests[si].sniper = true; }       // and a third holds the sniper rifle
   }
   const clampW = v => Math.max(100, Math.min(W-100, Math.round(v)));
@@ -577,7 +579,7 @@ function init(humans, humansOnly, mapId, koth){
     S.actors.push(a); S.players.push(a); byPid[h.pid] = a;
   }
   S.player = byPid[0] || S.players[0];
-  const plan = botPlan(humans, humansOnly);
+  const plan = botPlan(humans, humansOnly, S.koth);
   let n = 0;
   for (let t=1; t<=plan.teams; t++){
     const hue = rnd(0,360)|0; let lead = null;
@@ -623,9 +625,9 @@ function setupStorm(humansOnly){
   S.plan = plan.map(c => ({x:Math.round(c.x), y:Math.round(c.y), r:c.r}));
   if (S.koth){
     const h = S.plan[S.plan.length-1]; S.hill = {x:h.x, y:h.y, r:h.r};
-    for (let n = 0; n < 8; n++){                    // a ring of chests around the hill so everyone can arm up right where the fight is
+    for (let n = 0; n < 4; n++){                    // a few chests near the hill so everyone can arm up right where the fight is
       for (let t = 0; t < 30; t++){
-        const ang = (n + rnd(-0.3, 0.3))/8*Math.PI*2, d = h.r*rnd(1.2, 2.2), x = Math.round(h.x + Math.cos(ang)*d), y = Math.round(h.y + Math.sin(ang)*d);
+        const ang = (n + rnd(-0.3, 0.3))/4*Math.PI*2, d = h.r*rnd(1.2, 2.2), x = Math.round(h.x + Math.cos(ang)*d), y = Math.round(h.y + Math.sin(ang)*d);
         if (x < 150 || y < 150 || x > W-150 || y > W-150 || nearLake(x, y, 40) || inBldg(x, y, 40) || onIce(x, y, 20) || S.trees.some(q => Math.hypot(q.x-x, q.y-y) < 50) || S.chests.some(c => Math.hypot(c.x-x, c.y-y) < 60)) continue;
         S.chests.push({x, y, open:false}); break;
       }
@@ -637,11 +639,11 @@ function setStormTarget(){ const st = S.storm, c = S.plan[st.i]; st.nx = c.x; st
 const spawnRadius = U => Math.min(W/2 - 300, 800 + 420*U);          // humans-only: how wide the starting area is for U teams
 function placeSpawns(){
   const teams = [...new Set(S.actors.map(a => a.team))];
-  const U = teams.length, R = S.humansOnly ? spawnRadius(U) : W/2 - 300;
+  const U = teams.length, R = S.koth ? 1500 : S.humansOnly ? spawnRadius(U) : W/2 - 300, oc = S.koth && S.hill ? S.hill : CENTER;
   const pts = [];
   for (let i = 0; i < U; i++){
     const r = R * Math.sqrt((i + 0.5) / U), ang = i * 2.39996323;
-    pts.push({x:CENTER.x + Math.cos(ang)*r, y:CENTER.y + Math.sin(ang)*r});
+    pts.push({x:oc.x + Math.cos(ang)*r, y:oc.y + Math.sin(ang)*r});
   }
   for (let i = U - 1; i > 0; i--){ const j = Math.random()*(i+1)|0; [pts[i], pts[j]] = [pts[j], pts[i]]; }       // random order: nobody always gets the middle
   const free = (x, y) => S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 45) && !inBldg(x, y, 70);
@@ -675,7 +677,11 @@ function audioUnlock(){
     if (AC.state === 'suspended') AC.resume();
   } catch(_){}
 }
-for (const ev of ['pointerdown','touchstart','keydown','click']) addEventListener(ev, audioUnlock, {capture:true, passive:true});
+for (const ev of ['pointerdown','pointerup','mousedown','touchstart','touchend','keydown','click']) addEventListener(ev, audioUnlock, {capture:true, passive:true});
+// Try to start the audio the moment the page loads. Browsers that allow autoplay (e.g. the site has been used before) play the menu music straight away;
+// the others keep it suspended, so we keep retrying quietly and the very first tap, click or key press starts it.
+audioUnlock();
+setInterval(() => { if (AC && AC.state === 'suspended' && !document.hidden) { try { AC.resume(); } catch(_){} } }, 400);
 function setMuted(m){
   muted = m; try { localStorage.setItem('sr-mute', m ? '1' : '0'); } catch(_){}
   if (master) master.gain.value = m ? 0 : 0.5;
@@ -1137,7 +1143,7 @@ function ammoCheck(){
   if (S.over) return;
   const st = S.storm, R = Math.min(st.r, st.nr) * 0.9;
   if (R < 80) return;
-  const alive = S.actors.filter(a => a.alive), need = Math.max(3, Math.ceil(alive.length * 0.35));      // boxes' worth of each ammo type the map should hold
+  const alive = S.actors.filter(a => a.alive), need = S.koth ? Math.max(5, Math.ceil(alive.length * 0.8)) : Math.max(3, Math.ceil(alive.length * 0.35));      // boxes' worth of each ammo type the map should hold
   let dropped = 0;
   for (const g of ['pistol','shotgun','ar']){
     const key = 'ammo_' + g, m = AMMO[key];
@@ -1146,17 +1152,18 @@ function ammoCheck(){
     for (const a of alive) supply += a.ammo[g] / m.box;
     for (const c of S.chests) if (!c.open && Math.hypot(c.x-st.cx, c.y-st.cy) < st.r) supply += 0.3;
     if (supply >= need) continue;
-    for (let k = Math.min(3, Math.ceil(need - supply)); k > 0; k--){
+    for (let k = Math.min(S.koth ? 4 : 3, Math.ceil(need - supply)); k > 0; k--){
       let x = st.nx, y = st.ny;
       for (let tries = 0; tries < 12; tries++){
-        const ang = rnd(0, Math.PI*2), r = Math.sqrt(Math.random()) * R;
-        x = Math.round(Math.max(60, Math.min(W-60, st.nx + Math.cos(ang)*r))); y = Math.round(Math.max(60, Math.min(W-60, st.ny + Math.sin(ang)*r)));
+        const ang = rnd(0, Math.PI*2), r = Math.sqrt(Math.random()) * R, nearHill = S.koth && S.hill && Math.random() < 0.7, cx2 = nearHill ? S.hill.x : st.nx, cy2 = nearHill ? S.hill.y : st.ny, r2 = nearHill ? S.hill.r*rnd(0.4, 2.6) : r;      // in King of the Hill most drops land around the hill
+        x = Math.round(Math.max(60, Math.min(W-60, cx2 + Math.cos(ang)*r2))); y = Math.round(Math.max(60, Math.min(W-60, cy2 + Math.sin(ang)*r2)));
         if (!nearLake(x, y, 15) && S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 40) && !S.walls.has(wallKey(Math.floor(x/G), Math.floor(y/G)))) break;
       }
       S.loot.push({x, y, type:key, n:m.box}); burst(x, y, '#ffd84a', 16); dropped++;
     }
   }
-  if (dropped){
+  if (dropped && (!S.koth || !(S.ammoToast > performance.now() - 25000))){
+    S.ammoToast = performance.now();
     toast('Ammo supplies dropped on the map!', 2500);
     if (NET.role === 'host') broadcast({t:'tst', x:'Ammo supplies dropped on the map!'});
   }
@@ -1224,8 +1231,8 @@ function openChest(c){
   if (c.flame) drops.push({type:'flame', rar:4});
   if (c.sniper) drops.push({type:'sniper', rar:4});
   if (Math.random() < GR_CHANCE) drops.push({type:'grenade', rar:4});   // 7%: a (gold) grenade
-  drops.filter(d => GUN_W[d.type]).forEach(d => drops.push({type:'ammo_'+d.type, n:AMMO['ammo_'+d.type].box}));      // every gun comes with a box of its bullets
-  if (Math.random() < 0.4){ const t = ['ammo_pistol','ammo_shotgun','ammo_ar'][Math.random()*3|0]; drops.push({type:t, n:AMMO[t].box}); }   // 40%: an extra box
+  drops.filter(d => GUN_W[d.type]).forEach(d => { if (!S.koth || Math.random() < 0.2) drops.push({type:'ammo_'+d.type, n:AMMO['ammo_'+d.type].box}); });      // every gun comes with a box of its bullets (King of the Hill: guns are plentiful, ammo comes from the drops)
+  if (!S.koth && Math.random() < 0.4){ const t = ['ammo_pistol','ammo_shotgun','ammo_ar'][Math.random()*3|0]; drops.push({type:t, n:AMMO[t].box}); }   // 40%: an extra box
   if (c.island){ drops.push({type:pick(), rar:Math.max(rollRarity(), rollRarity())}); drops.push({type:'shield'}); }      // island chests are richer: a better gun and a shield potion
   const off = Math.random()*Math.PI*2;
   drops.forEach((dr,i) => {
@@ -1436,14 +1443,14 @@ function update(dt){
       else { st.state = 'final'; st.t = 9999; }               // the last circle stays put
     }
   }
-  if (S.ammoChk === undefined) S.ammoChk = 40;                 // first supply check 40 s in (chests haven't been looted yet before that)
+  if (S.ammoChk === undefined) S.ammoChk = S.koth ? 8 : 40;                 // first supply check 40 s in (chests haven't been looted yet before that)
   S.ammoChk -= dt;
-  if (S.ammoChk <= 0){ S.ammoChk = 10; ammoCheck(); }
+  if (S.ammoChk <= 0){ S.ammoChk = S.koth ? 6 : 10; ammoCheck(); }
   const stormDps = 8 + st.i*4;   // per second: roughly 12 seconds to eliminate at first, much faster in later phases
 
   if (S.koth){
     S.chestT = (S.chestT === undefined ? 35 : S.chestT) - dt;
-    if (S.chestT <= 0){ S.chestT = 30; const used = S.chests.filter(c => c.open && !c.island); for (let n = 0; n < 8 && used.length; n++){ const c = used.splice(Math.random()*used.length|0, 1)[0]; c.open = false; c.boots = c.flame = c.sniper = false; } }      // chests refill so nobody runs dry
+    if (S.chestT <= 0){ S.chestT = 45; const used = S.chests.filter(c => c.open && !c.island); for (let n = 0; n < 3 && used.length; n++){ const c = used.splice(Math.random()*used.length|0, 1)[0]; c.open = false; c.boots = c.flame = c.sniper = false; } }      // chests refill so nobody runs dry
     if (S.hill && S.hill.t === undefined) S.hill.t = 0;
   }
   for (const a of S.actors){
@@ -2767,7 +2774,7 @@ function renderLobby(){
   const humans = list.map(p => ({pid:p.pid, mate:p.mate})), plan = botPlan(humans, humansOnly);
   const teams = new Set(humans.map(teamIdOf)).size, s = n => n === 1 ? '' : 's';
   $('lobby-info').textContent = list.length + ' player' + s(list.length) + ' in ' + teams + ' team' + s(teams) +
-    (NET.viewMode === 'koth' ? '. King of the Hill: bots fill the rest. Stand in the circle to score; when the storm closes on it the top score wins. You respawn when knocked out.' : humansOnly ? (teams < 2 ? '. Humans only: waiting for at least one more player or team.' : '. Humans only: no bots, a smaller starting area.')
+    (NET.viewMode === 'koth' ? '. King of the Hill: 10 players in total, bots fill the rest. Stand in the circle to score; when the storm closes on it the top score wins. You respawn when knocked out.' : humansOnly ? (teams < 2 ? '. Humans only: waiting for at least one more player or team.' : '. Humans only: no bots, a smaller starting area.')
                 : '. Bots fill the rest: ' + plan.teams + ' team' + s(plan.teams) + ' of ' + plan.size + '.');
   const isHost = NET.role === 'host';
   document.querySelectorAll('#modebox .mini').forEach(bt => { bt.classList.toggle('sel', bt.dataset.mode === (NET.viewMode || 'bots')); bt.disabled = !isHost; });
