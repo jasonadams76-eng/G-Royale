@@ -621,7 +621,16 @@ function setupStorm(humansOnly){
   }
   if (!plan) plan = ph.map(q => ({x:CENTER.x, y:CENTER.y, r:q.r}));
   S.plan = plan.map(c => ({x:Math.round(c.x), y:Math.round(c.y), r:c.r}));
-  if (S.koth){ const h = S.plan[S.plan.length-1]; S.hill = {x:h.x, y:h.y, r:h.r}; }
+  if (S.koth){
+    const h = S.plan[S.plan.length-1]; S.hill = {x:h.x, y:h.y, r:h.r};
+    for (let n = 0; n < 8; n++){                    // a ring of chests around the hill so everyone can arm up right where the fight is
+      for (let t = 0; t < 30; t++){
+        const ang = (n + rnd(-0.3, 0.3))/8*Math.PI*2, d = h.r*rnd(1.2, 2.2), x = Math.round(h.x + Math.cos(ang)*d), y = Math.round(h.y + Math.sin(ang)*d);
+        if (x < 150 || y < 150 || x > W-150 || y > W-150 || nearLake(x, y, 40) || inBldg(x, y, 40) || onIce(x, y, 20) || S.trees.some(q => Math.hypot(q.x-x, q.y-y) < 50) || S.chests.some(c => Math.hypot(c.x-x, c.y-y) < 60)) continue;
+        S.chests.push({x, y, open:false}); break;
+      }
+    }
+  }
   st.t = ph[0].wait; setStormTarget();
 }
 function setStormTarget(){ const st = S.storm, c = S.plan[st.i]; st.nx = c.x; st.ny = c.y; st.nr = c.r; }
@@ -1261,7 +1270,8 @@ function collide(a){
 // ---------- Bot AI ----------
 function botThink(b, dt){
   const armed = b.inv.some(w => w && WEAP[w] && ((WEAP[w].spd && b.ammo[w] > 0) || WEAP[w].flame));
-  let target = null, best = armed ? 450 : 110;   // unarmed bots only fight what is right next to them; otherwise they go find a chest
+  const hill = S.koth ? S.hill : null, inHill = !!hill && Math.hypot(b.x-hill.x, b.y-hill.y) < hill.r*0.85;
+  let target = null, best = armed ? 450 : (hill ? 230 : 110);   // unarmed bots only fight what is right next to them; otherwise they go find a chest
   for (const o of S.actors){
     if (o === b || !o.alive || o.team === b.team) continue;
     const d = Math.hypot(o.x-b.x, o.y-b.y);
@@ -1281,6 +1291,11 @@ function botThink(b, dt){
     const fwd = b.inv.includes('flame') ? (best > 140 ? 1 : 0) : best > 280 ? 1 : best < 150 ? -1 : 0;
     mx = Math.cos(a)*fwd + Math.cos(a+Math.PI/2)*b.strafe*0.7;
     my = Math.sin(a)*fwd + Math.sin(a+Math.PI/2)*b.strafe*0.7;
+    if (hill){                       // King of the Hill: fight, but never lose sight of the hill: drift to it, and don't leave it once there
+      const dh = Math.hypot(hill.x-b.x, hill.y-b.y), ha = Math.atan2(hill.y-b.y, hill.x-b.x);
+      if (!inHill){ mx = mx*0.3 + Math.cos(ha)*0.95; my = my*0.3 + Math.sin(ha)*0.95; }
+      else if (dh > hill.r*0.6){ mx = mx*0.5 + Math.cos(ha)*0.7; my = my*0.5 + Math.sin(ha)*0.7; }
+    }
     const gi = b.inv.indexOf('grenade');
     if (gi >= 0 && best > 150 && best < GR_RANGE - 30 && Math.random() < dt*1.2){ b.cur = gi; throwGrenade(b, target.x, target.y); return [0,0]; }
     // pick best weapon
@@ -1294,7 +1309,7 @@ function botThink(b, dt){
       if (c !== b.cur){ b.cur = c; b.wpnT = 0.7; }
     }
     if (b.cur === 0 && best < 70 || b.cur !== 0 && Math.abs(diff) < 0.35) fire(b);
-    if (b.cur === 0 && best > 70) { mx = Math.cos(a); my = Math.sin(a); }
+    if (b.cur === 0 && best > 70 && !(hill && inHill && Math.hypot(target.x-hill.x, target.y-hill.y) > hill.r)) { mx = Math.cos(a); my = Math.sin(a); }
     if (b.hp < 50 && b.wood >= 10 && Math.random() < dt*2) build(b);
   } else {
     // heal when no one is nearby
@@ -1305,13 +1320,13 @@ function botThink(b, dt){
       if (bi >= 0){ b.cur = bi; startHeal(b); return [0,0]; }
     }
     // seek loot / chests or wander
-    let near = null, nd = armed ? 700 : 1800;   // an unarmed bot heads for the nearest chest, even a long way off
+    let near = null, nd = S.koth ? (armed ? 220 : 500) : armed ? 700 : 1800;   // an unarmed bot heads for the nearest chest, even a long way off
     for (const l of S.loot){ if (!canTake(b, l) || nearLake(l.x, l.y, 0)) continue; const d = Math.hypot(l.x-b.x,l.y-b.y); if (d < nd){ nd = d; near = l; } }
     for (const c of S.chests){ if (c.open || c.island) continue; const d = Math.hypot(c.x-b.x,c.y-b.y); if (d < nd){ nd = d; near = c; } }
     // duo partners stick together: regroup if they have drifted apart
     const mate = S.actors.find(o => o !== b && o.alive && o.team === b.team);
     if (mate && near && Math.hypot(near.x-mate.x, near.y-mate.y) > 380) near = null;   // don't wander off to loot far from the partner
-    if (mate && Math.hypot(mate.x-b.x, mate.y-b.y) > 240) b.wp = {x:mate.x, y:mate.y};
+    if (mate && !S.koth && Math.hypot(mate.x-b.x, mate.y-b.y) > 240) b.wp = {x:mate.x, y:mate.y};
     else if (near) b.wp = {x:near.x,y:near.y};
     else if (S.koth && S.hill){ b.hillT = (b.hillT || 0) - dt; if (!(b.hillT > 0) || !b.wp){ b.hillT = rnd(2, 4); const a2 = rnd(0, 6.283), d2 = Math.sqrt(Math.random())*S.hill.r*0.8; b.wp = {x:S.hill.x + Math.cos(a2)*d2, y:S.hill.y + Math.sin(a2)*d2}; } }
     else { b.wpT -= dt; if (!b.wp || b.wpT <= 0){ for (let tr = 0; tr < 8; tr++){ b.wp = {x:S.storm.nx+rnd(-S.storm.nr,S.storm.nr)*0.8, y:S.storm.ny+rnd(-S.storm.nr,S.storm.nr)*0.8}; if (!nearLake(b.wp.x, b.wp.y, 20)) break; } b.wpT = rnd(4,9); } }
