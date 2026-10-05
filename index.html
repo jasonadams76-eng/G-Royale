@@ -1103,15 +1103,18 @@ function giveItem(a, type, rar){
     a.inv[gi] = 'grenade'; if (a.isPlayer) a.cur = gi; return true;
   }
   // guns: one of each type. A better one replaces the one you hold, which drops to the ground.
+  // A picked-up gun only goes into your hands if you were holding the pickaxe (nothing). A better version of the gun you already hold simply replaces it in your hands.
+  const holding = a.inv[a.cur], betterThanHeld = !holding || holding === 'pickaxe';
   const have = a.inv.indexOf(type);
   if (have >= 0){
     if (rar <= a.gr[type]) return false;
     S.loot.push({x:a.x+rnd(-26,26), y:a.y+rnd(-26,26), type, rar:a.gr[type]});
-    a.gr[type] = rar; if (a === S.player) gunToast(type, rar, true); return true;
+    a.gr[type] = rar; if (a.isPlayer && betterThanHeld) a.cur = have;
+    if (a === S.player) gunToast(type, rar, true); return true;
   }
   const i = a.inv.indexOf(null, 1);
   if (i < 0) return false;
-  a.inv[i] = type; a.gr[type] = rar; if (a.isPlayer) a.cur = i;
+  a.inv[i] = type; a.gr[type] = rar; if (a.isPlayer && betterThanHeld) a.cur = i;
   let bonus = 0;
   if (!a.started[type]){ a.started[type] = true; bonus = START_AMMO[type]; a.ammo[type] = Math.min(AMMO['ammo_'+type].max, a.ammo[type] + bonus); }   // first time with this gun: it comes loaded
   if (a === S.player) gunToast(type, rar, false, bonus);
