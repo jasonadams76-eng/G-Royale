@@ -452,7 +452,7 @@ function init(humans, humansOnly){
   S = {actors:[], players:[], bullets:[], trees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[], lakes:[], boats:[],
     over:false, winTeam:null, overAt:0,
     humansOnly:!!humansOnly, phases:PHASES,
-    storm:{i:0, state:'wait', t:PHASES[0].wait, r:STORM_R0, rFrom:STORM_R0, rTo:PHASES[0].r}};
+    storm:{i:0, state:'wait', t:PHASES[0].wait, r:STORM_R0, cx:CENTER.x, cy:CENTER.y, rFrom:STORM_R0, cxFrom:CENTER.x, cyFrom:CENTER.y, rTo:PHASES[0].r, cxTo:CENTER.x, cyTo:CENTER.y, nx:CENTER.x, ny:CENTER.y, nr:PHASES[0].r}};
   {   // three lakes spread around the board (random direction each match), each with an island and a boat on its shore
     const th = Math.random()*Math.PI*2, r3 = v => Math.round(v*1000)/1000;
     const LAKES = 3;
@@ -517,12 +517,36 @@ function init(humans, humansOnly){
   if (humansOnly){        // few players on a big board: start them closer together and close the storm in to match
     const teamsN = new Set(S.actors.map(a => a.team)).size, fr = Math.min(1, spawnRadius(teamsN) / (W/2 - 300));
     S.phases = PHASES.map(ph => ({wait:Math.max(8, Math.round(ph.wait*0.7)), shrink:Math.max(8, Math.round(ph.shrink*0.8)), r:Math.round(ph.r*Math.max(0.35, fr))}));
-    S.storm.t = S.phases[0].wait; S.storm.rTo = S.phases[0].r;
   }
+  setupStorm(humansOnly);
   placeSpawns();
 }
 // Every team (a solo player, a co-op duo, a bot duo) gets its own starting spot. The spots are spread evenly over the board
 // (a sunflower spiral gives equal spacing in every direction), handed out in random order, and partners always start together.
+// The safe circle no longer always closes on the middle: every circle sits inside the one before it, and the last (smallest) one can be anywhere on the board.
+function setupStorm(humansOnly){
+  const ph = S.phases, L = ph.length - 1, st = S.storm;
+  let plan = null;
+  for (let attempt = 0; attempt < 300 && !plan; attempt++){
+    const C = new Array(ph.length), rL = ph[L].r;
+    if (humansOnly){ const a = rnd(0, Math.PI*2), d = Math.sqrt(Math.random()) * Math.min(1800, W/2 - rL - 200); C[L] = {x:CENTER.x + Math.cos(a)*d, y:CENTER.y + Math.sin(a)*d, r:rL}; }
+    else C[L] = {x:rnd(rL + 150, W - rL - 150), y:rnd(rL + 150, W - rL - 150), r:rL};
+    let ok = true;
+    for (let k = L - 1; k >= 0 && ok; k--){
+      const room = ph[k].r - C[k+1].r; let got = null;
+      for (let t = 0; t < 40 && !got; t++){
+        const a = rnd(0, Math.PI*2), d = Math.sqrt(Math.random()) * room, x = C[k+1].x + Math.cos(a)*d, y = C[k+1].y + Math.sin(a)*d;
+        if (x > 0 && x < W && y > 0 && y < W) got = {x, y, r:ph[k].r};
+      }
+      if (!got) ok = false; else C[k] = got;
+    }
+    if (ok && Math.hypot(C[0].x - CENTER.x, C[0].y - CENTER.y) <= STORM_R0 - C[0].r) plan = C;     // the first circle must fit inside the opening storm
+  }
+  if (!plan) plan = ph.map(q => ({x:CENTER.x, y:CENTER.y, r:q.r}));
+  S.plan = plan.map(c => ({x:Math.round(c.x), y:Math.round(c.y), r:c.r}));
+  st.t = ph[0].wait; setStormTarget();
+}
+function setStormTarget(){ const st = S.storm, c = S.plan[st.i]; st.nx = c.x; st.ny = c.y; st.nr = c.r; }
 const spawnRadius = U => Math.min(W/2 - 300, 800 + 420*U);          // humans-only: how wide the starting area is for U teams
 function placeSpawns(){
   const teams = [...new Set(S.actors.map(a => a.team))];
@@ -1004,22 +1028,22 @@ function dropItem(a){
 // When ammo gets scarce (little on the ground in the safe zone, little carried), fresh boxes appear at random spots inside the safe zone.
 function ammoCheck(){
   if (S.over) return;
-  const st = S.storm, R = Math.min(st.r, st.rTo || st.r) * 0.9;
+  const st = S.storm, R = Math.min(st.r, st.nr) * 0.9;
   if (R < 80) return;
   const alive = S.actors.filter(a => a.alive), need = Math.max(3, Math.ceil(alive.length * 0.35));      // boxes' worth of each ammo type the map should hold
   let dropped = 0;
   for (const g of ['pistol','shotgun','ar']){
     const key = 'ammo_' + g, m = AMMO[key];
     let supply = 0;
-    for (const l of S.loot) if (l.type === key && Math.hypot(l.x-CENTER.x, l.y-CENTER.y) < st.r) supply += (l.n || m.box) / m.box;
+    for (const l of S.loot) if (l.type === key && Math.hypot(l.x-st.cx, l.y-st.cy) < st.r) supply += (l.n || m.box) / m.box;
     for (const a of alive) supply += a.ammo[g] / m.box;
-    for (const c of S.chests) if (!c.open && Math.hypot(c.x-CENTER.x, c.y-CENTER.y) < st.r) supply += 0.3;
+    for (const c of S.chests) if (!c.open && Math.hypot(c.x-st.cx, c.y-st.cy) < st.r) supply += 0.3;
     if (supply >= need) continue;
     for (let k = Math.min(3, Math.ceil(need - supply)); k > 0; k--){
-      let x = CENTER.x, y = CENTER.y;
+      let x = st.nx, y = st.ny;
       for (let tries = 0; tries < 12; tries++){
         const ang = rnd(0, Math.PI*2), r = Math.sqrt(Math.random()) * R;
-        x = Math.round(Math.max(60, Math.min(W-60, CENTER.x + Math.cos(ang)*r))); y = Math.round(Math.max(60, Math.min(W-60, CENTER.y + Math.sin(ang)*r)));
+        x = Math.round(Math.max(60, Math.min(W-60, st.nx + Math.cos(ang)*r))); y = Math.round(Math.max(60, Math.min(W-60, st.ny + Math.sin(ang)*r)));
         if (!nearLake(x, y, 15) && S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 40) && !S.walls.has(wallKey(Math.floor(x/G), Math.floor(y/G)))) break;
       }
       S.loot.push({x, y, type:key, n:m.box}); burst(x, y, '#ffd84a', 16); dropped++;
@@ -1145,10 +1169,10 @@ function botThink(b, dt){
     const d = Math.hypot(o.x-b.x, o.y-b.y);
     if (d < best){ best = d; target = o; }
   }
-  const sd = Math.hypot(b.x-CENTER.x, b.y-CENTER.y);
+  const sd = Math.hypot(b.x-S.storm.cx, b.y-S.storm.cy);
   let mx = 0, my = 0, speed = 190;
   if (sd > S.storm.r - 100){
-    const a = Math.atan2(CENTER.y-b.y, CENTER.x-b.x); mx = Math.cos(a); my = Math.sin(a); speed = 230;
+    const a = Math.atan2(S.storm.ny-b.y, S.storm.nx-b.x); mx = Math.cos(a); my = Math.sin(a); speed = 230;      // run for the next safe circle
     if (target) b.angle = Math.atan2(target.y-b.y, target.x-b.x);
   } else if (target){
     const a = Math.atan2(target.y-b.y, target.x-b.x);
@@ -1191,7 +1215,7 @@ function botThink(b, dt){
     if (mate && near && Math.hypot(near.x-mate.x, near.y-mate.y) > 380) near = null;   // don't wander off to loot far from the partner
     if (mate && Math.hypot(mate.x-b.x, mate.y-b.y) > 240) b.wp = {x:mate.x, y:mate.y};
     else if (near) b.wp = {x:near.x,y:near.y};
-    else { b.wpT -= dt; if (!b.wp || b.wpT <= 0){ for (let tr = 0; tr < 8; tr++){ b.wp = {x:CENTER.x+rnd(-S.storm.r,S.storm.r)*0.8, y:CENTER.y+rnd(-S.storm.r,S.storm.r)*0.8}; if (!nearLake(b.wp.x, b.wp.y, 20)) break; } b.wpT = rnd(4,9); } }
+    else { b.wpT -= dt; if (!b.wp || b.wpT <= 0){ for (let tr = 0; tr < 8; tr++){ b.wp = {x:S.storm.nx+rnd(-S.storm.nr,S.storm.nr)*0.8, y:S.storm.ny+rnd(-S.storm.nr,S.storm.nr)*0.8}; if (!nearLake(b.wp.x, b.wp.y, 20)) break; } b.wpT = rnd(4,9); } }
     const a = Math.atan2(b.wp.y-b.y, b.wp.x-b.x); mx = Math.cos(a); my = Math.sin(a);
     b.angle = a; b.cur = bestSlot(b);
     // harvest trees in the way
@@ -1256,13 +1280,14 @@ function update(dt){
   const st = S.storm;
   st.t -= dt;
   if (st.state === 'wait'){
-    if (st.t <= 0){ st.state = 'shrink'; st.t = S.phases[st.i].shrink; st.rFrom = st.r; st.rTo = S.phases[st.i].r; }
+    if (st.t <= 0){ st.state = 'shrink'; st.t = S.phases[st.i].shrink; st.rFrom = st.r; st.cxFrom = st.cx; st.cyFrom = st.cy; st.rTo = st.nr; st.cxTo = st.nx; st.cyTo = st.ny; }
   } else if (st.state === 'shrink'){
-    st.r = st.rFrom + (st.rTo - st.rFrom) * (1 - Math.max(0, st.t)/S.phases[st.i].shrink);
+    const f = 1 - Math.max(0, st.t)/S.phases[st.i].shrink;
+    st.r = st.rFrom + (st.rTo - st.rFrom) * f; st.cx = st.cxFrom + (st.cxTo - st.cxFrom) * f; st.cy = st.cyFrom + (st.cyTo - st.cyFrom) * f;
     if (st.t <= 0){
-      st.r = st.rTo;
-      if (st.i < S.phases.length-1){ st.i++; st.state = 'wait'; st.t = S.phases[st.i].wait; }
-      else { st.state = 'final'; st.t = 9999; }               // the last circle stays put (before this fix the radius blew up after the final phase)
+      st.r = st.rTo; st.cx = st.cxTo; st.cy = st.cyTo;
+      if (st.i < S.phases.length-1){ st.i++; st.state = 'wait'; st.t = S.phases[st.i].wait; setStormTarget(); }
+      else { st.state = 'final'; st.t = 9999; }               // the last circle stays put
     }
   }
   if (S.ammoChk === undefined) S.ammoChk = 40;                 // first supply check 40 s in (chests haven't been looted yet before that)
@@ -1315,7 +1340,7 @@ function update(dt){
     }
     boatStep(a);
     // storm damage
-    if (Math.hypot(a.x-CENTER.x, a.y-CENTER.y) > st.r){
+    if (Math.hypot(a.x-st.cx, a.y-st.cy) > st.r){
       a.stormAcc = (a.stormAcc||0) + dt;
       if (a.stormAcc >= 0.25){ a.stormAcc -= 0.25; damage(a, stormDps*0.25, null); }   // ticks 4 times a second
     }
@@ -1389,7 +1414,7 @@ function encodeActor(a){
 function sendSnapshot(){
   if (!peerCount()) return;
   const st = S.storm;
-  const msg = {t:'snap', st:{i:st.i, s:st.state === 'wait' ? 0 : 1, t:+st.t.toFixed(2), r:Math.round(st.r)},
+  const msg = {t:'snap', st:{i:st.i, s:st.state === 'wait' ? 0 : 1, t:+st.t.toFixed(2), r:Math.round(st.r), x:Math.round(st.cx), y:Math.round(st.cy), nx:st.nx, ny:st.ny, nr:st.nr},
     A:S.actors.map(encodeActor),
     B:S.bullets.map(b => [Math.round(b.x), Math.round(b.y), Math.round(b.vx), Math.round(b.vy), b.color]),
     ev:S.ev, sn:S.sn || [], G:S.grenades.map(g => [Math.round(g.x), Math.round(g.y), +(g.t/g.dur).toFixed(2)]), bm:S.bm || [], tr:S.tr || [], Bt:S.boats.map(b => [Math.round(b.x), Math.round(b.y), +b.ang.toFixed(2), b.rider ? S.actors.indexOf(b.rider) : -1]), o:S.over?1:0, wt:S.winTeam};
@@ -1588,7 +1613,7 @@ function onLobbyMsg(m){
 // ---------- Networking: guest side ----------
 function buildGuestState(m){
   S = {actors:[], players:[], bullets:[], trees:[], allTrees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[], lakes:(m.lakes || []).map(a => makeLake(a[0], a[1], a.slice(2,8), a[8], a[9])), boats:(m.boats || []).map(([x,y,ang]) => ({x, y, tx:x, ty:y, ang, rider:null})),
-    over:false, winTeam:null, overAt:0, storm:{i:0, state:'wait', t:PHASES[0].wait, r:STORM_R0, rFrom:STORM_R0, rTo:PHASES[0].r}};
+    over:false, winTeam:null, overAt:0, storm:{i:0, state:'wait', t:PHASES[0].wait, r:STORM_R0, cx:CENTER.x, cy:CENTER.y, nx:CENTER.x, ny:CENTER.y, nr:PHASES[0].r, rFrom:STORM_R0, rTo:PHASES[0].r}};
   m.trees.forEach(([x,y], id) => { const t = {id, x, y, r:22, wood:100}; S.allTrees.push(t); S.trees.push(t); });
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
   m.actors.forEach(d => S.actors.push({x:d.x, y:d.y, tx:d.x, ty:d.y, r:15, hp:100, sh:0, wood:0,
@@ -1637,7 +1662,7 @@ function applySnap(m){
   S.grenades = (m.G || []).map(g => ({x:g[0], y:g[1], p:g[2]}));
   if (m.bm) for (const q of m.bm) S.blasts.push({x:q[0], y:q[1], t0:performance.now()});
   if (m.tr) for (const q of m.tr) (S.tracers || (S.tracers = [])).push({x1:q[0], y1:q[1], x2:q[2], y2:q[3], t0:performance.now()});
-  const st = S.storm; st.i = m.st.i; st.state = m.st.s ? 'shrink' : 'wait'; st.t = m.st.t; st.r = m.st.r;
+  const st = S.storm; st.i = m.st.i; st.state = m.st.s ? 'shrink' : 'wait'; st.t = m.st.t; st.r = m.st.r; st.cx = m.st.x; st.cy = m.st.y; st.nx = m.st.nx; st.ny = m.st.ny; st.nr = m.st.nr;
   if (m.W) S.walls = new Map(m.W.map(([gx,gy,hp]) => [wallKey(gx,gy), {gx, gy, hp}]));
   if (m.L) S.loot = m.L.map(([x,y,ti,n,rar]) => ({x, y, type:TYPES[ti], n:n || undefined, rar:rar || 0}));
   if (m.C) m.C.forEach((o,i) => { if (S.chests[i]) S.chests[i].open = !!o; });
@@ -2130,8 +2155,11 @@ function draw(){
   // storm overlay (hole in the middle)
   ctx.fillStyle = 'rgba(110,40,170,0.42)';
   ctx.beginPath(); ctx.rect(cam.x-10,cam.y-10,vw+20,vh+20);
-  ctx.arc(CENTER.x, CENTER.y, Math.max(1,S.storm.r), 0, Math.PI*2, true); ctx.fill('evenodd');
-  ctx.strokeStyle='#c6f'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(CENTER.x,CENTER.y,Math.max(1,S.storm.r),0,7); ctx.stroke();
+  ctx.arc(S.storm.cx, S.storm.cy, Math.max(1,S.storm.r), 0, Math.PI*2, true); ctx.fill('evenodd');
+  ctx.strokeStyle='#c6f'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(S.storm.cx,S.storm.cy,Math.max(1,S.storm.r),0,7); ctx.stroke();
+  if (S.storm.state !== 'final' && S.storm.nr < S.storm.r - 1){          // where the next safe circle will be
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 3; ctx.setLineDash([22,16]); ctx.beginPath(); ctx.arc(S.storm.nx, S.storm.ny, S.storm.nr, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+  }
   ctx.restore();
   drawHUD();
 }
@@ -2214,7 +2242,8 @@ function drawHUD(){
   ctx.fillText((st.state==='wait'?'Storm shrinks in ':'Storm closing ')+Math.max(0,st.t|0)+'s', tx, ty+lh*2);
   ctx.fillStyle='#0a3a12cc'; ctx.fillRect(mx,my,ms,ms);
   for (const l of S.lakes){ ctx.fillStyle = '#3b8ee0'; ctx.beginPath(); for (let q = 0; q < 36; q++){ const t = q/36*Math.PI*2, e = l.E[q*2]; const X = mx+(l.x+Math.cos(t)*e)*k, Y = my+(l.y+Math.sin(t)*e)*k; q ? ctx.lineTo(X,Y) : ctx.moveTo(X,Y); } ctx.closePath(); ctx.fill(); ctx.fillStyle = '#6fbf5a'; ctx.beginPath(); ctx.arc(mx+l.ix*k, my+l.iy*k, Math.max(1.5, l.i*k), 0, 7); ctx.fill(); }
-  ctx.strokeStyle='#c6f'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(mx+CENTER.x*k,my+CENTER.y*k,st.r*k,0,7); ctx.stroke();
+  ctx.strokeStyle='#c6f'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(mx+st.cx*k,my+st.cy*k,st.r*k,0,7); ctx.stroke();
+  if (st.state !== 'final' && st.nr < st.r - 1){ ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(mx+st.nx*k,my+st.ny*k,st.nr*k,0,7); ctx.stroke(); }
   ctx.fillStyle='#fc4';
   for (const c of S.chests){ if (c.open || Math.hypot(c.x-p.x,c.y-p.y) > 900) continue; ctx.fillRect(mx+c.x*k-2, my+c.y*k-2, 4, 4); }
   for (const a of S.actors){
