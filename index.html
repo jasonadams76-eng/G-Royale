@@ -804,7 +804,7 @@ function build(a){
   if (S.walls.has(k) || gx<0 || gy<0 || gx*G>=W || gy*G>=W || nearLake(gx*G+G/2, gy*G+G/2, 0)) return;       // no fences on the lakes or islands
   S.walls.set(k, {gx, gy, hp:150}); a.wood -= 10; sfx('bd', a.x, a.y);
 }
-function damage(a, dmg, owner){
+function damage(a, dmg, owner, wpn){
   a.heal = 0;   // taking damage interrupts healing
   if (a.sh > 0){ const s = Math.min(a.sh, dmg); a.sh -= s; dmg -= s; }
   a.hp -= dmg; a.lastHit = performance.now();
@@ -814,6 +814,8 @@ function damage(a, dmg, owner){
   }
   if (a.hp <= 0 && a.alive){
     a.alive = false; a.hp = 0; sfx('ko', a.x, a.y);
+    a.killedBy = {by: !owner ? 'the Storm' : owner === a ? 'yourself' : owner.name, w: wpn || ''};       // who and what finished them off (shown on their screen)
+    if (NET.role === 'host' && a.isPlayer && a.pid > 0) peerSend(a.pid, {t:'kb', by:a.killedBy.by, w:a.killedBy.w});
     if (owner && owner !== a) owner.kills++;
     a.place = S.actors.filter(x => x.alive).length + 1;
     // drop the whole inventory: all wood in one pile, plus every weapon and bandage
@@ -848,7 +850,7 @@ function sniperFire(a){
     if (al < 0 || al > vd) continue;
     if (Math.abs(-dx*sa + dy*ca) <= o.r + 3){ victim = o; vd = al; }
   }
-  if (victim){ len = vd; damage(victim, SN_DMG, a); burst(victim.x, victim.y, '#f44', 8); }
+  if (victim){ len = vd; damage(victim, SN_DMG, a, 'sniper'); burst(victim.x, victim.y, '#f44', 8); }
   const ex = a.x + ca*len, ey = a.y + sa*len;
   (S.tracers || (S.tracers = [])).push({x1:ox, y1:oy, x2:ex, y2:ey, t0:performance.now()});
   if (NET.role === 'host' && peerCount()){ if (!S.tr) S.tr = []; if (S.tr.length < 20) S.tr.push([Math.round(ox), Math.round(oy), Math.round(ex), Math.round(ey)]); }
@@ -872,7 +874,7 @@ function flameFire(a){
     if (o === a || !o.alive || o.team === a.team) continue;       // no friendly fire
     const dx = o.x - a.x, dy = o.y - a.y, along = dx*ca + dy*sa;
     if (along < 0 || along > len + o.r) continue;
-    if (Math.abs(-dx*sa + dy*ca) <= 8 + along*0.2 + o.r*0.6) damage(o, FL_DMG, a);
+    if (Math.abs(-dx*sa + dy*ca) <= 8 + along*0.2 + o.r*0.6) damage(o, FL_DMG, a, 'flame');
   }
   a.flt = 0.15; a.flen = len; sfx('fl', a.x, a.y);
 }
@@ -911,7 +913,7 @@ function fire(a){
       const d = Math.hypot(o.x-a.x, o.y-a.y);
       if (d < w.range + o.r){
         const ang = Math.atan2(o.y-a.y,o.x-a.x);
-        if (Math.abs(Math.atan2(Math.sin(ang-a.angle),Math.cos(ang-a.angle))) < 0.9) damage(o, w.dmg, a);
+        if (Math.abs(Math.atan2(Math.sin(ang-a.angle),Math.cos(ang-a.angle))) < 0.9) damage(o, w.dmg, a, 'pickaxe');
       }
     }
   } else {
@@ -919,7 +921,7 @@ function fire(a){
     for (let i=0;i<w.pellets;i++){
       const ang = a.angle + rnd(-w.spread, w.spread) * rm.spread;
       S.bullets.push({x:a.x+Math.cos(ang)*20, y:a.y+Math.sin(ang)*20, vx:Math.cos(ang)*w.spd, vy:Math.sin(ang)*w.spd,
-        life:w.life, dmg:w.dmg * rm.dmg, owner:a, color:w.color, sx:a.x, sy:a.y, fall:w.fall ? w.fall/(w.spd*w.life) : 0});
+        life:w.life, dmg:w.dmg * rm.dmg, owner:a, wpn:a.inv[a.cur], color:w.color, sx:a.x, sy:a.y, fall:w.fall ? w.fall/(w.spd*w.life) : 0});
     }
   }
 }
@@ -947,7 +949,7 @@ function explode(g){
     if (!o.alive) continue;
     if (o !== g.owner && g.owner && o.team === g.owner.team) continue;      // teammates are never hurt (you can hurt yourself)
     const d = Math.hypot(o.x - g.tx, o.y - g.ty);
-    if (d < GR_RADIUS + o.r) damage(o, GR_DMG_MAX - (GR_DMG_MAX - GR_DMG_MIN) * Math.min(1, d / GR_RADIUS), g.owner);
+    if (d < GR_RADIUS + o.r) damage(o, GR_DMG_MAX - (GR_DMG_MAX - GR_DMG_MIN) * Math.min(1, d / GR_RADIUS), g.owner, 'grenade');
   }
   for (const [k, w] of [...S.walls]){                                         // the blast flattens walls
     if (Math.hypot(w.gx*G + G/2 - g.tx, w.gy*G + G/2 - g.ty) < GR_RADIUS + G/2) S.walls.delete(k);
@@ -1342,7 +1344,7 @@ function update(dt){
     // storm damage
     if (Math.hypot(a.x-st.cx, a.y-st.cy) > st.r){
       a.stormAcc = (a.stormAcc||0) + dt;
-      if (a.stormAcc >= 0.25){ a.stormAcc -= 0.25; damage(a, stormDps*0.25, null); }   // ticks 4 times a second
+      if (a.stormAcc >= 0.25){ a.stormAcc -= 0.25; damage(a, stormDps*0.25, null, 'storm'); }   // ticks 4 times a second
     }
     // walk into a chest to open it
     for (const c of S.chests) if (!c.open && Math.hypot(c.x-a.x, c.y-a.y) < 34) openChest(c);
@@ -1381,7 +1383,7 @@ function update(dt){
     if (!dead) for (const t of S.trees){ if (Math.hypot(b.x-t.x,b.y-t.y) < t.r){ dead = true; burst(b.x,b.y,'#4a4',2); break; } }
     if (!dead) for (const a of S.actors){
       if (a === b.owner || !a.alive || a.team === b.owner.team) continue;
-      if (Math.hypot(b.x-a.x,b.y-a.y) < a.r){ damage(a, b.fall ? b.dmg * Math.max(0.4, 1 - b.fall*Math.hypot(b.x-b.sx, b.y-b.sy)) : b.dmg, b.owner); burst(b.x,b.y,'#f44',4); dead = true; break; }
+      if (Math.hypot(b.x-a.x,b.y-a.y) < a.r){ damage(a, b.fall ? b.dmg * Math.max(0.4, 1 - b.fall*Math.hypot(b.x-b.sx, b.y-b.sy)) : b.dmg, b.owner, b.wpn); burst(b.x,b.y,'#f44',4); dead = true; break; }
     }
     if (dead) S.bullets.splice(i,1);
   }
@@ -1687,6 +1689,9 @@ function onGuestData(m){
       break;
     case 'tp':
       if (phase === 'play' && S.player){ S.player.x = +m.x || S.player.x; S.player.y = +m.y || S.player.y; toast(String(m.m || '').slice(0, 80), 3000); }
+      break;
+    case 'kb':
+      if (phase === 'play' && S.player) S.player.killedBy = {by:String(m.by || '').slice(0, 20), w:String(m.w || '').slice(0, 12)};
       break;
     case 'tst':
       if (phase === 'play') toast(String(m.x || '').slice(0, 60), 2500);
@@ -2283,6 +2288,8 @@ function drawHUD(){
   }
 
   // end screen / spectating banner
+  const killLine = q => { const k = q.killedBy; if (!k) return ''; const wn = WEAP[k.w] ? WEAP[k.w].name : (k.w === 'storm' ? '' : k.w);
+    return 'Eliminated by ' + k.by + (wn ? ' with the ' + wn : (k.by === 'the Storm' ? '' : '')); };
   if (S.over){
     const win = S.winTeam !== null && S.winTeam === p.team;   // a co-op team win counts for both players
     ctx.fillStyle='#000a'; ctx.fillRect(0,0,vw,vh);
@@ -2290,10 +2297,12 @@ function drawHUD(){
     ctx.fillText(win ? 'VICTORY ROYALE' : 'ELIMINATED', vw/2, vh/2-20);
     ctx.fillStyle='#fff'; ctx.font=Math.min(24, vw/22)+'px sans-serif';
     ctx.fillText((win ? '#1' : '#'+p.place)+' · '+p.kills+' kills · '+(tm ? 'Tap' : 'Press R')+(NET.role === 'solo' ? ' to play again' : ' to return to the lobby'), vw/2, vh/2+30);
+    if (!win && p.killedBy){ ctx.fillStyle = '#ffd34d'; ctx.font = 'bold ' + Math.min(26, vw/20) + 'px sans-serif'; ctx.fillText(killLine(p), vw/2, vh/2+68); }
   } else if (!p.alive){
-    ctx.fillStyle='#000a'; ctx.fillRect(vw/2-170, 44, 340, 46);
+    ctx.fillStyle='#000a'; ctx.fillRect(vw/2-190, 44, 380, p.killedBy ? 70 : 46);
     ctx.textAlign='center'; ctx.fillStyle='#f66'; ctx.font='bold 16px sans-serif';
     ctx.fillText('ELIMINATED #'+p.place+' · '+p.kills+' kills', vw/2, 63);
+    if (p.killedBy){ ctx.fillStyle = '#ffd34d'; ctx.font = 'bold 15px sans-serif'; ctx.fillText(killLine(p), vw/2, 86); }
     ctx.fillStyle='#fff'; ctx.font='12px sans-serif';
     ctx.fillText('Spectating · the match is still in progress', vw/2, 81);
   }
