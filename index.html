@@ -367,6 +367,7 @@ function slotRect(i){
   return touchMode ? {x:Math.round(SW/2-138)+i*46, y:SH-46, w:42, h:36}
                    : {x:SW/2-195+i*66, y:SH-70, w:60, h:50};
 }
+const reviveBtn = () => ({x:SW-190, y:SH-158, r:36});
 function buildBtn(){ return {x:SW-190, y:SH-80, r:32}; }
 const inRect = (r,x,y) => x>=r.x && x<=r.x+r.w && y>=r.y && y<=r.y+r.h;
 
@@ -421,6 +422,8 @@ addEventListener('pointerdown', e => {
       return;
     }
   }
+  const rb = reviveBtn();
+  if (S.player.alive && reviveTarget(S.player) && Math.hypot(x-rb.x, y-rb.y) <= rb.r+14){ revHold = true; revPtr = e.pointerId; return; }
   const b = buildBtn();
   if (Math.hypot(x-b.x, y-b.y) <= b.r+10){ doBuild(); return; }
   const db = dropBtn();
@@ -443,6 +446,7 @@ addEventListener('pointermove', e => {
 });
 function endPointer(e){
   if (e.pointerType === 'mouse'){ if (e.type === 'pointercancel' || e.button === 0) mouse.down = false; return; }
+  if (revPtr === e.pointerId){ revHold = false; revPtr = null; }
   for (const k of ['move','aim']) if (touch[k] && touch[k].id === e.pointerId) touch[k] = null;
   const tp = taps[e.pointerId]; delete taps[e.pointerId];
   if (tp && e.type === 'pointerup' && phase === 'play' && performance.now() - tp.t < 350 && Math.hypot(e.clientX - tp.x, e.clientY - tp.y) < 16 && holdingGrenade()) throwAtScreen(tp.x, tp.y);
@@ -460,7 +464,7 @@ function newActor(kind, i, h){
   const human = kind === 'human', pid = human ? h.pid : -1;
   const x = Math.round(rnd(200,W-200)), y = Math.round(rnd(200,W-200));
   const a = {x, y, tx:x, ty:y, r:15, hp:100, sh:0, wood:(S.map && !MAPS[S.map].build) ? 0 : human?60:30,
-    inv:['pickaxe',null,null,null,null,null], gr:newGr(), ammo:newAmmo(), started:{}, band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0, pts:0, deaths:0,
+    inv:['pickaxe',null,null,null,null,null], gr:newGr(), ammo:newAmmo(), started:{}, band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, down:0, rv:0, rvT:0, kills:0, place:0, pts:0, deaths:0,
     isPlayer:human, pid, team:'', in:null,
     name: human ? h.name : 'Bot '+i,
     color: human ? PLAYER_COLORS[pid % PLAYER_COLORS.length] : `hsl(${rnd(0,360)|0},60%,55%)`,
@@ -481,6 +485,17 @@ const teamsEven = (list, withBots = true) => new Set(teamSizes(list, withBots)).
 // Bots play in duos once any human duo exists (otherwise solo). The field keeps the same number of teams:
 // every human team beyond the first replaces one bot team.
 const KOTH_PLAYERS = 10;
+// Reviving (Battle Royale with teammates): a fatal hit puts you "down" instead of out while a teammate is still standing.
+// A teammate who stays next to you for REVIVE_TIME seconds gets you back up; if the timer runs out, or nobody on your team can still help, you are eliminated.
+const DOWN_TIME = 30, REVIVE_TIME = 4, REVIVE_HP = 30, REVIVE_RANGE = 70;
+let revHold = false, revPtr = null;                   // touch: the REVIVE button is held
+const wantRevive = () => !!(keys['e'] || revHold);
+const canGoDown = a => !S.koth && !a.noDown && !(a.down > 0) && S.actors.some(o => o !== a && o.alive && o.team === a.team && !(o.down > 0));
+function reviveTarget(a, range = REVIVE_RANGE){
+  let best = null, bd = range;
+  for (const o of S.actors){ if (o === a || !o.alive || !(o.down > 0) || o.team !== a.team) continue; const d = Math.hypot(o.x-a.x, o.y-a.y); if (d < bd){ bd = d; best = o; } }
+  return best;
+}
 function botPlan(humans, humansOnly, koth){
   if (koth) return {size:1, teams:Math.max(0, KOTH_PLAYERS - humans.length)};      // King of the Hill: solo players only, 10 in total, bots fill the rest
   if (humansOnly) return {size:1, teams:0};              // humans-only mode: no bots at all
@@ -903,7 +918,7 @@ document.addEventListener('visibilitychange', () => {
 // ---------- Helpers ----------
 const wallKey = (gx,gy) => gx+','+gy;
 function build(a){
-  if (!a.alive) return;
+  if (!a.alive || a.down > 0) return;
   if (!mapOf().build){ if (a === S.player) toast('No building on this map', 1500); return; }
   if (a.wood < 10) return;
   const gx = Math.floor((a.x + Math.cos(a.angle)*62)/G), gy = Math.floor((a.y + Math.sin(a.angle)*62)/G);
@@ -932,9 +947,14 @@ function damage(a, dmg, owner, wpn){
   if (a === S.player && touchMode && NET.role !== 'guest' && navigator.vibrate && a.lastHit - (a.lastVib||0) > 150){
     a.lastVib = a.lastHit; navigator.vibrate(a.hp <= 0 ? 200 : 20);
   }
+  if (a.hp <= 0 && a.alive && canGoDown(a)){          // knocked down, not out: a teammate can still pick you up
+    a.hp = 1; a.sh = 0; a.down = DOWN_TIME; a.rv = 0; a.rvT = 0; a.heal = 0; a.flt = 0; sfx('ko', a.x, a.y);
+    if (a === S.player && touchMode && NET.role !== 'guest' && navigator.vibrate) navigator.vibrate(200);
+    return;
+  }
   if (a.hp <= 0 && a.alive){
-    a.alive = false; a.hp = 0; sfx('ko', a.x, a.y);
-    a.killedBy = {by: !owner ? 'the Storm' : owner === a ? 'yourself' : owner.name, w: wpn || ''}; if (a === S.player) specT = null;      // re-pick who to spectate: the one who got us       // who and what finished them off (shown on their screen)
+    a.alive = false; a.hp = 0; a.down = 0; a.rv = 0; sfx('ko', a.x, a.y);
+    a.killedBy = {by: !owner ? (wpn === 'bleed' ? 'bleeding out' : 'the Storm') : owner === a ? 'yourself' : owner.name, w: wpn || ''}; if (a === S.player) specT = null;      // re-pick who to spectate: the one who got us       // who and what finished them off (shown on their screen)
     if (NET.role === 'host' && a.isPlayer && a.pid > 0) peerSend(a.pid, {t:'kb', by:a.killedBy.by, w:a.killedBy.w});
     pushFeed(a.killedBy.by, a.killedBy.w, a.name, a === S.player ? 1 : owner === S.player ? 2 : 0);       // everybody sees who was eliminated
     if (NET.role === 'host' && peerCount()){ if (!S.kf) S.kf = []; if (S.kf.length < 12) S.kf.push([a.killedBy.by, a.killedBy.w, a.name, a.pid != null && a.isPlayer ? a.pid : -1, owner && owner.isPlayer ? owner.pid : -1]); }
@@ -1002,7 +1022,7 @@ function flameFire(a){
   a.flt = 0.15; a.flen = len; sfx('fl', a.x, a.y);
 }
 function fire(a){
-  if (!a.alive) return;
+  if (!a.alive || a.down > 0) return;
   const w = WEAP[a.inv[a.cur]];
   if (!w){ a.cur = 0; return; }                       // the selected slot is empty: fall back to the pickaxe
   if (w.grenade || w.passive) return;                 // grenades are thrown at a spot, not fired
@@ -1055,7 +1075,7 @@ function burst(x,y,c,n){
 
 // ---------- Grenades ----------
 function throwGrenade(a, tx, ty){
-  if (!a.alive || a.inv[a.cur] !== 'grenade' || !isFinite(tx) || !isFinite(ty)) return;
+  if (!a.alive || a.down > 0 || a.inv[a.cur] !== 'grenade' || !isFinite(tx) || !isFinite(ty)) return;
   let dx = tx - a.x, dy = ty - a.y; const d = Math.hypot(dx, dy) || 1;
   const reach = Math.max(30, Math.min(GR_RANGE, d));              // taps beyond the range land at the edge of it
   dx = dx/d*reach; dy = dy/d*reach;
@@ -1134,7 +1154,7 @@ function giveItem(a, type, rar){
 }
 const healTime = a => (STACK[a.inv[a.cur]] || STACK.bandage).time;
 function startHeal(a){
-  if (!a.alive || a.heal > 0) return;
+  if (!a.alive || a.down > 0 || a.heal > 0) return;
   const it = a.inv[a.cur], st = STACK[it];
   if (!st || a[st.key] <= 0) return;
   if (it === 'shield' ? a.sh >= 100 : a.hp >= 100) return;      // nothing to heal
@@ -1142,7 +1162,7 @@ function startHeal(a){
 }
 // Drop whatever is in the selected slot (the whole stack) onto the ground in front of you to free the slot.
 function dropItem(a){
-  if (!a.alive) return;
+  if (!a.alive || a.down > 0) return;
   const i = a.cur, it = a.inv[i];
   if (!it || it === 'pickaxe') return;
   const st = STACK[it], n = st ? a[st.key] : 1;
@@ -1299,6 +1319,15 @@ function botThink(b, dt){
     const d = Math.hypot(o.x-b.x, o.y-b.y);
     if (d < best){ best = d; target = o; }
   }
+  if (!S.koth){                       // a teammate is down: go and pick them up, unless a fight is right here
+    let dn = null, dd = 900;
+    for (const o of S.actors){ if (o === b || !o.alive || !(o.down > 0) || o.team !== b.team) continue; const d = Math.hypot(o.x-b.x, o.y-b.y); if (d < dd){ dd = d; dn = o; } }
+    if (dn && (!target || best > 260)){
+      const ra = Math.atan2(dn.y-b.y, dn.x-b.x); b.angle = ra;
+      if (dd < REVIVE_RANGE - 20){ b.rvT = 0.2; return [0,0]; }
+      return [Math.cos(ra)*215, Math.sin(ra)*215];
+    }
+  }
   const sd = Math.hypot(b.x-S.storm.cx, b.y-S.storm.cy);
   let mx = 0, my = 0, speed = 190;
   if (sd > S.storm.r - 100){
@@ -1437,6 +1466,15 @@ function kothRespawn(a){
   a.wood = !MAPS[S.map].build ? 0 : a.isPlayer ? 60 : 30; a.snCd = 0; a.flBurn = 0; a.flLock = 0; a.flt = 0; a.cd = 0; a.bst = 0;
   if (a.isPlayer && a.pid > 0){ a.tpHold = 1.2; peerSend(a.pid, {t:'tp', x:a.x, y:a.y, m:''}); }
 }
+function downStep(a, dt){
+  a.heal = 0; a.down -= dt;
+  const helped = S.actors.some(o => o !== a && o.alive && !(o.down > 0) && o.team === a.team && o.rvT > 0 && Math.hypot(o.x-a.x, o.y-a.y) < REVIVE_RANGE + 25);
+  if (helped) a.rv += dt; else a.rv = Math.max(0, a.rv - dt*1.5);
+  if (a.rv >= REVIVE_TIME){ a.down = 0; a.rv = 0; a.hp = REVIVE_HP; a.invT = 1.5; sfx('hl', a.x, a.y); return; }
+  if (a.down <= 0 || !S.actors.some(o => o !== a && o.alive && o.team === a.team && !(o.down > 0))){     // out of time, or nobody left to help
+    a.down = 0; a.rv = 0; a.hp = 0; a.invT = 0; a.noDown = true; damage(a, 1, null, 'bleed');
+  }
+}
 function kothEnd(){
   S.board = S.actors.map(a => [a.name, Math.floor(a.pts || 0), a.kills || 0, a.deaths || 0, a.isPlayer ? a.pid : -1, a.team]).sort((p, q) => q[1] - p[1] || q[2] - p[2]);
   S.over = true; S.overAt = performance.now(); const tp = {}; for (const r of S.board) tp[r[5]] = (tp[r[5]] || 0) + r[1];      // teammates pool their points
@@ -1472,6 +1510,8 @@ function update(dt){
   for (const a of S.actors){
     if (!a.alive){ if (S.koth && a.respawnT > 0){ a.respawnT -= dt; if (a.respawnT <= 0) kothRespawn(a); } continue; }
     if (a.invT > 0) a.invT -= dt;
+    if (a.rvT > 0) a.rvT -= dt;
+    if (a.down > 0){ downStep(a, dt); if (!a.alive) continue; }
     if (S.koth && S.hill && Math.hypot(a.x-S.hill.x, a.y-S.hill.y) < S.hill.r) a.pts = (a.pts || 0) + dt;
     a.cd -= dt; a.swing -= dt; if (a.flLock > 0) a.flLock -= dt;
     if (a.boatCool > 0) a.boatCool -= dt; if (a.tpHold > 0) a.tpHold -= dt;
@@ -1496,13 +1536,16 @@ function update(dt){
       }
     }
     let vx = 0, vy = 0;
-    if (a.isPlayer && a.pid === 0){
+    if (a.down > 0){ a.tx = a.x; a.ty = a.y; }                 // knocked down: stay put
+    else if (a.isPlayer && a.pid === 0){
       const inp = localInput(a, dt); vx = inp.vx*bootMul(a); vy = inp.vy*bootMul(a);
-      if (inp.fire) fire(a);
+      const rt = reviveTarget(a);
+      if (rt && wantRevive()){ a.rvT = 0.2; vx = vy = 0; a.angle = Math.atan2(rt.y-a.y, rt.x-a.x); }      // hold still while picking a teammate up
+      else if (inp.fire) fire(a);
     } else if (a.isPlayer){
       // remote human: they move themselves, we trust their position and just apply their aim/fire
       const g = a.in;
-      if (g){ if (!(a.tpHold > 0)){ a.tx = g.x; a.ty = g.y; } a.angle = g.a; if (g.f) fire(a); }
+      if (g){ if (!(a.tpHold > 0)){ a.tx = g.x; a.ty = g.y; } a.angle = g.a; if (g.r && reviveTarget(a)) a.rvT = 0.2; else if (g.f) fire(a); }
     } else [vx,vy] = botThink(a, dt);
 
     if (a.isPlayer && a.pid > 0){
@@ -1521,11 +1564,11 @@ function update(dt){
       if (a.stormAcc >= 0.25){ a.stormAcc -= 0.25; damage(a, stormDps*0.25, null, 'storm'); }   // ticks 4 times a second
     }
     // walk into a chest to open it
-    for (const c of S.chests) if (!c.open && Math.hypot(c.x-a.x, c.y-a.y) < 34) openChest(c);
+    if (!(a.down > 0)) for (const c of S.chests) if (!c.open && Math.hypot(c.x-a.x, c.y-a.y) < 34) openChest(c);
     // pickups
     for (let i=S.loot.length-1;i>=0;i--){
       const l = S.loot[i];
-      if (Math.hypot(l.x-a.x,l.y-a.y) > 36) continue;
+      if (a.down > 0 || Math.hypot(l.x-a.x,l.y-a.y) > 36) continue;
       if (l.ban === a.pid && a.isPlayer && performance.now() < l.until) continue;     // you just dropped this     // touching the drop's circle is enough
       let take = false;
       if (WEAP[l.type]){          // guns, bandages, medkits and shield potions all go into the loadout
@@ -1586,7 +1629,7 @@ function peerSend(pid, m){
 }
 function encodeActor(a){
   return [Math.round(a.x), Math.round(a.y), +a.angle.toFixed(2), Math.round(a.hp), Math.round(a.sh), a.wood, a.band,
-          +Math.max(0,a.heal).toFixed(2), a.cur, a.alive?1:0, a.kills, a.swing>0?1:0, a.place||0, encInv(a.inv), a.isPlayer?1:0, '' + a.gr.pistol + a.gr.shotgun + a.gr.ar, a.med, a.shd, a.flt > 0 ? Math.round(a.flen) : 0, a.isPlayer ? [a.ammo.pistol, a.ammo.shotgun, a.ammo.ar] : 0, a.flLock > 0 ? +(2 + a.flLock).toFixed(2) : +((a.flBurn || 0) / FL_MAX).toFixed(2), a.snCd > 0 ? +a.snCd.toFixed(1) : 0, Math.floor(a.pts || 0), a.deaths || 0, a.respawnT > 0 ? +a.respawnT.toFixed(1) : 0];
+          +Math.max(0,a.heal).toFixed(2), a.cur, a.alive?1:0, a.kills, a.swing>0?1:0, a.place||0, encInv(a.inv), a.isPlayer?1:0, '' + a.gr.pistol + a.gr.shotgun + a.gr.ar, a.med, a.shd, a.flt > 0 ? Math.round(a.flen) : 0, a.isPlayer ? [a.ammo.pistol, a.ammo.shotgun, a.ammo.ar] : 0, a.flLock > 0 ? +(2 + a.flLock).toFixed(2) : +((a.flBurn || 0) / FL_MAX).toFixed(2), a.snCd > 0 ? +a.snCd.toFixed(1) : 0, Math.floor(a.pts || 0), a.deaths || 0, a.respawnT > 0 ? +a.respawnT.toFixed(1) : 0, a.down > 0 ? +a.down.toFixed(1) : 0, a.rv > 0 ? +(a.rv / REVIVE_TIME).toFixed(2) : 0];
 }
 function sendSnapshot(){
   if (!peerCount()) return;
@@ -1813,7 +1856,7 @@ function buildGuestState(m){
   m.trees.forEach(([x,y], id) => { const t = mkObstacle(S.map, id, x, y); S.allTrees.push(t); S.trees.push(t); });
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
   m.actors.forEach(d => S.actors.push({x:d.x, y:d.y, tx:d.x, ty:d.y, r:15, hp:100, sh:0, wood:0,
-    inv:['pickaxe',null,null,null,null,null], gr:newGr(), ammo:newAmmo(), band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, kills:0, place:0,
+    inv:['pickaxe',null,null,null,null,null], gr:newGr(), ammo:newAmmo(), band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, down:0, rv:0, rvT:0, kills:0, place:0,
     isPlayer:!!d.h, pid:d.pid, team:d.tm, name:d.n, color:d.c, shirt:d.s || null, skin:d.k, crown:!!d.cw, seen:false}));
   S.player = S.actors[m.me];
   S.player.seen = true;
@@ -1836,7 +1879,7 @@ function applySnap(m){
     }
     a.hp = d[3]; a.sh = d[4]; a.wood = d[5]; a.band = d[6]; a.heal = d[7]; a.alive = !!d[9];
     a.kills = d[10]; if (d[11]) a.swing = 0.2; a.place = d[12]; a.inv = decInv(d[13]);
-    a.med = d[16] || 0; a.shd = d[17] || 0; a.flen = d[18] || 0; if (d[19]) a.ammo = {pistol:d[19][0], shotgun:d[19][1], ar:d[19][2]}; a.flHeat = d[20] || 0; a.snCd = d[21] || 0; a.pts = d[22] || 0; a.deaths = d[23] || 0; a.respawnT = d[24] || 0;
+    a.med = d[16] || 0; a.shd = d[17] || 0; a.flen = d[18] || 0; if (d[19]) a.ammo = {pistol:d[19][0], shotgun:d[19][1], ar:d[19][2]}; a.flHeat = d[20] || 0; a.snCd = d[21] || 0; a.pts = d[22] || 0; a.deaths = d[23] || 0; a.respawnT = d[24] || 0; a.down = d[25] || 0; a.rv = (d[26] || 0) * REVIVE_TIME;
     if (d[15]){
       const ng = {pistol:+d[15][0], shotgun:+d[15][1], ar:+d[15][2]};
       if (a === S.player && a._pg) for (const t of ['pistol','shotgun','ar']){
@@ -1925,15 +1968,16 @@ function guestAttach(conn, name){
 // Guest simulation step: move myself locally, send my controls, smooth everyone else.
 function updateGuest(dt){
   const me = S.player, st = S.storm;
-  if (me.alive){
-    const inp = localInput(me, dt);
+  if (me.alive && !(me.down > 0)){
+    const inp = localInput(me, dt), rvg = !!reviveTarget(me) && wantRevive();
     let vx = inp.vx*bootMul(me), vy = inp.vy*bootMul(me);
+    if (rvg){ vx = vy = 0; inp.fire = false; }
     if (me.heal > 0){ vx *= 0.5; vy *= 0.5; }
     if (me.boat){ vx *= BOAT_MULT; vy *= BOAT_MULT; if (Math.hypot(vx, vy) > 5) me.boat.ang = Math.atan2(vy, vx); }
     if (!me.boat) [vx, vy] = iceVel(me, vx, vy, dt);
     me.x += vx*dt; me.y += vy*dt; collide(me);
     NET.inAcc += dt;
-    if (NET.inAcc >= 1/30){ NET.inAcc = 0; netSend({t:'in', x:Math.round(me.x), y:Math.round(me.y), a:+me.angle.toFixed(3), f:inp.fire?1:0}); }
+    if (NET.inAcc >= 1/30){ NET.inAcc = 0; netSend({t:'in', x:Math.round(me.x), y:Math.round(me.y), a:+me.angle.toFixed(3), f:inp.fire?1:0, r:rvg?1:0}); }
   }
   const k = Math.min(1, dt*14);
   for (const a of S.actors){
@@ -2464,6 +2508,17 @@ function draw(){
     ctx.fillStyle='#4af'; ctx.fillRect(a.x-18,a.y-27,36*a.sh/100,3);
     if (a !== p){ ctx.fillStyle = a.team === p.team ? '#8f8' : '#fff'; ctx.font=Math.round(11/ZOOM)+'px sans-serif'; ctx.textAlign='center'; ctx.fillText(a.name,a.x,a.y-36); }
   }
+  for (const a of S.actors){          // knocked-down players: a red pulse, the bleed-out timer and the revive progress
+    if (!a.alive || !(a.down > 0) || !vis(a.x, a.y)) continue;
+    const pu = 0.5 + 0.5*Math.sin(performance.now()/180);
+    ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.beginPath(); ctx.arc(a.x, a.y, a.r+1, 0, 7); ctx.fill();
+    ctx.strokeStyle = `rgba(255,70,70,${0.5 + 0.5*pu})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(a.x, a.y, a.r+6+pu*3, 0, 7); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('✚', a.x, a.y+7);
+    const bw = 46, bx = a.x - bw/2, by = a.y - a.r - 22;
+    ctx.fillStyle = '#000a'; ctx.fillRect(bx-1, by-1, bw+2, 14);
+    ctx.fillStyle = '#e44'; ctx.fillRect(bx, by, bw*Math.max(0, a.down)/DOWN_TIME, 5);
+    if (a.rv > 0){ ctx.fillStyle = '#4f8'; ctx.fillRect(bx, by+7, bw*Math.min(1, a.rv/REVIVE_TIME), 5); }
+  }
   for (const a of S.actors){          // flamethrower fire: flickering blobs along the cone, white-hot at the nozzle to dark red at the tip
     if (!a.alive || !a.flen || a.inv[a.cur] !== 'flame' || !vis(a.x,a.y)) continue;
     const ca = Math.cos(a.angle), sa = Math.sin(a.angle), L = a.flen;
@@ -2649,6 +2704,7 @@ function drawHUD(){
     ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
     ctx.fillStyle='#fff'; ctx.font='bold 12px sans-serif'; ctx.textAlign='center'; ctx.fillText('BUILD', b.x, b.y+4);
     }
+    if (p.alive && reviveTarget(p)){ const rb = reviveBtn(); ctx.fillStyle = revHold ? 'rgba(70,255,140,0.65)' : 'rgba(70,200,120,0.45)'; ctx.beginPath(); ctx.arc(rb.x, rb.y, rb.r, 0, 7); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('HOLD', rb.x, rb.y-2); ctx.fillText('REVIVE', rb.x, rb.y+12); }
     if (canDropNow()){ const d = dropBtn(); ctx.fillStyle = 'rgba(255,90,70,0.4)'; ctx.beginPath(); ctx.arc(d.x,d.y,d.r,0,7); ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); ctx.fillStyle='#fff'; ctx.font='bold 11px sans-serif'; ctx.fillText('DROP', d.x, d.y+4); }
     // virtual sticks (faint ghosts show where to touch)
     const drawStick = (s, gx, gy, label) => {
@@ -2685,6 +2741,16 @@ function drawHUD(){
       ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-10, -12); ctx.lineTo(-4, 0); ctx.lineTo(-10, 12); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
       ctx.fillStyle = '#ffd24a'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('HILL ' + Math.round(hd/10) + 'm', ax - ca*30, ay - sa*30 + 4);
     }
+  }
+  if (p.alive && p.down > 0){          // you are down
+    ctx.fillStyle = '#000a'; ctx.fillRect(vw/2-190, 44, 380, 52);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#f66'; ctx.font = 'bold 18px sans-serif';
+    ctx.fillText("YOU'RE DOWN · " + Math.ceil(p.down) + 's', vw/2, 68);
+    ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif';
+    ctx.fillText(p.rv > 0 ? 'Being revived… ' + Math.round(100*p.rv/REVIVE_TIME) + '%' : 'Stay put: a teammate can revive you', vw/2, 88);
+  } else if (p.alive && !S.over){
+    const rt = reviveTarget(p);
+    if (rt){ ctx.textAlign = 'center'; ctx.fillStyle = '#000a'; ctx.fillRect(vw/2-130, 44, 260, 26); ctx.fillStyle = '#7f9'; ctx.font = 'bold 13px sans-serif'; ctx.fillText((touchMode ? 'Hold REVIVE' : 'Hold E') + ' to revive ' + rt.name + (rt.rv > 0 ? ' · ' + Math.round(100*rt.rv/REVIVE_TIME) + '%' : ''), vw/2, 62); }
   }
   if (!p.alive && !S.koth && !S.over && specT && specT.alive){      // spectating controls
     const r = specRects(), b = r.bar, killer = p.killedBy && specT.name === p.killedBy.by;
