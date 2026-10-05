@@ -344,6 +344,7 @@ const dropBtn = () => ({x:Math.round(SW/2-138-6-22), y:SH-28, r:22});          /
 const canDropNow = () => { const p = S && S.player; return !!(p && p.alive && p.cur > 0 && p.inv[p.cur]); };
 function doHeal(){ if (NET.role === 'guest') netSend({t:'heal'}); else startHeal(S.player); }
 function tryRestart(){
+  if (!S.over && NET.role === 'solo' && !S.player.alive && !S.koth){ hostRestart(); return; }      // eliminated in a solo game: R starts a new one right away
   if (!S.over || performance.now() - S.overAt < 700) return;
   if (NET.role === 'guest') netSend({t:'restart'}); else hostRestart();
 }
@@ -356,6 +357,7 @@ addEventListener('keydown', e => {
   if (k === 'q') doBuild();
   if (k === 'g') doDrop();
   if (k === 'r') tryRestart();
+  if (!S.player.alive && !S.koth && !S.over){ if (e.key === 'ArrowRight' || k === 'd') specStep(1); else if (e.key === 'ArrowLeft' || k === 'a') specStep(-1); }
 });
 addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 addEventListener('contextmenu', e => e.preventDefault());
@@ -390,6 +392,7 @@ addEventListener('pointerdown', e => {
     if (e.target !== cv) return;
     touchMode = false; mouse.x = x; mouse.y = y;
     if (e.button === 0){
+      if (specClick(x, y)) return;
       if (S.over){ tryRestart(); return; }
       for (let i=0;i<6;i++){          // clicking a loadout slot switches to it (without firing)
         if (inRect(slotRect(i), x, y)){ const me = S.player; if (me.alive && me.inv[i]) selectSlot(i); return; }
@@ -406,6 +409,7 @@ addEventListener('pointerdown', e => {
   if (e.target !== cv) return;
   touchMode = true;
   e.preventDefault();
+  if (specClick(x, y)) return;
   if (S.over){ tryRestart(); return; }
   for (let i=0;i<6;i++){
     if (inRect(slotRect(i), x, y)){
@@ -922,7 +926,7 @@ function damage(a, dmg, owner, wpn){
   }
   if (a.hp <= 0 && a.alive){
     a.alive = false; a.hp = 0; sfx('ko', a.x, a.y);
-    a.killedBy = {by: !owner ? 'the Storm' : owner === a ? 'yourself' : owner.name, w: wpn || ''};       // who and what finished them off (shown on their screen)
+    a.killedBy = {by: !owner ? 'the Storm' : owner === a ? 'yourself' : owner.name, w: wpn || ''}; if (a === S.player) specT = null;      // re-pick who to spectate: the one who got us       // who and what finished them off (shown on their screen)
     if (NET.role === 'host' && a.isPlayer && a.pid > 0) peerSend(a.pid, {t:'kb', by:a.killedBy.by, w:a.killedBy.w});
     pushFeed(a.killedBy.by, a.killedBy.w, a.name, a === S.player ? 1 : owner === S.player ? 2 : 0);       // everybody sees who was eliminated
     if (NET.role === 'host' && peerCount()){ if (!S.kf) S.kf = []; if (S.kf.length < 12) S.kf.push([a.killedBy.by, a.killedBy.w, a.name, a.pid != null && a.isPlayer ? a.pid : -1, owner && owner.isPlayer ? owner.pid : -1]); }
@@ -1555,7 +1559,7 @@ function update(dt){
   else if (!S.over){
     const humansAlive = S.players.filter(p => p.alive).length;
     const teams = new Set(); for (const a of S.actors) if (a.alive) teams.add(a.team);
-    if (humansAlive === 0){ S.over = true; S.winTeam = null; S.overAt = performance.now(); }
+    if (humansAlive === 0 && S.players.length > 1){ S.over = true; S.winTeam = null; S.overAt = performance.now(); }
     else if (teams.size <= 1){ S.over = true; S.winTeam = [...teams][0] || null; S.overAt = performance.now(); }
   }
 }
@@ -1863,7 +1867,7 @@ function onGuestData(m){
       if (phase === 'play' && S.player){ S.player.x = +m.x || S.player.x; S.player.y = +m.y || S.player.y; if (m.m) toast(String(m.m).slice(0, 80), 3000); }
       break;
     case 'kb':
-      if (phase === 'play' && S.player) S.player.killedBy = {by:String(m.by || '').slice(0, 20), w:String(m.w || '').slice(0, 12)};
+      if (phase === 'play' && S.player) S.player.killedBy = {by:String(m.by || '').slice(0, 20), w:String(m.w || '').slice(0, 12)}; if (phase === 'play' && S.player) specT = null;
       break;
     case 'tst':
       if (phase === 'play') toast(String(m.x || '').slice(0, 60), 2500);
@@ -1925,11 +1929,33 @@ function updateGuest(dt){
 
 // ---------- Render ----------
 // Whose view we show: ourselves, or (once eliminated) a teammate, then any other human, so we can spectate.
+// Spectating: once you are eliminated the camera follows whoever knocked you out; arrows (or the on-screen buttons) cycle through everyone still alive.
+let specT = null;
+const specList = () => S.actors.filter(a => a.alive && a !== S.player);
 function viewTarget(){
   const me = S.player;
-  if (me.alive) return me;
-  return S.actors.find(a => a.isPlayer && a.alive && a.team === me.team)
-      || S.actors.find(a => a.isPlayer && a.alive) || me;
+  if (me.alive || S.koth){ specT = null; return me; }       // (in King of the Hill you respawn after a moment, so the camera stays put)
+  if (!specT || !specT.alive || specT === me || !S.actors.includes(specT)){
+    const list = specList();
+    specT = (me.killedBy && list.find(a => a.name === me.killedBy.by)) || list.find(a => a.team === me.team) || list[0] || null;
+  }
+  return specT || me;
+}
+function specStep(d){
+  const list = specList(); if (!list.length) return;
+  const i = list.indexOf(specT);
+  specT = list[((i < 0 ? 0 : i + d) % list.length + list.length) % list.length];
+}
+function specRects(){
+  const w = Math.min(360, SW - 16), x0 = SW/2 - w/2, y0 = touchMode ? SH - 112 : SH - 130;
+  return {bar:{x:x0, y:y0, w, h:46}, prev:{x:x0, y:y0, w:56, h:46}, next:{x:x0 + w - 56, y:y0, w:56, h:46}};
+}
+function specClick(x, y){
+  if (S.player.alive || S.koth || S.over || !specList().length) return false;
+  const r = specRects();
+  if (inRect(r.prev, x, y)){ specStep(-1); return true; }
+  if (inRect(r.next, x, y)){ specStep(1); return true; }
+  return false;
 }
 function camera(){
   const p = viewTarget();
@@ -2637,6 +2663,14 @@ function drawHUD(){
       ctx.fillStyle = '#ffd24a'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('HILL ' + Math.round(hd/10) + 'm', ax - ca*30, ay - sa*30 + 4);
     }
   }
+  if (!p.alive && !S.koth && !S.over && specT && specT.alive){      // spectating controls
+    const r = specRects(), b = r.bar, killer = p.killedBy && specT.name === p.killedBy.by;
+    ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.beginPath(); ctx.roundRect(r.prev.x, r.prev.y, r.prev.w, r.prev.h, 10); ctx.fill(); ctx.beginPath(); ctx.roundRect(r.next.x, r.next.y, r.next.w, r.next.h, 10); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 22px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('◀', r.prev.x + r.prev.w/2, r.prev.y + 30); ctx.fillText('▶', r.next.x + r.next.w/2, r.next.y + 30);
+    ctx.font = 'bold 14px sans-serif'; ctx.fillText('Spectating: ' + String(specT.name).slice(0, 14), b.x + b.w/2, b.y + 19);
+    ctx.font = '12px sans-serif'; ctx.fillStyle = killer ? '#ffd34d' : '#bcd'; ctx.fillText((killer ? 'eliminated you · ' : '') + Math.max(0, Math.round(specT.hp + specT.sh)) + ' HP · ' + specList().length + ' alive', b.x + b.w/2, b.y + 37);
+  }
   // end screen / spectating banner
   const killLine = q => { const k = q.killedBy; if (!k) return ''; const wn = WEAP[k.w] ? WEAP[k.w].name : (k.w === 'storm' ? '' : k.w);
     return 'Eliminated by ' + k.by + (wn ? ' with the ' + wn : (k.by === 'the Storm' ? '' : '')); };
@@ -2674,12 +2708,12 @@ function drawHUD(){
     ctx.fillText('KNOCKED OUT' + (p.respawnT > 0 ? ' · respawning in ' + Math.ceil(p.respawnT) : ' · respawning…'), vw/2, 114);
     if (p.killedBy){ ctx.fillStyle = '#ffd34d'; ctx.font = 'bold 15px sans-serif'; ctx.fillText(killLine(p), vw/2, 138); }
   } else if (!p.alive){
-    ctx.fillStyle='#000a'; ctx.fillRect(vw/2-190, 44, 380, p.killedBy ? 70 : 46);
+    ctx.fillStyle='#000a'; ctx.fillRect(vw/2-190, 44, 380, p.killedBy ? 80 : 46);
     ctx.textAlign='center'; ctx.fillStyle='#f66'; ctx.font='bold 16px sans-serif';
     ctx.fillText('ELIMINATED #'+p.place+' · '+p.kills+' kills', vw/2, 63);
     if (p.killedBy){ ctx.fillStyle = '#ffd34d'; ctx.font = 'bold 15px sans-serif'; ctx.fillText(killLine(p), vw/2, 86); }
     ctx.fillStyle='#fff'; ctx.font='12px sans-serif';
-    ctx.fillText('Spectating · the match is still in progress', vw/2, 81);
+    ctx.fillText((touchMode ? 'Spectating · tap ◀ ▶ to switch player' : 'Spectating · click ◀ ▶ or use the arrow keys' + (NET.role === 'solo' ? ' · R: new game' : '')), vw/2, p.killedBy ? 106 : 81);
   }
 }
 
