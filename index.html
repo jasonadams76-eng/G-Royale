@@ -74,6 +74,7 @@
   #msg{min-height:18px;color:#f88;font-size:13px}
   #exit{display:none;position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:5;padding:5px 12px;font-size:12px;
     font-weight:700;color:#fff;background:rgba(0,0,0,.45);border:1px solid #fff6;border-radius:8px;touch-action:manipulation}
+  #exit.big{top:auto;bottom:16px;left:auto;right:16px;transform:none;padding:14px 16px;font-size:18px;border-radius:16px;background:rgba(200,50,50,.85);border:2px solid #fff;box-shadow:0 4px 14px #0008}
   #snd{position:fixed;top:6px;left:calc(50% + 46px);z-index:30;width:34px;height:30px;padding:0;font-size:16px;line-height:1;color:#fff;
     background:rgba(0,0,0,.45);border:1px solid #fff6;border-radius:8px;touch-action:manipulation}
   #mus{position:fixed;top:6px;left:calc(50% + 86px);z-index:30;width:34px;height:30px;padding:0;font-size:16px;line-height:1;color:#fff;
@@ -127,7 +128,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · G Royale</div>
+      <div class="ver" id="ver">G Royale</div>
     </div>
 
     <div id="s-join" hidden>
@@ -160,6 +161,9 @@
 <div id="toast"></div>
 
 <script>
+// Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
+const VERSION = 1;
+document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
 
@@ -2343,7 +2347,13 @@ function fenceSprite(){
   }
   return _fence = c;
 }
+let exitBig = false;      // after you are out (or the match is over) the Menu button becomes a big one that is easy to hit on a phone
+function syncExitBtn(){
+  const big = !!(S && S.player && ((!S.player.alive && !S.koth) || S.over));
+  if (big !== exitBig){ exitBig = big; $('exit').classList.toggle('big', big); $('exit').textContent = big ? '⬅ Main menu' : 'Menu'; }
+}
 function draw(){
+  syncExitBtn();
   const cam = camera(), p = S.player, vw = VW, vh = VH;
   ctx.setTransform(DPR*ZOOM, 0, 0, DPR*ZOOM, 0, 0);
   ctx.fillStyle = mapOf().ground; ctx.fillRect(0,0,vw,vh);
@@ -3032,7 +3042,7 @@ markSoloMap();
 $('b-leaveteam').onclick = () => sendLobbyMsg({t:'leaveteam'});
 $('b-leave').onclick = () => { resetNet(); showScreen('s-main'); };
 document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => showScreen('s-main'));
-$('exit').onclick = () => { if (confirm('Leave the match and return to the menu?')) location.reload(); };
+$('exit').onclick = () => { if (exitBig || confirm('Leave the match and return to the menu?')) location.reload(); };
 
 // ---------- Loop ----------
 function loop(now){
