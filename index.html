@@ -115,7 +115,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · flame 125</div>
+      <div class="ver">Version 2026-10-04 · gun balance</div>
     </div>
 
     <div id="s-join" hidden>
@@ -202,9 +202,9 @@ const TREE_COUNT = Math.round(320 * MS * MS);                  // same tree dens
 const STORM_R0 = Math.round(2900 * MS);                        // the storm starts outside the whole board
 const WEAP = {
   pickaxe: {name:'Pickaxe', melee:true, dmg:20, rate:0.5, range:55, color:'#bbb'},
-  pistol:  {name:'Pistol',  dmg:18, rate:0.33, spd:950, spread:0.03, pellets:1, life:0.7, color:'#9cf'},
+  pistol:  {name:'Pistol',  dmg:22, rate:0.27, spd:1000, spread:0.03, pellets:1, life:1.15, color:'#9cf'},       // steady damage at any distance, long reach
   shotgun: {name:'Shotgun', dmg:11, rate:0.9,  spd:850, spread:0.22, pellets:7, life:0.4, color:'#fa5'},
-  ar:      {name:'Rifle',   dmg:12, rate:0.11, spd:1100,spread:0.06, pellets:1, life:0.8, color:'#9f6'},
+  ar:      {name:'Rifle',   dmg:12, rate:0.07, spd:1100,spread:0.06, pellets:1, life:0.8, color:'#9f6', burst:3, pause:0.38, fall:0.6},   // 3-round bursts with a pause; damage drops by up to 60% with distance
   bandage: {name:'Bandage', heal:true, color:'#fff'},
   med:     {name:'Medkit',  heal:true, color:'#f55'},
   shield:  {name:'Shield',  heal:true, color:'#58f'},
@@ -813,6 +813,10 @@ function fire(a){
   }
   const rm = RARITY[w.melee || w.heal ? 0 : (a.gr[a.inv[a.cur]] || 0)];
   a.cd = w.rate * rm.rate;
+  if (w.burst){                                       // burst fire: N quick shots, then a short pause before the next burst
+    a.bst = (a.bst || 0) + 1; a.bstGap = 0.6;
+    if (a.bst >= w.burst){ a.bst = 0; a.cd = w.pause * rm.rate; }
+  }
   if (w.melee){
     a.swing = 0.2; sfx('sw', a.x, a.y);
     for (const t of S.trees){
@@ -836,7 +840,7 @@ function fire(a){
     for (let i=0;i<w.pellets;i++){
       const ang = a.angle + rnd(-w.spread, w.spread) * rm.spread;
       S.bullets.push({x:a.x+Math.cos(ang)*20, y:a.y+Math.sin(ang)*20, vx:Math.cos(ang)*w.spd, vy:Math.sin(ang)*w.spd,
-        life:w.life, dmg:w.dmg * rm.dmg, owner:a, color:w.color});
+        life:w.life, dmg:w.dmg * rm.dmg, owner:a, color:w.color, sx:a.x, sy:a.y, fall:w.fall ? w.fall/(w.spd*w.life) : 0});
     }
   }
 }
@@ -1207,6 +1211,7 @@ function update(dt){
     if (!a.alive) continue;
     a.cd -= dt; a.swing -= dt; if (a.flLock > 0) a.flLock -= dt;
     if (a.boatCool > 0) a.boatCool -= dt; if (a.tpHold > 0) a.tpHold -= dt;
+    if (a.bstGap > 0){ a.bstGap -= dt; if (a.bstGap <= 0) a.bst = 0; }        // stop firing for a moment and the next burst starts fresh
     if (a.flGap > 0){ a.flGap -= dt; if (a.flGap <= 0) a.flBurn = 0; }          // let go for a moment and the burn timer starts over
     if (a.flt > 0){ a.flt -= dt; if (a.inv[a.cur] !== 'flame') a.flt = 0; }
     if (!(a.flt > 0)) a.flen = 0;      // no trigger, no fire: the flame vanishes the moment it stops     // the flame only burns while the flamethrower is the selected item
@@ -1287,7 +1292,7 @@ function update(dt){
     if (!dead) for (const t of S.trees){ if (Math.hypot(b.x-t.x,b.y-t.y) < t.r){ dead = true; burst(b.x,b.y,'#4a4',2); break; } }
     if (!dead) for (const a of S.actors){
       if (a === b.owner || !a.alive || a.team === b.owner.team) continue;
-      if (Math.hypot(b.x-a.x,b.y-a.y) < a.r){ damage(a, b.dmg, b.owner); burst(b.x,b.y,'#f44',4); dead = true; break; }
+      if (Math.hypot(b.x-a.x,b.y-a.y) < a.r){ damage(a, b.fall ? b.dmg * Math.max(0.4, 1 - b.fall*Math.hypot(b.x-b.sx, b.y-b.sy)) : b.dmg, b.owner); burst(b.x,b.y,'#f44',4); dead = true; break; }
     }
     if (dead) S.bullets.splice(i,1);
   }
