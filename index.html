@@ -115,7 +115,7 @@
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
-      <div class="ver">Version 2026-10-04 · drop left</div>
+      <div class="ver">Version 2026-10-04 · flame 125</div>
     </div>
 
     <div id="s-join" hidden>
@@ -225,8 +225,8 @@ const GR_RANGE = 520, GR_RADIUS = 140, GR_DMG_MAX = 130, GR_DMG_MIN = 60, GR_SPE
 const AMMO = {ammo_pistol:{gun:'pistol', box:30, max:150, name:'pistol ammo'}, ammo_shotgun:{gun:'shotgun', box:10, max:50, name:'shells'}, ammo_ar:{gun:'ar', box:60, max:300, name:'rifle ammo'}};
 const START_AMMO = {pistol:30, shotgun:10, ar:60};     // ammo you get the first time you pick up each gun type in a match
 const newAmmo = () => ({pistol:0, shotgun:0, ar:0});
-const FL_MAX = 5, FL_COOL = 1;      // the flamethrower burns for at most 5 s at a time, then needs a 1 s pause
-const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 25;   // flamethrower: reach in px, a burst every 0.1 s, 25 damage each = 250 damage/s (more than any gun, even a gold rifle at ~217) to everything in the flame
+const FL_MAX = 3, FL_COOL = 1;      // the flamethrower burns for at most 3 s at a time, then needs a 1 s pause
+const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 12.5;   // flamethrower: reach in px, a burst every 0.1 s, 12.5 damage each = 125 damage/s to everything in the flame
 const BOOT_MULT = 1.5, BOOT_RAR = 4, bootMul = a => a.inv.includes('boots') ? BOOT_MULT : 1;   // speed boots: 1.5x move speed while in your loadout (one pair per match)
 const CHEST_COUNT = Math.round(32 * MS), CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
 // Gun rarities: the rarer the gun, the harder it hits, the faster it fires and the straighter it shoots.
@@ -1208,7 +1208,8 @@ function update(dt){
     a.cd -= dt; a.swing -= dt; if (a.flLock > 0) a.flLock -= dt;
     if (a.boatCool > 0) a.boatCool -= dt; if (a.tpHold > 0) a.tpHold -= dt;
     if (a.flGap > 0){ a.flGap -= dt; if (a.flGap <= 0) a.flBurn = 0; }          // let go for a moment and the burn timer starts over
-    if (a.flt > 0){ a.flt -= dt; if (a.inv[a.cur] !== 'flame') a.flt = 0; }     // the flame only burns while the flamethrower is the selected item
+    if (a.flt > 0){ a.flt -= dt; if (a.inv[a.cur] !== 'flame') a.flt = 0; }
+    if (!(a.flt > 0)) a.flen = 0;      // no trigger, no fire: the flame vanishes the moment it stops     // the flame only burns while the flamethrower is the selected item
     // bandage channel: switching items cancels it, finishing heals and uses one bandage
     if (a.heal > 0){
       const it = a.inv[a.cur], st = STACK[it];
