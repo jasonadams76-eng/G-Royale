@@ -447,6 +447,10 @@ addEventListener('pointermove', e => {
 function endPointer(e){
   if (e.pointerType === 'mouse'){ if (e.type === 'pointercancel' || e.button === 0) mouse.down = false; return; }
   if (revPtr === e.pointerId){ revHold = false; revPtr = null; }
+  if (touch.aim && touch.aim.id === e.pointerId && e.type === 'pointerup' && phase === 'play' && S && S.player.alive && Math.hypot(touch.aim.dx, touch.aim.dy) > 10){
+    const wp = WEAP[S.player.inv[S.player.cur]] || WEAP.pickaxe;      // release = fire (pull the stick back to the middle first to cancel)
+    touchFireUntil = performance.now() + (wp.flame ? 700 : wp.burst ? 300 : 120);
+  }
   for (const k of ['move','aim']) if (touch[k] && touch[k].id === e.pointerId) touch[k] = null;
   const tp = taps[e.pointerId]; delete taps[e.pointerId];
   if (tp && e.type === 'pointerup' && phase === 'play' && performance.now() - tp.t < 350 && Math.hypot(e.clientX - tp.x, e.clientY - tp.y) < 16 && holdingGrenade()) throwAtScreen(tp.x, tp.y);
@@ -489,6 +493,7 @@ const KOTH_PLAYERS = 10;
 // A teammate who stays next to you for REVIVE_TIME seconds gets you back up; if the timer runs out, or nobody on your team can still help, you are eliminated.
 const DOWN_TIME = 30, REVIVE_TIME = 4, REVIVE_HP = 30, REVIVE_RANGE = 70;
 let revHold = false, revPtr = null;                   // touch: the REVIVE button is held
+let touchFireUntil = 0;      // touch: the aim stick was just released, so the trigger is held for a moment
 const wantRevive = () => !!(keys['e'] || revHold);
 const canGoDown = a => !S.koth && !a.noDown && !(a.down > 0) && S.actors.some(o => o !== a && o.alive && o.team === a.team && !(o.down > 0));
 function reviveTarget(a, range = REVIVE_RANGE){
@@ -1417,7 +1422,7 @@ function localInput(a, dt){
       const m = Math.min(1, Math.hypot(mv.dx,mv.dy)/STICK_R);
       if (m > 0.12){ const g = Math.atan2(mv.dy,mv.dx); vx = Math.cos(g)*230*m; vy = Math.sin(g)*230*m; }
     }
-    // right stick = aim; push past 40% to fire. Light aim assist toward nearby enemies.
+    // right stick = aim; dragging aims (a path is drawn), letting go fires. Light aim assist toward nearby enemies.
     const am = touch.aim;
     if (am){
       const mag = Math.hypot(am.dx, am.dy);
@@ -1433,10 +1438,10 @@ function localInput(a, dt){
           }
         }
         if (assist !== null) ang += assist*0.7;
-        a.angle = ang;
-        if (mag > STICK_R*0.4) fireNow = true;
+        a.angle = ang;      // dragging only aims (a path is drawn); the shot goes off when you let go
       }
     }
+    if (performance.now() < touchFireUntil) fireNow = true;
   }
   return {vx, vy, fire:fireNow};
 }
@@ -2548,6 +2553,31 @@ function draw(){
     ctx.strokeStyle = ready ? 'rgba(80,255,120,0.45)' : 'rgba(255,70,70,0.3)'; ctx.lineWidth = 1.5; ctx.setLineDash([14, 10]);
     ctx.beginPath(); ctx.moveTo(p.x + Math.cos(p.angle)*26, p.y + Math.sin(p.angle)*26); ctx.lineTo(p.x + Math.cos(p.angle)*SN_RANGE, p.y + Math.sin(p.angle)*SN_RANGE); ctx.stroke(); ctx.setLineDash([]);
   }
+  if (touchMode && touch.aim && p.alive && !(p.down > 0) && p === S.player && Math.hypot(touch.aim.dx, touch.aim.dy) > 10){      // aiming: show where the shot will go
+    const wp = WEAP[p.inv[p.cur]], gt = p.inv[p.cur];
+    if (wp && !wp.grenade && !wp.heal && !wp.passive && !wp.sniper){
+      const range = wp.melee ? wp.range + 14 : wp.flame ? FL_RANGE : wp.spd * wp.life, ca = Math.cos(p.angle), sa = Math.sin(p.angle);
+      const trace = (ang, max) => {
+        const c = Math.cos(ang), s2 = Math.sin(ang);
+        for (let d = 24; d < max; d += 10){
+          const x = p.x + c*d, y = p.y + s2*d;
+          if (S.walls.get(wallKey(Math.floor(x/G), Math.floor(y/G)))) return d;
+          for (const t of S.trees) if (Math.hypot(x-t.x, y-t.y) < t.r) return d;
+        }
+        return max;
+      };
+      const out = (wp.ar || gt === 'ar') && (p.ammo[gt] || 0) <= 0 || (wp.spd && (p.ammo[gt] || 0) <= 0);
+      const col = out ? 'rgba(255,90,90,0.8)' : 'rgba(255,255,255,0.8)';
+      ctx.save(); ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2.5; ctx.setLineDash([12, 9]);
+      const angs = wp.pellets > 1 ? [p.angle - wp.spread, p.angle + wp.spread] : [p.angle];      // a shotgun shows its spread
+      for (const ang of angs){
+        const d = trace(ang, range);
+        ctx.beginPath(); ctx.moveTo(p.x + Math.cos(ang)*24, p.y + Math.sin(ang)*24); ctx.lineTo(p.x + Math.cos(ang)*d, p.y + Math.sin(ang)*d); ctx.stroke();
+        ctx.setLineDash([]); ctx.beginPath(); ctx.arc(p.x + Math.cos(ang)*d, p.y + Math.sin(ang)*d, 5, 0, 7); ctx.fill(); ctx.setLineDash([12, 9]);
+      }
+      ctx.restore();
+    }
+  }
   for (const q of S.particles){ ctx.fillStyle=q.c; ctx.fillRect(q.x,q.y,3,3); }
   // grenade throw helper: the range you can reach, and (with a mouse) where it would land
   if (p.alive && p.inv[p.cur] === 'grenade'){
@@ -2721,7 +2751,7 @@ function drawHUD(){
       if (!s){ ctx.font='10px sans-serif'; ctx.textAlign='center'; ctx.fillText(label, ox, oy+STICK_R+14); }
     };
     drawStick(touch.move, 95, vh-115, 'MOVE');
-    drawStick(touch.aim, vw-95, vh-115, 'AIM / FIRE');
+    drawStick(touch.aim, vw-95, vh-115, 'AIM · RELEASE TO FIRE');
   } else {
     if (S.map === 'snow'){ ctx.shadowColor = '#000'; ctx.shadowBlur = 4; }
     ctx.textAlign='left'; ctx.fillStyle='#fff'; ctx.font='12px sans-serif';
