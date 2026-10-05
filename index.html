@@ -806,6 +806,18 @@ function build(a){
   if (S.walls.has(k) || gx<0 || gy<0 || gx*G>=W || gy*G>=W || nearLake(gx*G+G/2, gy*G+G/2, 0)) return;       // no fences on the lakes or islands
   S.walls.set(k, {gx, gy, hp:150}); a.wood -= 10; sfx('bd', a.x, a.y);
 }
+// kill feed (top left): the last few eliminations, fading out after a few seconds
+function pushFeed(by, w, victim, mine){
+  if (!S.feed) S.feed = [];
+  S.feed.push({by, w, victim, mine, t0:performance.now()});
+  if (S.feed.length > 6) S.feed.shift();
+}
+function feedText(q){
+  const wn = WEAP[q.w] ? WEAP[q.w].name : '';
+  if (q.by === 'the Storm') return q.victim + ' was eliminated by the Storm';
+  if (q.by === 'yourself') return q.victim + ' eliminated themselves' + (wn ? ' with the ' + wn : '');
+  return q.by + ' eliminated ' + q.victim + (wn ? ' with the ' + wn : '');
+}
 function damage(a, dmg, owner, wpn){
   a.heal = 0;   // taking damage interrupts healing
   if (a.sh > 0){ const s = Math.min(a.sh, dmg); a.sh -= s; dmg -= s; }
@@ -818,6 +830,8 @@ function damage(a, dmg, owner, wpn){
     a.alive = false; a.hp = 0; sfx('ko', a.x, a.y);
     a.killedBy = {by: !owner ? 'the Storm' : owner === a ? 'yourself' : owner.name, w: wpn || ''};       // who and what finished them off (shown on their screen)
     if (NET.role === 'host' && a.isPlayer && a.pid > 0) peerSend(a.pid, {t:'kb', by:a.killedBy.by, w:a.killedBy.w});
+    pushFeed(a.killedBy.by, a.killedBy.w, a.name, a === S.player ? 1 : owner === S.player ? 2 : 0);       // everybody sees who was eliminated
+    if (NET.role === 'host' && peerCount()){ if (!S.kf) S.kf = []; if (S.kf.length < 12) S.kf.push([a.killedBy.by, a.killedBy.w, a.name, a.pid != null && a.isPlayer ? a.pid : -1, owner && owner.isPlayer ? owner.pid : -1]); }
     if (owner && owner !== a) owner.kills++;
     a.place = S.actors.filter(x => x.alive).length + 1;
     // drop the whole inventory: all wood in one pile, plus every weapon and bandage
@@ -1421,8 +1435,8 @@ function sendSnapshot(){
   const msg = {t:'snap', st:{i:st.i, s:st.state === 'wait' ? 0 : 1, t:+st.t.toFixed(2), r:Math.round(st.r), x:Math.round(st.cx), y:Math.round(st.cy), nx:st.nx, ny:st.ny, nr:st.nr},
     A:S.actors.map(encodeActor),
     B:S.bullets.map(b => [Math.round(b.x), Math.round(b.y), Math.round(b.vx), Math.round(b.vy), b.color]),
-    ev:S.ev, sn:S.sn || [], G:S.grenades.map(g => [Math.round(g.x), Math.round(g.y), +(g.t/g.dur).toFixed(2)]), bm:S.bm || [], tr:S.tr || [], Bt:S.boats.map(b => [Math.round(b.x), Math.round(b.y), +b.ang.toFixed(2), b.rider ? S.actors.indexOf(b.rider) : -1]), o:S.over?1:0, wt:S.winTeam};
-  S.ev = []; S.sn = []; S.bm = []; S.tr = [];
+    ev:S.ev, sn:S.sn || [], G:S.grenades.map(g => [Math.round(g.x), Math.round(g.y), +(g.t/g.dur).toFixed(2)]), bm:S.bm || [], tr:S.tr || [], kf:S.kf || [], Bt:S.boats.map(b => [Math.round(b.x), Math.round(b.y), +b.ang.toFixed(2), b.rider ? S.actors.indexOf(b.rider) : -1]), o:S.over?1:0, wt:S.winTeam};
+  S.ev = []; S.sn = []; S.bm = []; S.tr = []; S.kf = [];
   // slow-changing world data is only sent when it actually changed
   const Wl = S.walls.size ? [...S.walls.values()].map(w => [w.gx, w.gy, Math.round(w.hp)]) : [];
   const Ws = JSON.stringify(Wl);               if (Ws !== NET.last.W){ NET.last.W = Ws; msg.W = Wl; }
@@ -1666,6 +1680,10 @@ function applySnap(m){
   S.bullets = m.B.map(b => ({x:b[0], y:b[1], vx:b[2], vy:b[3], color:b[4]}));
   S.grenades = (m.G || []).map(g => ({x:g[0], y:g[1], p:g[2]}));
   if (m.bm) for (const q of m.bm) S.blasts.push({x:q[0], y:q[1], t0:performance.now()});
+  if (m.kf) for (const q of m.kf){          // eliminations that happened on the host
+    const by = String(q[0] || '').slice(0, 20), victim = String(q[2] || '').slice(0, 20), me = S.player ? S.player.pid : -1;
+    pushFeed(by, String(q[1] || '').slice(0, 12), victim, q[3] === me && me >= 0 ? 1 : q[4] === me && me >= 0 ? 2 : 0);
+  }
   if (m.tr) for (const q of m.tr) (S.tracers || (S.tracers = [])).push({x1:q[0], y1:q[1], x2:q[2], y2:q[3], t0:performance.now()});
   const st = S.storm; st.i = m.st.i; st.state = m.st.s ? 'shrink' : 'wait'; st.t = m.st.t; st.r = m.st.r; st.cx = m.st.x; st.cy = m.st.y; st.nx = m.st.nx; st.ny = m.st.ny; st.nr = m.st.nr;
   if (m.W) S.walls = new Map(m.W.map(([gx,gy,hp]) => [wallKey(gx,gy), {gx, gy, hp}]));
@@ -2239,6 +2257,18 @@ function drawHUD(){
     } else ctx.fillText(id ? WEAP[id].name : '-', r.x+r.w/2, r.y+r.h*0.68);
   }
 
+  if (S.feed && S.feed.length){                       // kill feed, top left under the health bar / help text
+    const nowT = performance.now(); S.feed = S.feed.filter(q => nowT - q.t0 < 5000);
+    ctx.font = 'bold ' + (tm ? 11 : 13) + 'px sans-serif'; ctx.textAlign = 'left';
+    let fy = tm ? 58 : 58;
+    for (const q of S.feed){
+      const age = nowT - q.t0, al = age < 3500 ? 1 : Math.max(0, 1 - (age - 3500)/1500), txt = feedText(q), tw = ctx.measureText(txt).width;
+      ctx.globalAlpha = al * 0.65; ctx.fillStyle = '#000'; ctx.fillRect(10, fy - 13, tw + 14, 20);
+      ctx.globalAlpha = al; ctx.fillStyle = q.mine === 1 ? '#ff7a6a' : q.mine === 2 ? '#ffd34d' : '#fff'; ctx.fillText(txt, 17, fy + 2);
+      fy += 24;
+    }
+    ctx.globalAlpha = 1;
+  }
   if (!tm && canDropNow()){ ctx.fillStyle = '#fffc'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('G or right-click slot: drop item', SW/2, SH-76); }
 
   // top-right info + minimap
