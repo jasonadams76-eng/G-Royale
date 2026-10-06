@@ -42,7 +42,7 @@
   .sws.big{gap:7px;margin-bottom:8px;justify-content:center}.sws.big .sw{width:32px;height:32px}
   #avprev{display:block;position:sticky;top:6px;z-index:3;margin:4px auto 8px;width:130px;height:130px;box-shadow:0 4px 12px #0008;background:#2e4a33;border-radius:14px;border:1px solid #3a5a40}
   #s-avatar .lbl{margin:8px 0 4px;text-align:center}
-  #av-pats,#av-styles{justify-content:center}
+  #av-pats,#av-styles,#av-sleeves{justify-content:center}
   .sw{width:21px;height:21px;border-radius:50%;border:2px solid #000a;padding:0;cursor:pointer;touch-action:manipulation}
   .sw.on{border-color:#fff;box-shadow:0 0 0 2px #fc4}
   .txt.name{font-size:20px;letter-spacing:1px;text-transform:none;padding:9px;margin-bottom:6px}
@@ -140,6 +140,7 @@
       <div class="lbl">Skin tone</div><div class="sws big" id="av-skins"></div>
       <div class="lbl">Hair style</div><div class="mapbox" id="av-styles"></div>
       <div class="lbl">Hair colour</div><div class="sws big" id="av-hairs"></div>
+      <div class="lbl">Sleeves</div><div class="mapbox" id="av-sleeves"></div>
       <div class="lbl">Shirt pattern</div><div class="mapbox" id="av-pats"></div>
       <div class="lbl">Shirt colour</div><div class="sws big" id="av-shirts"></div>
       <div id="av-c2"><div class="lbl">Second colour</div><div class="sws big" id="av-shirts2"></div></div>
@@ -177,7 +178,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 8;
+const VERSION = 12;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -326,15 +327,17 @@ const MAX_PLAYERS = 8;
 const SHIRTS = ['#e53935','#fb8c00','#fdd835','#43a047','#00acc1','#1e88e5','#8e24aa','#ec407a','#f5f5f5',
   '#b71c1c','#ff7043','#ffee58','#c6ff00','#1b5e20','#00e676','#009688','#4dd0e1','#0d47a1','#64b5f6','#303f9f','#7e57c2','#4a148c','#f06292','#880e4f','#8d6e63','#4e342e','#9e9e9e','#455a64','#212121'];      // (the first nine are the originals: saved avatars keep their colours)
 const HAIRS = ['#1a1410','#4a3020','#8a5a35','#c9a24b','#e8d28a','#b5361b','#7a7a85','#f2f2f2','#3a7bd5','#e0457b','#43a047','#8e24aa'];
-const HAIRSTYLES = ['Short','Long','Ponytail','Bun','Mohawk','Afro','Bald'];
+const HAIRSTYLES = ['Short','Long','Ponytail','Bun','Mohawk','Bald'];
+const SLEEVES = ['Long Sleeve','Short Sleeve'];
 const PATTERNS = ['Solid','Horizontal Stripes','Vertical Stripes','Half & Half'];
 const SKINS = ['#fde0c8','#f1c7a0','#d9a26e','#b9814f','#8a5a35','#5c3a21'];
-const lookMsg = () => ({shirt:look.shirt, skin:look.skin, hair:look.hair, pat:look.pat, shirt2:look.shirt2, style:look.style});      // what other players are told about my avatar
+const lookMsg = () => ({shirt:look.shirt, skin:look.skin, hair:look.hair, pat:look.pat, shirt2:look.shirt2, style:look.style, sleeve:look.sleeve});      // what other players are told about my avatar
 const okIdx = (i, n, d) => Number.isInteger(i) && i >= 0 && i < n ? i : d;
 let soloCrown = false;           // solo: did I win my previous game?
-let look = {shirt:5, skin:1, hair:1, pat:0, shirt2:8, style:0, hv:2};      // my avatar: shirt colour, skin tone, hair colour, shirt pattern and its second colour (indexes into SHIRTS / SKINS / HAIRS / PATTERNS)
-// (the Buzz Cut was removed: avatars saved before that have their hair style shifted down one, once, below)
-try { const l = JSON.parse(localStorage.getItem('sr-look')); if (l){ look.shirt = okIdx(l.shirt, SHIRTS.length, 5); look.skin = okIdx(l.skin, SKINS.length, 1); look.hair = okIdx(l.hair, HAIRS.length, 1); look.pat = okIdx(l.pat, PATTERNS.length, 0); look.shirt2 = okIdx(l.shirt2, SHIRTS.length, 8); look.style = okIdx(l.style, HAIRSTYLES.length + 1, 0); if (l.hv !== 2) look.style = look.style === 1 ? 0 : look.style > 1 ? look.style - 1 : look.style; look.style = okIdx(look.style, HAIRSTYLES.length, 0); }      else look.shirt = Math.random()*SHIRTS.length|0; } catch(_){}
+let look = {shirt:5, skin:1, hair:1, pat:0, shirt2:8, style:0, hv:3, sleeve:0};      // my avatar: shirt colour, skin tone, hair colour, shirt pattern and its second colour (indexes into SHIRTS / SKINS / HAIRS / PATTERNS)
+// (hair styles that were removed are converted below, once, when an older saved avatar is loaded)
+try { const l = JSON.parse(localStorage.getItem('sr-look')); if (l){ look.shirt = okIdx(l.shirt, SHIRTS.length, 5); look.skin = okIdx(l.skin, SKINS.length, 1); look.hair = okIdx(l.hair, HAIRS.length, 1); look.pat = okIdx(l.pat, PATTERNS.length, 0); look.sleeve = okIdx(l.sleeve, SLEEVES.length, 0); look.shirt2 = okIdx(l.shirt2, SHIRTS.length, 8); const oldNames = l.hv === 3 ? HAIRSTYLES : l.hv === 2 ? ['Short','Long','Ponytail','Bun','Mohawk','Afro','Bald'] : ['Short','Buzz Cut','Long','Ponytail','Bun','Mohawk','Afro','Bald'];
+    const nm = Number.isInteger(l.style) ? oldNames[l.style] : null; look.style = Math.max(0, HAIRSTYLES.indexOf(nm));      /* removed styles (Buzz Cut, Afro) fall back to Short */ } else look.shirt = Math.random()*SHIRTS.length|0; } catch(_){}
 try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){}      // keep the (migrated) avatar
 const PLAYER_COLORS = ['#4af','#fa4','#e5e','#5e8','#ee4','#f66','#4ee','#a8f'];
 const NET = {
@@ -507,7 +510,7 @@ function newActor(kind, i, h){
     color: human ? PLAYER_COLORS[pid % PLAYER_COLORS.length] : `hsl(${rnd(0,360)|0},60%,55%)`,
     strafe:1, strafeT:0, wp:null, wpT:0};
   a.crown = !!(human && h.crown);
-  if (human){ a.shirt = SHIRTS[okIdx(h.shirt, SHIRTS.length, -1)] || null; a.skin = SKINS[okIdx(h.skin, SKINS.length, 1)]; a.hair = HAIRS[okIdx(h.hair, HAIRS.length, 1)]; a.hstyle = okIdx(h.style, HAIRSTYLES.length, 0); a.pat = okIdx(h.pat, PATTERNS.length, 0); a.shirt2 = SHIRTS[okIdx(h.shirt2, SHIRTS.length, 8)]; }
+  if (human){ a.shirt = SHIRTS[okIdx(h.shirt, SHIRTS.length, -1)] || null; a.skin = SKINS[okIdx(h.skin, SKINS.length, 1)]; a.hair = HAIRS[okIdx(h.hair, HAIRS.length, 1)]; a.hstyle = okIdx(h.style, HAIRSTYLES.length, 0); a.sleeve = okIdx(h.sleeve, SLEEVES.length, 0); a.pat = okIdx(h.pat, PATTERNS.length, 0); a.shirt2 = SHIRTS[okIdx(h.shirt2, SHIRTS.length, 8)]; }
   else a.skin = SKINS[Math.random()*SKINS.length|0];
   return a;
 }
@@ -1753,14 +1756,14 @@ function sendSnapshot(){
 function sendInit(){
   const base = {t:'init',
     map:S.map, ice:S.ice || [], koth:S.koth ? 1 : 0, hill:S.hill || null, bots:S.hasBots ? 1 : 0, trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]), lakes:S.lakes.map(l => [l.x, l.y, ...l.h, l.ox, l.oy]), boats:S.boats.map(b => [b.x, b.y, b.ang]),
-    actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, s:a.shirt || null, k:a.skin, hr:a.hair || null, hs:a.hstyle | 0, pt:a.pat | 0, s2:a.shirt2 || null, cw:a.crown ? 1 : 0, x:Math.round(a.x), y:Math.round(a.y)}))};
+    actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, s:a.shirt || null, k:a.skin, hr:a.hair || null, hs:a.hstyle | 0, sl:a.sleeve | 0, pt:a.pat | 0, s2:a.shirt2 || null, cw:a.crown ? 1 : 0, x:Math.round(a.x), y:Math.round(a.y)}))};
   for (const pid in NET.peers){
     const me = S.actors.findIndex(a => a.isPlayer && a.pid === +pid);
     try { NET.peers[pid].conn.send(Object.assign({me}, base)); } catch(_){}
   }
   NET.last = {W:'',L:'',C:'',T:''};
 }
-const currentHumans = () => NET.lobby.map(p => ({pid:p.pid, name:p.name, tm:NET.mode === 'koth' ? null : p.tm, bm:NET.mode === 'humans' || NET.mode === 'koth' ? 0 : p.bm || 0, shirt:p.shirt, skin:p.skin, hair:p.hair, style:p.style, pat:p.pat, shirt2:p.shirt2, crown:!!p.crown}));
+const currentHumans = () => NET.lobby.map(p => ({pid:p.pid, name:p.name, tm:NET.mode === 'koth' ? null : p.tm, bm:NET.mode === 'humans' || NET.mode === 'koth' ? 0 : p.bm || 0, shirt:p.shirt, skin:p.skin, hair:p.hair, style:p.style, sleeve:p.sleeve, pat:p.pat, shirt2:p.shirt2, crown:!!p.crown}));
 function hostBeginMatch(){
   if (NET.role !== 'host' || phase !== 'lobby') return;
   if (!teamsEven(currentHumans(), NET.mode !== 'humans')){ toast('Teams must all be the same size', 2500); return; }
@@ -1855,7 +1858,7 @@ function hostAcceptConnection(conn){
     pid = NET.nextPid++;
     const name = uniqueName(cleanName(m.name) || 'Player ' + (pid+1));
     NET.peers[pid] = {conn, name};
-    NET.lobby.push({pid, name, tm:null, bm:0, wins:0, shirt:okIdx(m.shirt, SHIRTS.length, 0), skin:okIdx(m.skin, SKINS.length, 1), hair:okIdx(m.hair, HAIRS.length, 1), style:okIdx(m.style, HAIRSTYLES.length, 0), pat:okIdx(m.pat, PATTERNS.length, 0), shirt2:okIdx(m.shirt2, SHIRTS.length, 8)});   // wins only count inside this room
+    NET.lobby.push({pid, name, tm:null, bm:0, wins:0, shirt:okIdx(m.shirt, SHIRTS.length, 0), skin:okIdx(m.skin, SKINS.length, 1), hair:okIdx(m.hair, HAIRS.length, 1), style:okIdx(m.style, HAIRSTYLES.length, 0), sleeve:okIdx(m.sleeve, SLEEVES.length, 0), pat:okIdx(m.pat, PATTERNS.length, 0), shirt2:okIdx(m.shirt2, SHIRTS.length, 8)});   // wins only count inside this room
     try { conn.send({t:'welcome', pid, name}); } catch(_){}
     lobbyBroadcast();
     toast(name + ' joined'); playSnd('ui');
@@ -1957,7 +1960,7 @@ function buildGuestState(m){
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
   m.actors.forEach(d => S.actors.push({x:d.x, y:d.y, tx:d.x, ty:d.y, r:15, hp:100, sh:0, wood:0,
     inv:['pickaxe',null,null,null,null,null], gr:newGr(), ammo:newAmmo(), band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, down:0, rv:0, rvT:0, kills:0, place:0,
-    isPlayer:!!d.h, pid:d.pid, team:d.tm, name:d.n, color:d.c, shirt:d.s || null, skin:d.k, hair:d.hr || null, hstyle:d.hs | 0, pat:d.pt | 0, shirt2:d.s2 || null, crown:!!d.cw, seen:false}));
+    isPlayer:!!d.h, pid:d.pid, team:d.tm, name:d.n, color:d.c, shirt:d.s || null, skin:d.k, hair:d.hr || null, hstyle:d.hs | 0, sleeve:d.sl | 0, pat:d.pt | 0, shirt2:d.s2 || null, crown:!!d.cw, seen:false}));
   S.player = S.actors[m.me];
   S.player.seen = true;
 }
@@ -2405,6 +2408,19 @@ function drawCrownIcon(c, x, y, k){      // little upright crown shown above a c
   c.beginPath(); c.moveTo(-9,4); c.lineTo(-10,-6); c.lineTo(-4.5,-1); c.lineTo(0,-8); c.lineTo(4.5,-1); c.lineTo(10,-6); c.lineTo(9,4); c.closePath(); c.fill(); c.stroke();
   c.fillStyle = '#e53935'; c.beginPath(); c.arc(0,0,1.7,0,7); c.fill(); c.restore();
 }
+// A hand seen from above, reaching forward (+x): a palm, four fingers and a thumb that points in towards the body.
+function drawHand(c, x, y, sy, skin){
+  c.save(); c.lineCap = 'round'; c.lineJoin = 'round';
+  const fing = [[2.0, -2.1, 0.34, 4.0], [2.4, -0.75, 0.11, 5.0], [2.4, 0.75, -0.11, 5.0], [2.0, 2.1, -0.34, 4.0]];      // [start x, start y, angle, length] (mirrored for the other hand)
+  const strokes = [];
+  for (const [fx, fy, ang, len] of fing){ const a0 = ang*sy, x1 = x + fx, y1 = y + fy*sy; strokes.push([x1, y1, x1 + Math.cos(a0)*len, y1 + Math.sin(a0)*len]); }
+  strokes.push([x + 0.4, y - sy*2.5, x + 3.6, y - sy*5.0]);                                                    // thumb
+  c.strokeStyle = '#000'; c.lineWidth = 3.1; for (const q of strokes){ c.beginPath(); c.moveTo(q[0], q[1]); c.lineTo(q[2], q[3]); c.stroke(); }   // one outline round the whole hand...
+  c.fillStyle = '#000'; c.beginPath(); c.ellipse(x, y, 3.9, 3.6, 0, 0, 7); c.fill();
+  c.strokeStyle = skin; c.lineWidth = 1.5; for (const q of strokes){ c.beginPath(); c.moveTo(q[0], q[1]); c.lineTo(q[2], q[3]); c.stroke(); }     // ...then the skin: fingers run straight into the palm
+  c.fillStyle = skin; c.beginPath(); c.ellipse(x, y, 3.1, 2.8, 0, 0, 7); c.fill();
+  c.restore();
+}
 function drawPerson(c, shirt, skinCol, ph, crown, opt){
     opt = opt || {};
     {   // a little person seen from above, facing right: feet, shoulders (team colour), arms, head with hair
@@ -2426,26 +2442,22 @@ function drawPerson(c, shirt, skinCol, ph, crown, opt){
       for (const sy of [-1, 1]){                                                        // arms reaching forward to the item
         const sleeve = pat === 3 && sy === 1 ? shirt2 : shirt;
         c.beginPath(); c.moveTo(-1, sy*11); c.lineTo(13, sy*5.5); c.lineWidth = 6.5; c.strokeStyle = '#000'; c.stroke();
-        c.lineWidth = 3.8; c.strokeStyle = sleeve; c.stroke();
-        c.fillStyle = skin; c.lineWidth = 1.6; c.strokeStyle = '#000'; c.beginPath(); c.arc(14, sy*5.5, 3, 0, 7); c.fill(); c.stroke();   // hands
+        if (opt.sleeve === 1){                                                        // short sleeve: bare forearm, the sleeve only covers the top of the arm
+          c.lineWidth = 3.8; c.strokeStyle = skin; c.stroke();
+          c.beginPath(); c.moveTo(-1, sy*11); c.lineTo(3.5, sy*9.2); c.lineWidth = 3.8; c.strokeStyle = sleeve; c.stroke();
+        } else { c.lineWidth = 3.8; c.strokeStyle = sleeve; c.stroke(); }
+        drawHand(c, 14, sy*5.5, sy, skin);   // hands
       }
       c.lineWidth = 2; c.strokeStyle = '#000';
-      const hc = opt.hair || '#4a3020', hs = opt.style | 0;                            // hair style: 0 short, 1 long, 2 ponytail, 3 bun, 4 mohawk, 5 afro, 6 bald
-      if (hs === 5){                                                                   // afro: a fluffy ball of hair that covers the whole head, with the face peeking out the front
-        const puffs = [[0, 0, 9.5]]; for (let k = 0; k < 11; k++){ const g = k*Math.PI*2/11; puffs.push([Math.cos(g)*8.2, Math.sin(g)*8.2, 4.6]); }
-        c.strokeStyle = '#000'; c.lineWidth = 3;
-        for (const [px, py, pr] of puffs){ c.beginPath(); c.arc(px, py, pr, 0, 7); c.stroke(); }          // outline first...
-        c.fillStyle = hc;
-        for (const [px, py, pr] of puffs){ c.beginPath(); c.arc(px, py, pr, 0, 7); c.fill(); }            // ...then fill, which hides the inner outlines
-        c.lineWidth = 2; c.fillStyle = skin; c.beginPath(); c.arc(5, 0, 5.2, 0, 7); c.fill(); c.stroke();   // face
-      } else {
+      const hc = opt.hair || '#4a3020', hs = opt.style | 0;                            // hair style: 0 short, 1 long, 2 ponytail, 3 bun, 4 mohawk, 5 bald
+      {
         c.fillStyle = hc;
         if (hs === 1){ c.beginPath(); c.roundRect(-19, -7.5, 21, 15, 6); c.fill(); c.stroke(); }             // long hair: a wide curtain falling down the back
         else if (hs === 2){ c.beginPath(); c.ellipse(-12, 0, 7, 2.8, 0, 0, 7); c.fill(); c.stroke(); }      // ponytail trailing behind
         c.fillStyle = skin; c.beginPath(); c.arc(1.5, 0, 7.2, 0, 7); c.fill(); c.stroke();                   // head
         c.fillStyle = hc;
         if (hs === 4){ c.beginPath(); c.roundRect(-6.5, -1.6, 11, 3.2, 1.4); c.fill(); c.stroke(); }         // mohawk: a narrow strip, set back from the forehead
-        else if (hs !== 6){ c.beginPath(); c.arc(1.5, 0, 7.2, Math.PI*0.5, Math.PI*1.5); c.closePath(); c.fill(); }   // hair on the back of the head
+        else if (hs !== 5){ c.beginPath(); c.arc(1.5, 0, 7.2, Math.PI*0.5, Math.PI*1.5); c.closePath(); c.fill(); }   // hair on the back of the head
         c.beginPath(); c.arc(1.5, 0, 7.2, 0, 7); c.stroke();
         if (hs === 2){ c.fillStyle = '#e53935'; c.fillRect(-6.3, -1.8, 2, 3.6); c.fillStyle = hc; c.beginPath(); c.arc(-5.2, 0, 2.4, 0, 7); c.fill(); c.stroke(); c.fillStyle = '#e53935'; c.beginPath(); c.arc(-5.2, 0, 1.1, 0, 7); c.fill(); }   // hair tie
         else if (hs === 3){ c.fillStyle = hc; c.beginPath(); c.arc(-3.2, 0, 3.8, 0, 7); c.fill(); c.stroke(); }     // bun on top of the head
@@ -2669,7 +2681,7 @@ function draw(){
       ctx.save(); if (Math.cos(a.angle) < 0) ctx.scale(1,-1);      // keep the gun the right way up when aiming left
       ctx.translate(a.inv[a.cur] === 'pistol' ? 10 : 18, 0); drawGun(ctx, a.inv[a.cur], a.inv[a.cur] === 'pistol' ? 1 : 0.78, RARITY[a.gr[a.inv[a.cur]] || 0].col); ctx.restore();
     }
-    drawPerson(ctx, a.shirt || a.color, a.skin || SKINS[1], Math.sin((a.x + a.y)*0.12)*5, a.crown, a.shirt ? {pat:a.pat, shirt2:a.shirt2, hair:a.hair, style:a.hstyle} : null);
+    drawPerson(ctx, a.shirt || a.color, a.skin || SKINS[1], Math.sin((a.x + a.y)*0.12)*5, a.crown, a.shirt ? {pat:a.pat, shirt2:a.shirt2, hair:a.hair, style:a.hstyle, sleeve:a.sleeve} : null);
     ctx.restore();
     // healing progress ring
     if (a.heal > 0){
@@ -3045,7 +3057,7 @@ function drawLookPreview(){
   for (const [id, sc] of [['lookprev', 2.3], ['avprev', 4.2]]){
     const cv2 = $(id), c = cv2.getContext('2d'), w = cv2.width; c.clearRect(0, 0, w, w);
     c.save(); c.translate(w/2, w*0.52); c.rotate(-Math.PI/2); c.scale(sc, sc); c.lineWidth = 2; c.strokeStyle = '#000'; c.lineJoin = 'round';
-    drawPerson(c, SHIRTS[look.shirt], SKINS[look.skin], 0, false, {pat:look.pat, shirt2:SHIRTS[look.shirt2], hair:HAIRS[look.hair], style:look.style}); c.restore();
+    drawPerson(c, SHIRTS[look.shirt], SKINS[look.skin], 0, false, {pat:look.pat, shirt2:SHIRTS[look.shirt2], hair:HAIRS[look.hair], style:look.style, sleeve:look.sleeve}); c.restore();
   }
 }
 function buildLookPickers(){
@@ -3061,6 +3073,8 @@ function buildLookPickers(){
   mk('av-skins', SKINS, 'skin'); mk('av-hairs', HAIRS, 'hair'); mk('av-shirts', SHIRTS, 'shirt'); mk('av-shirts2', SHIRTS, 'shirt2');
   const hb = $('av-styles'); hb.textContent = '';
   HAIRSTYLES.forEach((nm, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'mini' + (look.style === i ? ' sel' : ''); b.textContent = nm; b.onclick = () => { look.style = i; save(); }; hb.appendChild(b); });
+  const sb = $('av-sleeves'); sb.textContent = '';
+  SLEEVES.forEach((nm, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'mini' + (look.sleeve === i ? ' sel' : ''); b.textContent = nm; b.onclick = () => { look.sleeve = i; save(); }; sb.appendChild(b); });
   const pb = $('av-pats'); pb.textContent = '';
   PATTERNS.forEach((nm, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'mini' + (look.pat === i ? ' sel' : ''); b.textContent = nm; b.onclick = () => { look.pat = i; save(); }; pb.appendChild(b); });
   $('av-c2').hidden = look.pat === 0;                      // a second colour only matters for stripes and half & half
