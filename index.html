@@ -181,7 +181,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 19;
+const VERSION = 20;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -769,7 +769,20 @@ for (const ev of ['pointerdown','pointerup','mousedown','touchstart','touchend',
 // Try to start the audio the moment the page loads. Browsers that allow autoplay (e.g. the site has been used before) play the menu music straight away;
 // the others keep it suspended, so we keep retrying quietly and the very first tap, click or key press starts it.
 audioUnlock();
-setInterval(() => { if (AC && AC.state === 'suspended' && !document.hidden) { try { AC.resume(); } catch(_){} } }, 400);
+// Chrome can leave the audio engine stuck: 'interrupted' or 'closed' after the sound device changes (headphones, Bluetooth, sleep/wake), or "running" with a frozen clock.
+// If that happens, resume it, and if it still does not move, throw it away and build a fresh one (music and effects pick up the new engine by themselves).
+let acClock = -1, acStuck = 0;
+function audioRebuild(){
+  try { if (AC && AC.state !== 'closed'){ const pr = AC.close(); if (pr && pr.catch) pr.catch(() => {}); } } catch(_){}
+  AC = null; master = null; noiseBuf = null; M.gain = null; M.cur = null; acClock = -1; acStuck = 0;
+  audioUnlock();
+}
+setInterval(() => {
+  if (!AC || document.hidden) return;
+  if (AC.state === 'closed'){ audioRebuild(); return; }
+  if (AC.state !== 'running'){ try { AC.resume(); } catch(_){} acClock = -1; acStuck = 0; return; }
+  if (AC.currentTime === acClock){ if (++acStuck >= 5){ audioRebuild(); } } else { acClock = AC.currentTime; acStuck = 0; }
+}, 400);
 function setMuted(m){
   muted = m; try { localStorage.setItem('sr-mute', m ? '1' : '0'); } catch(_){}
   if (master) master.gain.value = m ? 0 : 0.5;
