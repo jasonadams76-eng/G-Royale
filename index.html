@@ -181,7 +181,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 20;
+const VERSION = 22;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -1751,12 +1751,13 @@ function update(dt){
     const b = S.bullets[i];
     b.x += b.vx*dt; b.y += b.vy*dt; b.life -= dt;
     let dead = b.life <= 0;
-    if (!dead){
+    if (b.fly === undefined) b.fly = !!(b.owner && b.owner.inv && b.owner.inv.includes('jetpack'));      // fired from a jet pack: shooting down from above, so nothing on the ground blocks the shot
+    if (!dead && !b.fly){
       const k = wallKey(Math.floor(b.x/G), Math.floor(b.y/G));
       const w = S.walls.get(k);
       if (w){ w.hp -= b.dmg; dead = true; burst(b.x,b.y,'#c93',3); if (w.hp <= 0) S.walls.delete(k); }
     }
-    if (!dead) for (const t of S.trees){ if (Math.hypot(b.x-t.x,b.y-t.y) < t.r){ dead = true; burst(b.x,b.y,'#4a4',2); break; } }
+    if (!dead && !b.fly) for (const t of S.trees){ if (Math.hypot(b.x-t.x,b.y-t.y) < t.r){ dead = true; burst(b.x,b.y,'#4a4',2); break; } }
     if (!dead) for (const a of S.actors){
       if (a === b.owner || !a.alive || a.team === b.owner.team) continue;
       if (Math.hypot(b.x-a.x,b.y-a.y) < a.r){ damage(a, b.fall ? b.dmg * Math.max(0.4, 1 - b.fall*Math.hypot(b.x-b.sx, b.y-b.sy)) : b.dmg, b.owner, b.wpn); burst(b.x,b.y,'#f44',4); dead = true; break; }
@@ -2957,64 +2958,66 @@ function drawHUD(){
   const alive = S.actors.filter(a=>a.alive).length, st = S.storm;
   ctx.textAlign = 'left';
 
+  // while spectating, the health, shield and loadout shown are the ones of the player we are watching
+  const v = (!p.alive && !S.koth && !S.over && specT && specT.alive) ? specT : p;
   // health / shield / wood
   if (tm){
     ctx.fillStyle='#0009'; ctx.fillRect(10,8,158,34);
-    ctx.fillStyle='#4af'; ctx.fillRect(14,11,150*p.sh/100,12);
-    ctx.fillStyle='#4d4'; ctx.fillRect(14,26,150*p.hp/100,12);
+    ctx.fillStyle='#4af'; ctx.fillRect(14,11,150*v.sh/100,12);
+    ctx.fillStyle='#4d4'; ctx.fillRect(14,26,150*v.hp/100,12);
     ctx.fillStyle='#fff'; ctx.font='bold 10px sans-serif';
-    ctx.fillText('SHIELD '+(p.sh|0), 18, 21); ctx.fillText('HEALTH '+(p.hp|0), 18, 36);
-    ctx.fillStyle='#fc4'; ctx.font='bold 13px sans-serif'; if (mapOf().build) ctx.fillText((mapOf().res || 'Wood')+': '+p.wood, 174, 24);
+    ctx.fillText('SHIELD '+(v.sh|0), 18, 21); ctx.fillText('HEALTH '+(v.hp|0), 18, 36);
+    ctx.fillStyle='#fc4'; ctx.font='bold 13px sans-serif'; if (mapOf().build) ctx.fillText((mapOf().res || 'Wood')+': '+v.wood, 174, 24);
   } else {
     ctx.fillStyle='#0009'; ctx.fillRect(20,vh-70,260,50);
-    ctx.fillStyle='#4af'; ctx.fillRect(26,vh-64,248*p.sh/100,16);
-    ctx.fillStyle='#4d4'; ctx.fillRect(26,vh-42,248*p.hp/100,16);
+    ctx.fillStyle='#4af'; ctx.fillRect(26,vh-64,248*v.sh/100,16);
+    ctx.fillStyle='#4d4'; ctx.fillRect(26,vh-42,248*v.hp/100,16);
     ctx.fillStyle='#fff'; ctx.font='bold 12px sans-serif';
-    ctx.fillText('SHIELD '+(p.sh|0), 32, vh-52); ctx.fillText('HEALTH '+(p.hp|0), 32, vh-30);
-    ctx.fillStyle='#fc4'; ctx.font='bold 16px sans-serif'; if (S.map === 'snow'){ ctx.shadowColor = '#000'; ctx.shadowBlur = 4; } if (mapOf().build) ctx.fillText((mapOf().res || 'Wood')+': '+p.wood, 20, vh-80); ctx.shadowBlur = 0;
+    ctx.fillText('SHIELD '+(v.sh|0), 32, vh-52); ctx.fillText('HEALTH '+(v.hp|0), 32, vh-30);
+    ctx.fillStyle='#fc4'; ctx.font='bold 16px sans-serif'; if (S.map === 'snow'){ ctx.shadowColor = '#000'; ctx.shadowBlur = 4; } if (mapOf().build) ctx.fillText((mapOf().res || 'Wood')+': '+v.wood, 20, vh-80); ctx.shadowBlur = 0;
   }
 
   // weapon slots (tappable on touch)
   for (let i=0;i<6;i++){
-    const r = slotRect(i), id = p.inv[i];
-    ctx.fillStyle = i===p.cur ? '#fc4' : '#0009'; ctx.fillRect(r.x,r.y,r.w,r.h);
+    const r = slotRect(i), id = v.inv[i];
+    ctx.fillStyle = i===v.cur ? '#fc4' : '#0009'; ctx.fillRect(r.x,r.y,r.w,r.h);
     if (id && (GUN_W[id] || id === 'grenade' || id === 'boots' || id === 'flame' || id === 'sniper' || id === 'minigun' || id === 'grapple' || id === 'shieldgen' || id === 'jetpack')){        // the whole slot is tinted with the gun's rarity colour (grenades are always gold)
-      ctx.globalAlpha = i===p.cur ? 0.55 : 0.4; ctx.fillStyle = RARITY[GUN_W[id] ? (p.gr[id] || 0) : id === 'boots' ? BOOT_RAR : 4].col; ctx.fillRect(r.x,r.y,r.w,r.h); ctx.globalAlpha = 1;
+      ctx.globalAlpha = i===v.cur ? 0.55 : 0.4; ctx.fillStyle = RARITY[GUN_W[id] ? (v.gr[id] || 0) : id === 'boots' ? BOOT_RAR : 4].col; ctx.fillRect(r.x,r.y,r.w,r.h); ctx.globalAlpha = 1;
     }
     ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.strokeRect(r.x,r.y,r.w,r.h);
-    ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.font='10px sans-serif'; ctx.textAlign='left'; ctx.fillText(i+1, r.x+4, r.y+11);
+    ctx.fillStyle = i===v.cur ? '#000' : '#fff'; ctx.font='10px sans-serif'; ctx.textAlign='left'; ctx.fillText(i+1, r.x+4, r.y+11);
     ctx.textAlign='center'; ctx.font = tm ? 'bold 9px sans-serif' : 'bold 11px sans-serif';
     if (id && GUN_W[id]){        // guns show their picture (plus the name on desktop)
       const gs = Math.min(1.1, (r.w - 10) / GUN_W[id]);
-      ctx.save(); ctx.translate(r.x + r.w/2 - GUN_CX[id]*gs, r.y + r.h*(tm ? 0.55 : 0.42)); drawGun(ctx, id, gs, RARITY[p.gr[id] || 0].col); ctx.restore();
+      ctx.save(); ctx.translate(r.x + r.w/2 - GUN_CX[id]*gs, r.y + r.h*(tm ? 0.55 : 0.42)); drawGun(ctx, id, gs, RARITY[v.gr[id] || 0].col); ctx.restore();
       ctx.strokeStyle = '#000'; ctx.lineWidth = 5; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
-      ctx.strokeStyle = RARITY[p.gr[id] || 0].col; ctx.lineWidth = 3; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);   // slot border = rarity
-      if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(WEAP[id].name, r.x+r.w/2, r.y+r.h*0.9); }
-      const am = (p.ammo && p.ammo[id]) | 0;                                       // how many bullets are left for this gun
+      ctx.strokeStyle = RARITY[v.gr[id] || 0].col; ctx.lineWidth = 3; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);   // slot border = rarity
+      if (!tm){ ctx.fillStyle = i===v.cur ? '#000' : '#fff'; ctx.fillText(WEAP[id].name, r.x+r.w/2, r.y+r.h*0.9); }
+      const am = (v.ammo && v.ammo[id]) | 0, ammoKnown = v === p || v.isPlayer || NET.role !== 'guest';                                       // how many bullets are left for this gun
       ctx.font = 'bold ' + (tm ? 11 : 13) + 'px sans-serif'; ctx.textAlign = 'right'; ctx.lineWidth = 3.5; ctx.strokeStyle = '#000'; ctx.lineJoin = 'round';
-      ctx.strokeText(am, r.x+r.w-5, r.y+(tm ? 12 : 14)); ctx.fillStyle = am > 0 ? '#fff' : '#ff5a4a'; ctx.fillText(am, r.x+r.w-5, r.y+(tm ? 12 : 14));
+      if (ammoKnown){ ctx.strokeText(am, r.x+r.w-5, r.y+(tm ? 12 : 14)); ctx.fillStyle = am > 0 ? '#fff' : '#ff5a4a'; ctx.fillText(am, r.x+r.w-5, r.y+(tm ? 12 : 14)); }
       ctx.textAlign = 'center';
     } else if (id === 'grenade' || id === 'boots' || id === 'flame' || id === 'sniper' || id === 'minigun' || id === 'grapple' || id === 'shieldgen' || id === 'jetpack'){
       ctx.save(); ctx.translate(r.x + r.w/2, r.y + r.h*(tm ? 0.5 : 0.42)); drawItem(ctx, id, tm ? 0.65 : 0.85); ctx.restore();
-      if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(id === 'boots' ? 'Boots' : id === 'flame' ? 'Flame' : id === 'sniper' ? 'Sniper' : id === 'minigun' ? 'Mini-Gun' : id === 'grapple' ? 'Grapple' : id === 'shieldgen' ? 'Generator' : id === 'jetpack' ? 'Jet Pack' : 'Grenade', r.x+r.w/2, r.y+r.h*0.9); }
+      if (!tm){ ctx.fillStyle = i===v.cur ? '#000' : '#fff'; ctx.fillText(id === 'boots' ? 'Boots' : id === 'flame' ? 'Flame' : id === 'sniper' ? 'Sniper' : id === 'minigun' ? 'Mini-Gun' : id === 'grapple' ? 'Grapple' : id === 'shieldgen' ? 'Generator' : id === 'jetpack' ? 'Jet Pack' : 'Grenade', r.x+r.w/2, r.y+r.h*0.9); }
       ctx.strokeStyle = '#000'; ctx.lineWidth = 5; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
       if (id === 'flame'){                                                   // heat meter: fills while burning, greys out while cooling down
-        const h = flameHeat(p), cool = h >= 2, f = cool ? h - 2 : h, bx = r.x+6, bw = r.w-12, by = r.y + r.h*(tm ? 0.74 : 0.66);
+        const h = flameHeat(v), cool = h >= 2, f = cool ? h - 2 : h, bx = r.x+6, bw = r.w-12, by = r.y + r.h*(tm ? 0.74 : 0.66);
         ctx.fillStyle = '#000b'; ctx.fillRect(bx-1, by-1, bw+2, 6);
         ctx.fillStyle = cool ? '#8a8f94' : f > 0.8 ? '#ff3b1f' : f > 0.5 ? '#ff9a1a' : '#ffd23a'; ctx.fillRect(bx, by, bw*Math.max(0, Math.min(1, f)), 4);
       }
       if (id === 'sniper'){                                                  // reload meter: fills over 5 s, gold when ready
-        const f = Math.max(0, Math.min(1, 1 - (p.snCd || 0)/SN_CD)), bx = r.x+6, bw = r.w-12, by = r.y + r.h*(tm ? 0.74 : 0.66);
+        const f = Math.max(0, Math.min(1, 1 - (v.snCd || 0)/SN_CD)), bx = r.x+6, bw = r.w-12, by = r.y + r.h*(tm ? 0.74 : 0.66);
         ctx.fillStyle = '#000b'; ctx.fillRect(bx-1, by-1, bw+2, 6);
         ctx.fillStyle = f >= 1 ? '#ffd23a' : '#8a8f94'; ctx.fillRect(bx, by, bw*f, 4);
       }
       ctx.strokeStyle = RARITY[id === 'boots' ? BOOT_RAR : 4].col; ctx.lineWidth = 3; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
     } else if (id === 'pickaxe'){
       ctx.save(); ctx.translate(r.x + r.w/2, r.y + r.h*(tm ? 0.5 : 0.45)); ctx.rotate(0.6); drawItem(ctx, 'pickaxe', tm ? 0.75 : 0.95); ctx.restore();
-      if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText('Pickaxe', r.x+r.w/2, r.y+r.h*0.92); }
+      if (!tm){ ctx.fillStyle = i===v.cur ? '#000' : '#fff'; ctx.fillText('Pickaxe', r.x+r.w/2, r.y+r.h*0.92); }
     } else if (STACK[id]){
       ctx.save(); ctx.translate(r.x + r.w/2, r.y + r.h*(tm ? 0.4 : 0.38)); drawItem(ctx, id, tm ? 0.6 : 0.8); ctx.restore();
-      ctx.fillText('x'+p[STACK[id].key], r.x+r.w/2, r.y+r.h*(tm ? 0.88 : 0.9));
+      ctx.fillText('x'+v[STACK[id].key], r.x+r.w/2, r.y+r.h*(tm ? 0.88 : 0.9));
     } else ctx.fillText(id ? WEAP[id].name : '-', r.x+r.w/2, r.y+r.h*0.68);
   }
 
