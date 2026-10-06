@@ -178,7 +178,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 16;
+const VERSION = 17;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -293,7 +293,7 @@ const GRAPPLE_RANGE = 720, GH_FLY = 3200, GH_PULL = 1500, GH_CD = 0.8;
 const SN_RANGE = 2800, SN_DMG = 150, SN_CD = 5, SN_ZOOM = 0.5;   // sniper: reach in px, damage, seconds between shots, how far the view zooms out
 const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 12.5;   // flamethrower: reach in px, a burst every 0.1 s, 12.5 damage each = 125 damage/s to everything in the flame
 const SWIM_MULT = 0.25;     // swimming (anyone in open water, not on a boat) moves at a quarter of walking speed
-const BOOT_MULT = 1.5, BOOT_RAR = 4, bootMul = a => (a.inv.includes('boots') ? BOOT_MULT : 1) * (!a.boat && inWater(a.x, a.y) ? SWIM_MULT : 1) * (!a.boat && !inWater(a.x, a.y) && onBog(a.x, a.y) ? BOG_MULT : 1);   // speed boots: 1.5x move speed while in your loadout (one pair per match)
+const BOOT_MULT = 1.5, BOOT_RAR = 4, FLAME_MULT = 0.7, bootMul = a => (a.inv.includes('boots') ? BOOT_MULT : 1) * (a.inv[a.cur] === 'flame' ? FLAME_MULT : 1) * (!a.boat && inWater(a.x, a.y) ? SWIM_MULT : 1) * (!a.boat && !inWater(a.x, a.y) && onBog(a.x, a.y) ? BOG_MULT : 1);   // speed boots: 1.5x move speed while in your loadout (one pair per match)
 const CHEST_COUNT = Math.round(32 * MS), CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
 // Gun rarities: the rarer the gun, the harder it hits, the faster it fires and the straighter it shoots.
 const RARITY = [
