@@ -162,7 +162,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 1;
+const VERSION = 2;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -2347,6 +2347,16 @@ function fenceSprite(){
   }
   return _fence = c;
 }
+// Aim lines: a dark casing under a bright dashed line, so they stand out on snow, sand, grass, water and city streets alike.
+function aimStroke(x1, y1, x2, y2, col, dot){
+  const k = Math.max(1, 1/(ZOOM || 1));      // keep the width the same on screen when the view is zoomed out
+  ctx.save(); ctx.lineCap = 'butt'; ctx.setLineDash([16*k, 10*k]);
+  ctx.strokeStyle = 'rgba(0,0,0,0.9)'; ctx.lineWidth = 8*k; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.strokeStyle = col; ctx.lineWidth = 4.5*k; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.setLineDash([]);
+  if (dot){ ctx.fillStyle = 'rgba(0,0,0,0.9)'; ctx.beginPath(); ctx.arc(x2, y2, 9*k, 0, 7); ctx.fill(); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x2, y2, 6*k, 0, 7); ctx.fill(); }
+  ctx.restore();
+}
 let exitBig = false;      // after you are out (or the match is over) the Menu button becomes a big one that is easy to hit on a phone
 function syncExitBtn(){
   const big = !!(S && S.player && ((!S.player.alive && !S.koth) || S.over));
@@ -2560,8 +2570,7 @@ function draw(){
   }
   if (p.alive && p.inv[p.cur] === 'sniper'){                    // laser sight: red while reloading, green when ready
     const ready = !(p.snCd > 0);
-    ctx.strokeStyle = ready ? 'rgba(80,255,120,0.45)' : 'rgba(255,70,70,0.3)'; ctx.lineWidth = 1.5; ctx.setLineDash([14, 10]);
-    ctx.beginPath(); ctx.moveTo(p.x + Math.cos(p.angle)*26, p.y + Math.sin(p.angle)*26); ctx.lineTo(p.x + Math.cos(p.angle)*SN_RANGE, p.y + Math.sin(p.angle)*SN_RANGE); ctx.stroke(); ctx.setLineDash([]);
+    aimStroke(p.x + Math.cos(p.angle)*26, p.y + Math.sin(p.angle)*26, p.x + Math.cos(p.angle)*SN_RANGE, p.y + Math.sin(p.angle)*SN_RANGE, ready ? '#39ff6e' : '#ff4a4a', false);
   }
   if (touchMode && touch.aim && p.alive && !(p.down > 0) && p === S.player && Math.hypot(touch.aim.dx, touch.aim.dy) > 10){      // aiming: show where the shot will go
     const wp = WEAP[p.inv[p.cur]], gt = p.inv[p.cur];
@@ -2576,16 +2585,13 @@ function draw(){
         }
         return max;
       };
-      const out = (wp.ar || gt === 'ar') && (p.ammo[gt] || 0) <= 0 || (wp.spd && (p.ammo[gt] || 0) <= 0);
-      const col = out ? 'rgba(255,90,90,0.8)' : 'rgba(255,255,255,0.8)';
-      ctx.save(); ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2.5; ctx.setLineDash([12, 9]);
+      const out = !!wp.spd && (p.ammo[gt] || 0) <= 0;
+      const col = out ? '#ff4a4a' : '#ffe433';
       const angs = wp.pellets > 1 ? [p.angle - wp.spread, p.angle + wp.spread] : [p.angle];      // a shotgun shows its spread
       for (const ang of angs){
         const d = trace(ang, range);
-        ctx.beginPath(); ctx.moveTo(p.x + Math.cos(ang)*24, p.y + Math.sin(ang)*24); ctx.lineTo(p.x + Math.cos(ang)*d, p.y + Math.sin(ang)*d); ctx.stroke();
-        ctx.setLineDash([]); ctx.beginPath(); ctx.arc(p.x + Math.cos(ang)*d, p.y + Math.sin(ang)*d, 5, 0, 7); ctx.fill(); ctx.setLineDash([12, 9]);
+        aimStroke(p.x + Math.cos(ang)*24, p.y + Math.sin(ang)*24, p.x + Math.cos(ang)*d, p.y + Math.sin(ang)*d, col, true);
       }
-      ctx.restore();
     }
   }
   for (const q of S.particles){ ctx.fillStyle=q.c; ctx.fillRect(q.x,q.y,3,3); }
