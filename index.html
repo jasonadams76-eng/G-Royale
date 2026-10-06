@@ -178,7 +178,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 12;
+const VERSION = 14;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -2452,13 +2452,16 @@ function drawPerson(c, shirt, skinCol, ph, crown, opt){
       const hc = opt.hair || '#4a3020', hs = opt.style | 0;                            // hair style: 0 short, 1 long, 2 ponytail, 3 bun, 4 mohawk, 5 bald
       {
         c.fillStyle = hc;
-        if (hs === 1){ c.beginPath(); c.roundRect(-19, -7.5, 21, 15, 6); c.fill(); c.stroke(); }             // long hair: a wide curtain falling down the back
-        else if (hs === 2){ c.beginPath(); c.ellipse(-12, 0, 7, 2.8, 0, 0, 7); c.fill(); c.stroke(); }      // ponytail trailing behind
+        if (hs === 2){ c.beginPath(); c.ellipse(-12, 0, 7, 2.8, 0, 0, 7); c.fill(); c.stroke(); }      // ponytail trailing behind
         c.fillStyle = skin; c.beginPath(); c.arc(1.5, 0, 7.2, 0, 7); c.fill(); c.stroke();                   // head
         c.fillStyle = hc;
-        if (hs === 4){ c.beginPath(); c.roundRect(-6.5, -1.6, 11, 3.2, 1.4); c.fill(); c.stroke(); }         // mohawk: a narrow strip, set back from the forehead
-        else if (hs !== 5){ c.beginPath(); c.arc(1.5, 0, 7.2, Math.PI*0.5, Math.PI*1.5); c.closePath(); c.fill(); }   // hair on the back of the head
-        c.beginPath(); c.arc(1.5, 0, 7.2, 0, 7); c.stroke();
+        if (hs === 1){                                                                                        // long hair: a wide curtain from the middle of the head down the back, outlined only round the outside
+          c.beginPath(); c.moveTo(1.5, -7.2); c.lineTo(-3, -7.2); c.bezierCurveTo(-11, -7.2, -16, -4.8, -19.5, -2.2); c.quadraticCurveTo(-21.5, 0, -19.5, 2.2); c.bezierCurveTo(-16, 4.8, -11, 7.2, -3, 7.2); c.lineTo(1.5, 7.2);      // tapers in towards the tips
+          c.fill(); c.stroke();
+        }
+        else if (hs === 4){ c.beginPath(); c.roundRect(-6.5, -1.6, 11, 3.2, 1.4); c.fill(); c.stroke(); }         // mohawk: a narrow strip, set back from the forehead
+        else if (hs !== 5 && hs !== 1){ c.beginPath(); c.arc(1.5, 0, 7.2, Math.PI*0.5, Math.PI*1.5); c.closePath(); c.fill(); }   // hair on the back of the head
+        if (hs !== 1){ c.beginPath(); c.arc(1.5, 0, 7.2, 0, 7); c.stroke(); }
         if (hs === 2){ c.fillStyle = '#e53935'; c.fillRect(-6.3, -1.8, 2, 3.6); c.fillStyle = hc; c.beginPath(); c.arc(-5.2, 0, 2.4, 0, 7); c.fill(); c.stroke(); c.fillStyle = '#e53935'; c.beginPath(); c.arc(-5.2, 0, 1.1, 0, 7); c.fill(); }   // hair tie
         else if (hs === 3){ c.fillStyle = hc; c.beginPath(); c.arc(-3.2, 0, 3.8, 0, 7); c.fill(); c.stroke(); }     // bun on top of the head
       }
