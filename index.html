@@ -162,7 +162,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 2;
+const VERSION = 4;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -249,7 +249,9 @@ const WEAP = {
   grenade: {name:'Grenade', grenade:true, color:'#fc0'},
   boots:   {name:'Speed Boots', passive:true, color:'#e8a317'},
   flame:   {name:'Flamethrower', flame:true, color:'#f60'},
-  sniper:  {name:'Sniper Rifle', sniper:true, color:'#ccd'}
+  sniper:  {name:'Sniper Rifle', sniper:true, color:'#ccd'},
+  minigun: {name:'Mini-Gun', minigun:true, color:'#fc3'},
+  grapple: {name:'Grapple Gun', grapple:true, color:'#6cf'}
 };
 const STACK = {};   // stackable loadout items: how many fit in one slot, how long they take to use, and where the count is kept
 const MAXBAND = 3, BANDAGE_HEAL = 25, HEAL_TIME = 1.5, MAXMED = 2, MED_TIME = 3.0,   // a medkit heals to full health but takes longer to use
@@ -265,6 +267,10 @@ const AMMO = {ammo_pistol:{gun:'pistol', box:30, max:150, name:'pistol ammo'}, a
 const START_AMMO = {pistol:30, shotgun:10, ar:60};     // ammo you get the first time you pick up each gun type in a match
 const newAmmo = () => ({pistol:0, shotgun:0, ar:0});
 const FL_MAX = 3, FL_COOL = 1;      // the flamethrower burns for at most 3 s at a time, then needs a 1 s pause
+// Mini-Gun: every pull of the trigger rips off a line of 10 bullets, no ammo needed. Grapple Gun: a hook on a chain that drags you to whatever solid thing it catches.
+const MG_SHOTS = 10, MG_GAP = 0.045, MG_DMG = 8, MG_SPD = 1200, MG_LIFE = 0.75, MG_SPREAD = 0.07, MG_PAUSE = 0.5;
+const HOOKABLE_MIN = 30;
+const GRAPPLE_RANGE = 720, GH_FLY = 3200, GH_PULL = 1500, GH_CD = 0.8;
 const SN_RANGE = 2800, SN_DMG = 150, SN_CD = 5, SN_ZOOM = 0.5;   // sniper: reach in px, damage, seconds between shots, how far the view zooms out
 const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 12.5;   // flamethrower: reach in px, a burst every 0.1 s, 12.5 damage each = 125 damage/s to everything in the flame
 const SWIM_MULT = 0.25;     // swimming (anyone in open water, not on a boat) moves at a quarter of walking speed
@@ -284,7 +290,7 @@ function rollRarity(){
   return 0;
 }
 const newGr = () => ({pistol:0, shotgun:0, ar:0});     // rarity of the gun held for each type (you can hold one of each)
-const TYPES = ['pistol','shotgun','ar','bandage','shield','med','wood','grenade','boots','flame','ammo_pistol','ammo_shotgun','ammo_ar','sniper'];   // index used on the wire
+const TYPES = ['pistol','shotgun','ar','bandage','shield','med','wood','grenade','boots','flame','ammo_pistol','ammo_shotgun','ammo_ar','sniper','minigun','grapple'];   // index used on the wire
 const PHASES = [
   {wait:25, shrink:25, r:Math.round(1700*MS)}, {wait:18, shrink:20, r:Math.round(1100*MS)},
   {wait:14, shrink:14, r:Math.round(600*MS)},  {wait:11, shrink:11, r:Math.round(250*MS)},
@@ -597,11 +603,12 @@ function init(humans, humansOnly, mapId, koth){
       if (!nearLake(x, y, 40) && !inBldg(x, y, 40) && !onIce(x, y, 20) && S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 50)){ S.chests.push({x, y, open:false}); break; }
     }
   }
-  if (S.chests.length){                        // exactly one chest holds the speed boots and a different one holds the flamethrower
-    const bi = Math.random()*S.chests.length|0; S.chests[bi].boots = true;
-    let fi = bi;
-    if (S.chests.length > 1 && !S.koth){ do fi = Math.random()*S.chests.length|0; while (fi === bi); S.chests[fi].flame = true; }      // (no flamethrower in King of the Hill)
-    if (S.chests.length > 2){ let si; do si = Math.random()*S.chests.length|0; while (si === bi || si === fi); S.chests[si].sniper = true; }       // and a third holds the sniper rifle
+  if (S.chests.length){                        // five special items exist (boots, flamethrower, sniper, Mini-Gun, grapple gun) but only 2 of them turn up in any one game, each in its own chest
+    const hookable = S.trees.length + S.walls.size >= HOOKABLE_MIN;      // the grapple gun only turns up on maps with enough trees, rocks, fences or walls to hook onto
+    const pool = ['boots','flame','sniper','minigun','grapple'].filter(k => !(S.koth && k === 'flame') && !(k === 'grapple' && !hookable));      // (no flamethrower in King of the Hill)
+    for (let q = pool.length - 1; q > 0; q--){ const r = Math.random()*(q+1)|0; [pool[q], pool[r]] = [pool[r], pool[q]]; }
+    const free = S.chests.map((c, ci) => ci);
+    for (const k of pool.slice(0, 2)){ if (!free.length) break; S.chests[free.splice(Math.random()*free.length|0, 1)[0]][k] = true; }
   }
   const clampW = v => Math.max(100, Math.min(W-100, Math.round(v)));
   const byPid = {};
@@ -962,7 +969,7 @@ function damage(a, dmg, owner, wpn){
     return;
   }
   if (a.hp <= 0 && a.alive){
-    a.alive = false; a.hp = 0; a.down = 0; a.rv = 0; sfx('ko', a.x, a.y);
+    a.alive = false; a.hp = 0; a.down = 0; a.rv = 0; a.gh = null; a.mgLeft = 0; sfx('ko', a.x, a.y);
     a.killedBy = {by: !owner ? (wpn === 'bleed' ? 'bleeding out' : 'the Storm') : owner === a ? 'yourself' : owner.name, w: wpn || ''}; if (a === S.player) specT = null;      // re-pick who to spectate: the one who got us       // who and what finished them off (shown on their screen)
     if (NET.role === 'host' && a.isPlayer && a.pid > 0) peerSend(a.pid, {t:'kb', by:a.killedBy.by, w:a.killedBy.w});
     pushFeed(a.killedBy.by, a.killedBy.w, a.name, a === S.player ? 1 : owner === S.player ? 2 : 0);       // everybody sees who was eliminated
@@ -976,11 +983,46 @@ function damage(a, dmg, owner, wpn){
     a.inv.forEach(w => {
       if (!w || w === 'pickaxe') return;
       const n = STACK[w] ? a[STACK[w].key] : 1;
-      for (let i=0;i<n;i++) S.loot.push({x:a.x+rnd(-20,20), y:a.y+rnd(-20,20), type:w, rar:GUN_W[w] ? a.gr[w] : w === 'grenade' ? 4 : w === 'boots' ? BOOT_RAR : w === 'flame' || w === 'sniper' ? 4 : 0});
+      for (let i=0;i<n;i++) S.loot.push({x:a.x+rnd(-20,20), y:a.y+rnd(-20,20), type:w, rar:GUN_W[w] ? a.gr[w] : w === 'grenade' ? 4 : w === 'boots' ? BOOT_RAR : w === 'flame' || w === 'sniper' || w === 'minigun' || w === 'grapple' ? 4 : 0});
     });
   }
 }
 // Sniper rifle: an instant hit along the aim line (trees and fences stop it), 150 damage, then a 5 second reload.
+// Mini-Gun: one bullet of the line (the update loop spaces them out and keeps them following your aim)
+function mgShot(a){
+  const ang = a.angle + rnd(-MG_SPREAD, MG_SPREAD);
+  S.bullets.push({x:a.x+Math.cos(ang)*22, y:a.y+Math.sin(ang)*22, vx:Math.cos(ang)*MG_SPD, vy:Math.sin(ang)*MG_SPD, life:MG_LIFE, dmg:MG_DMG, owner:a, wpn:'minigun', color:'#fc3', sx:a.x, sy:a.y, fall:0});
+  if ((a.mgLeft & 1) === 0) sfx('ar', a.x, a.y);
+}
+// Grapple Gun: the hook flies out along your aim; if it catches a tree, rock, fence or wall the chain reels you in to it, fast
+function grappleStart(a){
+  const ca = Math.cos(a.angle), sa = Math.sin(a.angle);
+  let d = GRAPPLE_RANGE, hit = false;
+  for (let k = 26; k <= GRAPPLE_RANGE; k += 8){
+    const x = a.x + ca*k, y = a.y + sa*k;
+    if (x < 0 || y < 0 || x > W || y > W){ d = k; break; }
+    if (S.walls.has(wallKey(Math.floor(x/G), Math.floor(y/G))) || S.trees.some(t => Math.hypot(x-t.x, y-t.y) < t.r)){ d = k; hit = true; break; }
+  }
+  a.gh = {dx:ca, dy:sa, ox:a.x, oy:a.y, d, hit, p:0, st:'fly', tx:a.x, ty:a.y};
+  a.cd = GH_CD; sfx('th', a.x, a.y);
+}
+function grappleStep(a, dt){
+  const g = a.gh;
+  if (!a.alive || a.down > 0 || a.inv[a.cur] !== 'grapple'){ a.gh = null; return; }
+  if (g.hit && a.pid > 0) a.tpHold = 0.3;                          // a remote player is carried by the host while the chain is out
+  if (g.st === 'fly'){
+    g.p = Math.min(g.d, g.p + GH_FLY*dt); g.tx = g.ox + g.dx*g.p; g.ty = g.oy + g.dy*g.p;
+    if (g.p >= g.d){ g.st = g.hit ? 'pull' : 'back'; if (g.hit){ burst(g.tx, g.ty, '#cde', 5); sfx('pk', g.tx, g.ty); } }
+  } else if (g.st === 'back'){
+    g.p -= GH_FLY*dt; g.tx = g.ox + g.dx*Math.max(0, g.p); g.ty = g.oy + g.dy*Math.max(0, g.p);
+    if (g.p <= 0) a.gh = null;
+  } else {
+    const stop = Math.max(0, g.d - a.r - 8), done = Math.hypot(a.x - g.ox, a.y - g.oy), step = Math.min(GH_PULL*dt, stop - done);
+    if (step <= 0.5){ a.gh = null; return; }
+    a.x += g.dx*step; a.y += g.dy*step; a.tx = a.x; a.ty = a.y;
+    if (a.pid > 0) peerSend(a.pid, {t:'tp', x:Math.round(a.x), y:Math.round(a.y), m:''});
+  }
+}
 function sniperFire(a){
   if (a.snCd > 0) return;
   a.snCd = SN_CD;
@@ -1038,6 +1080,8 @@ function fire(a){
   if (w.heal){ startHeal(a); return; }
   if (w.flame){ flameFire(a); return; }
   if (w.sniper){ sniperFire(a); return; }
+  if (w.minigun){ if (a.cd > 0 || a.mgLeft > 0) return; a.mgLeft = MG_SHOTS; a.mgT = 0; a.cd = MG_SHOTS*MG_GAP + MG_PAUSE; return; }
+  if (w.grapple){ if (a.cd > 0 || a.gh) return; grappleStart(a); return; }
   if (a.cd > 0) return;
   if (w.spd){                                         // guns use up their own ammo; with none left they just click
     const gt = a.inv[a.cur];
@@ -1132,6 +1176,14 @@ function giveItem(a, type, rar){
     if (ni < 0) return false;
     a.inv[ni] = 'sniper'; a.cur = ni; a.snCd = 0; if (a === S.player) toast('Sniper Rifle! One shot, 150 damage. 5 s to reload', 2800); return true;
   }
+  if (type === 'minigun' || type === 'grapple'){     // Mini-Gun / Grapple Gun: players only, one each, takes a slot, selected right away
+    if (!a.isPlayer || a.inv.includes(type)) return false;
+    const ni = a.inv.indexOf(null, 1);
+    if (ni < 0) return false;
+    a.inv[ni] = type; a.cur = ni;
+    if (a === S.player) toast(type === 'minigun' ? 'Mini-Gun! Each pull fires 10 bullets, no ammo needed' : 'Grapple Gun! Aim at something solid and fire to zip across the map', 3000);
+    return true;
+  }
   if (type === 'boots'){                // speed boots: one pair, takes a slot, doesn't change what you hold
     if (a.inv.includes('boots')) return false;
     const bi = a.inv.indexOf(null, 1);
@@ -1175,7 +1227,7 @@ function dropItem(a){
   const i = a.cur, it = a.inv[i];
   if (!it || it === 'pickaxe') return;
   const st = STACK[it], n = st ? a[st.key] : 1;
-  const rar = GUN_W[it] ? a.gr[it] : it === 'grenade' ? 4 : it === 'boots' ? BOOT_RAR : it === 'flame' || it === 'sniper' ? 4 : 0;
+  const rar = GUN_W[it] ? a.gr[it] : it === 'grenade' ? 4 : it === 'boots' ? BOOT_RAR : it === 'flame' || it === 'sniper' || it === 'minigun' || it === 'grapple' ? 4 : 0;
   const px = Math.max(20, Math.min(W-20, a.x + Math.cos(a.angle)*60)), py = Math.max(20, Math.min(W-20, a.y + Math.sin(a.angle)*60));
   for (let k=0;k<n;k++) S.loot.push({x:px + (n>1 ? rnd(-14,14) : 0), y:py + (n>1 ? rnd(-14,14) : 0), type:it, rar, ban:a.pid, until:performance.now()+1500});
   if (st) a[st.key] = 0;
@@ -1274,6 +1326,8 @@ function openChest(c){
   if (c.boots) drops.push({type:'boots', rar:BOOT_RAR});
   if (c.flame) drops.push({type:'flame', rar:4});
   if (c.sniper) drops.push({type:'sniper', rar:4});
+  if (c.minigun) drops.push({type:'minigun', rar:4});
+  if (c.grapple) drops.push({type:'grapple', rar:4});
   if (Math.random() < GR_CHANCE) drops.push({type:'grenade', rar:4});   // 7%: a (gold) grenade
   drops.filter(d => GUN_W[d.type]).forEach(d => { if (!S.koth || Math.random() < 0.2) drops.push({type:'ammo_'+d.type, n:AMMO['ammo_'+d.type].box}); });      // every gun comes with a box of its bullets (King of the Hill: guns are plentiful, ammo comes from the drops)
   if (!S.koth && Math.random() < 0.4){ const t = ['ammo_pistol','ammo_shotgun','ammo_ar'][Math.random()*3|0]; drops.push({type:t, n:AMMO[t].box}); }   // 40%: an extra box
@@ -1293,7 +1347,7 @@ function canTake(a, l){
   const st = STACK[type];
   if (st) return a[st.key] < st.max && (a.inv.includes(type) || a.inv.includes(null));     // only if there is room for it
   if (type === 'boots' || type === 'flame') return !a.inv.includes(type) && a.inv.includes(null);
-  if (type === 'sniper') return !!a.isPlayer && !a.inv.includes(type) && a.inv.includes(null);
+  if (type === 'sniper' || type === 'minigun' || type === 'grapple') return !!a.isPlayer && !a.inv.includes(type) && a.inv.includes(null);
   if (type === 'grenade') return a.inv.includes(null);
   if (a.inv.includes(type)) return (l.rar || 0) > a.gr[type];     // already holding one: only a better one is worth taking
   return a.inv.includes(null);
@@ -1513,7 +1567,7 @@ function update(dt){
 
   if (S.koth){
     S.chestT = (S.chestT === undefined ? 35 : S.chestT) - dt;
-    if (S.chestT <= 0){ S.chestT = 45; const used = S.chests.filter(c => c.open && !c.island); for (let n = 0; n < 3 && used.length; n++){ const c = used.splice(Math.random()*used.length|0, 1)[0]; c.open = false; c.boots = c.flame = c.sniper = false; } }      // chests refill so nobody runs dry
+    if (S.chestT <= 0){ S.chestT = 45; const used = S.chests.filter(c => c.open && !c.island); for (let n = 0; n < 3 && used.length; n++){ const c = used.splice(Math.random()*used.length|0, 1)[0]; c.open = false; c.boots = c.flame = c.sniper = c.minigun = c.grapple = false; } }      // chests refill so nobody runs dry
     if (S.hill && S.hill.t === undefined) S.hill.t = 0;
   }
   for (const a of S.actors){
@@ -1526,6 +1580,11 @@ function update(dt){
     if (a.boatCool > 0) a.boatCool -= dt; if (a.tpHold > 0) a.tpHold -= dt;
     if (a.bstGap > 0){ a.bstGap -= dt; if (a.bstGap <= 0) a.bst = 0; }        // stop firing for a moment and the next burst starts fresh
     if (a.snCd > 0){ a.snCd -= dt; if (a.snCd < 0.001) a.snCd = 0; }
+    if (a.mgLeft > 0){          // the Mini-Gun's line of bullets
+      if (a.inv[a.cur] !== 'minigun' || a.down > 0) a.mgLeft = 0;
+      else { a.mgT -= dt; while (a.mgT <= 0 && a.mgLeft > 0){ mgShot(a); a.mgLeft--; a.mgT += MG_GAP; } }
+    }
+    if (a.gh) grappleStep(a, dt);
     if (a.flGap > 0){ a.flGap -= dt; if (a.flGap <= 0) a.flBurn = 0; }          // let go for a moment and the burn timer starts over
     if (a.flt > 0){ a.flt -= dt; if (a.inv[a.cur] !== 'flame') a.flt = 0; }
     if (!(a.flt > 0)) a.flen = 0;      // no trigger, no fire: the flame vanishes the moment it stops     // the flame only burns while the flamethrower is the selected item
@@ -1548,9 +1607,10 @@ function update(dt){
     if (a.down > 0){ a.tx = a.x; a.ty = a.y; }                 // knocked down: stay put
     else if (a.isPlayer && a.pid === 0){
       const inp = localInput(a, dt); vx = inp.vx*bootMul(a); vy = inp.vy*bootMul(a);
-      const rt = reviveTarget(a);
+      const rt = reviveTarget(a), swing = !!(a.gh && a.gh.hit);
+      if (swing) vx = vy = 0;
       if (rt && wantRevive()){ a.rvT = 0.2; vx = vy = 0; a.angle = Math.atan2(rt.y-a.y, rt.x-a.x); }      // hold still while picking a teammate up
-      else if (inp.fire) fire(a);
+      else if (inp.fire && !swing) fire(a);
     } else if (a.isPlayer){
       // remote human: they move themselves, we trust their position and just apply their aim/fire
       const g = a.in;
@@ -1627,7 +1687,7 @@ function update(dt){
 
 // ---------- Networking: host side ----------
 // Star topology: every guest connects to the host. The host runs the match and streams the state back out.
-const ITEM_CODE = {pickaxe:'1', pistol:'2', shotgun:'3', ar:'4', bandage:'5', med:'6', shield:'7', grenade:'8', boots:'9', flame:'a', sniper:'b'}, ITEM_BY = [null,'pickaxe','pistol','shotgun','ar','bandage','med','shield','grenade','boots','flame','sniper'];
+const ITEM_CODE = {pickaxe:'1', pistol:'2', shotgun:'3', ar:'4', bandage:'5', med:'6', shield:'7', grenade:'8', boots:'9', flame:'a', sniper:'b', minigun:'c', grapple:'d'}, ITEM_BY = [null,'pickaxe','pistol','shotgun','ar','bandage','med','shield','grenade','boots','flame','sniper','minigun','grapple'];
 const encInv = inv => inv.map(w => w ? ITEM_CODE[w] : '0').join('');
 const decInv = str => str.split('').map(c => ITEM_BY[parseInt(c, 36)] || null);
 const peerCount = () => Object.keys(NET.peers).length;
@@ -1638,7 +1698,7 @@ function peerSend(pid, m){
 }
 function encodeActor(a){
   return [Math.round(a.x), Math.round(a.y), +a.angle.toFixed(2), Math.round(a.hp), Math.round(a.sh), a.wood, a.band,
-          +Math.max(0,a.heal).toFixed(2), a.cur, a.alive?1:0, a.kills, a.swing>0?1:0, a.place||0, encInv(a.inv), a.isPlayer?1:0, '' + a.gr.pistol + a.gr.shotgun + a.gr.ar, a.med, a.shd, a.flt > 0 ? Math.round(a.flen) : 0, a.isPlayer ? [a.ammo.pistol, a.ammo.shotgun, a.ammo.ar] : 0, a.flLock > 0 ? +(2 + a.flLock).toFixed(2) : +((a.flBurn || 0) / FL_MAX).toFixed(2), a.snCd > 0 ? +a.snCd.toFixed(1) : 0, Math.floor(a.pts || 0), a.deaths || 0, a.respawnT > 0 ? +a.respawnT.toFixed(1) : 0, a.down > 0 ? +a.down.toFixed(1) : 0, a.rv > 0 ? +(a.rv / REVIVE_TIME).toFixed(2) : 0];
+          +Math.max(0,a.heal).toFixed(2), a.cur, a.alive?1:0, a.kills, a.swing>0?1:0, a.place||0, encInv(a.inv), a.isPlayer?1:0, '' + a.gr.pistol + a.gr.shotgun + a.gr.ar, a.med, a.shd, a.flt > 0 ? Math.round(a.flen) : 0, a.isPlayer ? [a.ammo.pistol, a.ammo.shotgun, a.ammo.ar] : 0, a.flLock > 0 ? +(2 + a.flLock).toFixed(2) : +((a.flBurn || 0) / FL_MAX).toFixed(2), a.snCd > 0 ? +a.snCd.toFixed(1) : 0, Math.floor(a.pts || 0), a.deaths || 0, a.respawnT > 0 ? +a.respawnT.toFixed(1) : 0, a.down > 0 ? +a.down.toFixed(1) : 0, a.rv > 0 ? +(a.rv / REVIVE_TIME).toFixed(2) : 0, a.gh ? [Math.round(a.gh.tx), Math.round(a.gh.ty), a.gh.hit ? 1 : 0] : 0];
 }
 function sendSnapshot(){
   if (!peerCount()) return;
@@ -1888,7 +1948,7 @@ function applySnap(m){
     }
     a.hp = d[3]; a.sh = d[4]; a.wood = d[5]; a.band = d[6]; a.heal = d[7]; a.alive = !!d[9];
     a.kills = d[10]; if (d[11]) a.swing = 0.2; a.place = d[12]; a.inv = decInv(d[13]);
-    a.med = d[16] || 0; a.shd = d[17] || 0; a.flen = d[18] || 0; if (d[19]) a.ammo = {pistol:d[19][0], shotgun:d[19][1], ar:d[19][2]}; a.flHeat = d[20] || 0; a.snCd = d[21] || 0; a.pts = d[22] || 0; a.deaths = d[23] || 0; a.respawnT = d[24] || 0; a.down = d[25] || 0; a.rv = (d[26] || 0) * REVIVE_TIME;
+    a.med = d[16] || 0; a.shd = d[17] || 0; a.flen = d[18] || 0; if (d[19]) a.ammo = {pistol:d[19][0], shotgun:d[19][1], ar:d[19][2]}; a.flHeat = d[20] || 0; a.snCd = d[21] || 0; a.pts = d[22] || 0; a.deaths = d[23] || 0; a.respawnT = d[24] || 0; a.down = d[25] || 0; a.rv = (d[26] || 0) * REVIVE_TIME; a.gh = d[27] ? {tx:d[27][0], ty:d[27][1], hit:!!d[27][2]} : null;
     if (d[15]){
       const ng = {pistol:+d[15][0], shotgun:+d[15][1], ar:+d[15][2]};
       if (a === S.player && a._pg) for (const t of ['pistol','shotgun','ar']){
@@ -1977,7 +2037,7 @@ function guestAttach(conn, name){
 // Guest simulation step: move myself locally, send my controls, smooth everyone else.
 function updateGuest(dt){
   const me = S.player, st = S.storm;
-  if (me.alive && !(me.down > 0)){
+  if (me.alive && !(me.down > 0) && !(me.gh && me.gh.hit)){
     const inp = localInput(me, dt), rvg = !!reviveTarget(me) && wantRevive();
     let vx = inp.vx*bootMul(me), vy = inp.vy*bootMul(me);
     if (rvg){ vx = vy = 0; inp.fire = false; }
@@ -2240,6 +2300,20 @@ function drawItem(c, type, s){
     c.strokeStyle = '#000'; c.lineWidth = 1.6/s; c.beginPath(); c.moveTo(18,-1); c.lineTo(15,8); c.moveTo(24,-1); c.lineTo(27,8); c.stroke();   // bipod
     rr(-3,3, 4,8, 1, '#333');                                                                              // grip
     c.fillStyle = '#ffc400'; c.fillRect(-6,-2.6, 12, 1.4);                                                 // gold trim
+  } else if (type === 'minigun'){     // Mini-Gun: six-barrel cluster, ammo drum, grip (points right)
+    rr(-14,-8, 14,16, 3, '#555'); rr(-18,-5, 5,10, 2, '#3a3a3a');                                          // motor + butt
+    rr(-8,6, 14,9, 3, '#7a5a20'); rr(-6,8, 10,2, 0, '#e8b84a');                                            // ammo drum
+    rr(0,-7, 28,14, 2, '#8a8f94'); rr(4,-7, 2,14, 0, '#555'); rr(14,-7, 2,14, 0, '#555');                  // barrel housing + bands
+    for (const y of [-5,-1.6,1.8,5]) rr(26,y-1.2, 12,2.4, 1, '#2b2b2b');                                  // barrels
+    rr(36,-7, 3,14, 1, '#444');                                                                            // muzzle ring
+    rr(-4,-12, 8,5, 2, '#222');                                                                            // carry handle
+    c.fillStyle = '#ffc400'; c.fillRect(0,-1.2, 26, 2.4);                                                  // gold stripe
+  } else if (type === 'grapple'){     // Grapple Gun: pistol body, hook head, coil of chain (points right)
+    rr(-12,-5, 22,10, 3, '#4a5560'); rr(-8,4, 6,10, 2, '#2e353c');                                         // body + grip
+    rr(10,-3.4, 12,6.8, 2, '#8d979e');                                                                     // muzzle
+    c.fillStyle = '#9fb0bb'; c.beginPath(); c.moveTo(22,-3); c.quadraticCurveTo(32,-12,28,-17); c.lineTo(24,-9); c.lineTo(24,9); c.lineTo(28,17); c.quadraticCurveTo(32,12,22,3); c.closePath(); c.fill(); c.stroke();   // hook
+    c.strokeStyle = '#e8eef2'; c.lineWidth = 2.4/s; c.setLineDash([3/s,2/s]); c.beginPath(); c.arc(-4,-8, 6, Math.PI*0.9, Math.PI*2.6); c.stroke(); c.setLineDash([]); c.strokeStyle = '#000'; c.lineWidth = 1.6/s;   // chain coil
+    c.fillStyle = '#ffc400'; c.fillRect(-10,-1, 18, 2);                                                    // gold trim
   } else if (type === 'flame'){       // flamethrower: fuel tank, hose, gun body, nozzle with a pilot flame (points right)
     rr(-18,-7, 15,14, 6, '#d8402a'); rr(-14,-7, 3,14, 0, '#8e2a1c');                                     // fuel tank + band
     c.strokeStyle = '#000'; c.lineWidth = 3/s; c.beginPath(); c.moveTo(-3,2); c.quadraticCurveTo(0,9,4,3); c.stroke();
@@ -2473,11 +2547,11 @@ function draw(){
   // loot
   for (const l of S.loot){ if (!vis(l.x,l.y)) continue;
     // every drop lies on a white plate with a coloured ring so it stands out on the grass
-    const ring = GUN_W[l.type] ? RARITY[l.rar || 0].col : l.type === 'grenade' ? RARITY[4].col : l.type === 'boots' || l.type === 'flame' || l.type === 'sniper' ? RARITY[4].col : ITEM_RING;
+    const ring = GUN_W[l.type] ? RARITY[l.rar || 0].col : l.type === 'grenade' ? RARITY[4].col : l.type === 'boots' || l.type === 'flame' || l.type === 'sniper' || l.type === 'minigun' || l.type === 'grapple' ? RARITY[4].col : ITEM_RING;
     ctx.fillStyle = '#fffffff0'; ctx.beginPath(); ctx.arc(l.x, l.y, 19, 0, 7); ctx.fill();
     ctx.strokeStyle = '#000'; ctx.lineWidth = 6; ctx.stroke();                         // dark edge so every ring shows up on the grass
     ctx.strokeStyle = ring; ctx.lineWidth = 3.5; ctx.stroke();
-    if (l.rar === 4 || l.type === 'grenade' || l.type === 'boots' || l.type === 'flame' || l.type === 'sniper'){ ctx.strokeStyle = '#fff6'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(l.x, l.y, 24 + Math.sin(performance.now()/250)*2, 0, 7); ctx.stroke(); }   // gold guns shimmer
+    if (l.rar === 4 || l.type === 'grenade' || l.type === 'boots' || l.type === 'flame' || l.type === 'sniper' || l.type === 'minigun' || l.type === 'grapple'){ ctx.strokeStyle = '#fff6'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(l.x, l.y, 24 + Math.sin(performance.now()/250)*2, 0, 7); ctx.stroke(); }   // gold guns shimmer
     ctx.save(); ctx.translate(l.x, l.y);
     if (GUN_W[l.type]){
       ctx.rotate(-0.35); const gs = 28 / GUN_W[l.type]; ctx.translate(-GUN_CX[l.type]*gs, 0); drawGun(ctx, l.type, gs, RARITY[l.rar || 0].col);
@@ -2518,6 +2592,8 @@ function draw(){
     else if (w.flame){ ctx.save(); ctx.translate(14,0); ctx.scale(Math.cos(a.angle) < 0 ? 1 : 1, 1); drawItem(ctx, 'flame', 0.95); ctx.restore(); }
     else if (w.grenade){ ctx.save(); ctx.translate(24,0); drawItem(ctx, 'grenade', 0.55); ctx.restore(); }
     else if (w.sniper){ ctx.save(); if (Math.cos(a.angle) < 0) ctx.scale(1,-1); ctx.translate(26,0); drawItem(ctx, 'sniper', 0.9); ctx.restore(); }
+    else if (w.minigun){ ctx.save(); if (Math.cos(a.angle) < 0) ctx.scale(1,-1); ctx.translate(24,0); drawItem(ctx, 'minigun', 0.85); ctx.restore(); }
+    else if (w.grapple){ ctx.save(); if (Math.cos(a.angle) < 0) ctx.scale(1,-1); ctx.translate(18,0); drawItem(ctx, 'grapple', 0.85); ctx.restore(); }
     else {
       ctx.save(); if (Math.cos(a.angle) < 0) ctx.scale(1,-1);      // keep the gun the right way up when aiming left
       ctx.translate(a.inv[a.cur] === 'pistol' ? 10 : 18, 0); drawGun(ctx, a.inv[a.cur], a.inv[a.cur] === 'pistol' ? 1 : 0.78, RARITY[a.gr[a.inv[a.cur]] || 0].col); ctx.restore();
@@ -2547,6 +2623,19 @@ function draw(){
     ctx.fillStyle = '#e44'; ctx.fillRect(bx, by, bw*Math.max(0, a.down)/DOWN_TIME, 5);
     if (a.rv > 0){ ctx.fillStyle = '#4f8'; ctx.fillRect(bx, by+7, bw*Math.min(1, a.rv/REVIVE_TIME), 5); }
   }
+  for (const a of S.actors){          // grapple chains
+    if (!a.alive || !a.gh) continue;
+    const g = a.gh, ang = Math.atan2(g.ty - a.y, g.tx - a.x);
+    ctx.save(); ctx.lineCap = 'round';
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(g.tx, g.ty); ctx.stroke();
+    ctx.strokeStyle = '#e8eef2'; ctx.lineWidth = 4; ctx.setLineDash([7, 5]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(g.tx, g.ty); ctx.stroke(); ctx.setLineDash([]);
+    ctx.translate(g.tx, g.ty); ctx.rotate(ang);                       // the hook: a steel head with two claws
+    ctx.fillStyle = '#9fb0bb'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, 6, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(2, -4); ctx.quadraticCurveTo(14, -10, 12, -16); ctx.lineTo(7, -9); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(2, 4); ctx.quadraticCurveTo(14, 10, 12, 16); ctx.lineTo(7, 9); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
   for (const a of S.actors){          // flamethrower fire: flickering blobs along the cone, white-hot at the nozzle to dark red at the tip
     if (!a.alive || !a.flen || a.inv[a.cur] !== 'flame' || !vis(a.x,a.y)) continue;
     const ca = Math.cos(a.angle), sa = Math.sin(a.angle), L = a.flen;
@@ -2575,7 +2664,7 @@ function draw(){
   if (touchMode && touch.aim && p.alive && !(p.down > 0) && p === S.player && Math.hypot(touch.aim.dx, touch.aim.dy) > 10){      // aiming: show where the shot will go
     const wp = WEAP[p.inv[p.cur]], gt = p.inv[p.cur];
     if (wp && !wp.grenade && !wp.heal && !wp.passive && !wp.sniper){
-      const range = wp.melee ? wp.range + 14 : wp.flame ? FL_RANGE : wp.spd * wp.life, ca = Math.cos(p.angle), sa = Math.sin(p.angle);
+      const range = wp.melee ? wp.range + 14 : wp.flame ? FL_RANGE : wp.minigun ? MG_SPD*MG_LIFE : wp.grapple ? GRAPPLE_RANGE : wp.spd * wp.life, ca = Math.cos(p.angle), sa = Math.sin(p.angle);
       const trace = (ang, max) => {
         const c = Math.cos(ang), s2 = Math.sin(ang);
         for (let d = 24; d < max; d += 10){
@@ -2586,7 +2675,7 @@ function draw(){
         return max;
       };
       const out = !!wp.spd && (p.ammo[gt] || 0) <= 0;
-      const col = out ? '#ff4a4a' : '#ffe433';
+      const col = out ? '#ff4a4a' : wp.grapple ? '#35e0ff' : '#ffe433';
       const angs = wp.pellets > 1 ? [p.angle - wp.spread, p.angle + wp.spread] : [p.angle];      // a shotgun shows its spread
       for (const ang of angs){
         const d = trace(ang, range);
@@ -2665,7 +2754,7 @@ function drawHUD(){
   for (let i=0;i<6;i++){
     const r = slotRect(i), id = p.inv[i];
     ctx.fillStyle = i===p.cur ? '#fc4' : '#0009'; ctx.fillRect(r.x,r.y,r.w,r.h);
-    if (id && (GUN_W[id] || id === 'grenade' || id === 'boots' || id === 'flame' || id === 'sniper')){        // the whole slot is tinted with the gun's rarity colour (grenades are always gold)
+    if (id && (GUN_W[id] || id === 'grenade' || id === 'boots' || id === 'flame' || id === 'sniper' || id === 'minigun' || id === 'grapple')){        // the whole slot is tinted with the gun's rarity colour (grenades are always gold)
       ctx.globalAlpha = i===p.cur ? 0.55 : 0.4; ctx.fillStyle = RARITY[GUN_W[id] ? (p.gr[id] || 0) : id === 'boots' ? BOOT_RAR : 4].col; ctx.fillRect(r.x,r.y,r.w,r.h); ctx.globalAlpha = 1;
     }
     ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.strokeRect(r.x,r.y,r.w,r.h);
@@ -2681,9 +2770,9 @@ function drawHUD(){
       ctx.font = 'bold ' + (tm ? 11 : 13) + 'px sans-serif'; ctx.textAlign = 'right'; ctx.lineWidth = 3.5; ctx.strokeStyle = '#000'; ctx.lineJoin = 'round';
       ctx.strokeText(am, r.x+r.w-5, r.y+(tm ? 12 : 14)); ctx.fillStyle = am > 0 ? '#fff' : '#ff5a4a'; ctx.fillText(am, r.x+r.w-5, r.y+(tm ? 12 : 14));
       ctx.textAlign = 'center';
-    } else if (id === 'grenade' || id === 'boots' || id === 'flame' || id === 'sniper'){
+    } else if (id === 'grenade' || id === 'boots' || id === 'flame' || id === 'sniper' || id === 'minigun' || id === 'grapple'){
       ctx.save(); ctx.translate(r.x + r.w/2, r.y + r.h*(tm ? 0.5 : 0.42)); drawItem(ctx, id, tm ? 0.65 : 0.85); ctx.restore();
-      if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(id === 'boots' ? 'Boots' : id === 'flame' ? 'Flame' : id === 'sniper' ? 'Sniper' : 'Grenade', r.x+r.w/2, r.y+r.h*0.9); }
+      if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(id === 'boots' ? 'Boots' : id === 'flame' ? 'Flame' : id === 'sniper' ? 'Sniper' : id === 'minigun' ? 'Mini-Gun' : id === 'grapple' ? 'Grapple' : 'Grenade', r.x+r.w/2, r.y+r.h*0.9); }
       ctx.strokeStyle = '#000'; ctx.lineWidth = 5; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
       if (id === 'flame'){                                                   // heat meter: fills while burning, greys out while cooling down
         const h = flameHeat(p), cool = h >= 2, f = cool ? h - 2 : h, bx = r.x+6, bw = r.w-12, by = r.y + r.h*(tm ? 0.74 : 0.66);
