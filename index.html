@@ -162,7 +162,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 4;
+const VERSION = 5;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -251,7 +251,8 @@ const WEAP = {
   flame:   {name:'Flamethrower', flame:true, color:'#f60'},
   sniper:  {name:'Sniper Rifle', sniper:true, color:'#ccd'},
   minigun: {name:'Mini-Gun', minigun:true, color:'#fc3'},
-  grapple: {name:'Grapple Gun', grapple:true, color:'#6cf'}
+  grapple: {name:'Grapple Gun', grapple:true, color:'#6cf'},
+  shieldgen: {name:'Shield Generator', passive:true, color:'#4af'}
 };
 const STACK = {};   // stackable loadout items: how many fit in one slot, how long they take to use, and where the count is kept
 const MAXBAND = 3, BANDAGE_HEAL = 25, HEAL_TIME = 1.5, MAXMED = 2, MED_TIME = 3.0,   // a medkit heals to full health but takes longer to use
@@ -269,7 +270,7 @@ const newAmmo = () => ({pistol:0, shotgun:0, ar:0});
 const FL_MAX = 3, FL_COOL = 1;      // the flamethrower burns for at most 3 s at a time, then needs a 1 s pause
 // Mini-Gun: every pull of the trigger rips off a line of 10 bullets, no ammo needed. Grapple Gun: a hook on a chain that drags you to whatever solid thing it catches.
 const MG_SHOTS = 10, MG_GAP = 0.045, MG_DMG = 8, MG_SPD = 1200, MG_LIFE = 0.75, MG_SPREAD = 0.07, MG_PAUSE = 0.5;
-const HOOKABLE_MIN = 30;
+const HOOKABLE_MIN = 30, SPECIALS_PER_GAME = 3;
 const GRAPPLE_RANGE = 720, GH_FLY = 3200, GH_PULL = 1500, GH_CD = 0.8;
 const SN_RANGE = 2800, SN_DMG = 150, SN_CD = 5, SN_ZOOM = 0.5;   // sniper: reach in px, damage, seconds between shots, how far the view zooms out
 const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 12.5;   // flamethrower: reach in px, a burst every 0.1 s, 12.5 damage each = 125 damage/s to everything in the flame
@@ -290,7 +291,7 @@ function rollRarity(){
   return 0;
 }
 const newGr = () => ({pistol:0, shotgun:0, ar:0});     // rarity of the gun held for each type (you can hold one of each)
-const TYPES = ['pistol','shotgun','ar','bandage','shield','med','wood','grenade','boots','flame','ammo_pistol','ammo_shotgun','ammo_ar','sniper','minigun','grapple'];   // index used on the wire
+const TYPES = ['pistol','shotgun','ar','bandage','shield','med','wood','grenade','boots','flame','ammo_pistol','ammo_shotgun','ammo_ar','sniper','minigun','grapple','shieldgen'];   // index used on the wire
 const PHASES = [
   {wait:25, shrink:25, r:Math.round(1700*MS)}, {wait:18, shrink:20, r:Math.round(1100*MS)},
   {wait:14, shrink:14, r:Math.round(600*MS)},  {wait:11, shrink:11, r:Math.round(250*MS)},
@@ -603,12 +604,12 @@ function init(humans, humansOnly, mapId, koth){
       if (!nearLake(x, y, 40) && !inBldg(x, y, 40) && !onIce(x, y, 20) && S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 50)){ S.chests.push({x, y, open:false}); break; }
     }
   }
-  if (S.chests.length){                        // five special items exist (boots, flamethrower, sniper, Mini-Gun, grapple gun) but only 2 of them turn up in any one game, each in its own chest
+  if (S.chests.length){                        // six special items exist (boots, flamethrower, sniper, Mini-Gun, grapple gun, shield generator) but only 3 of them turn up in any one game, each in its own chest
     const hookable = S.trees.length + S.walls.size >= HOOKABLE_MIN;      // the grapple gun only turns up on maps with enough trees, rocks, fences or walls to hook onto
-    const pool = ['boots','flame','sniper','minigun','grapple'].filter(k => !(S.koth && k === 'flame') && !(k === 'grapple' && !hookable));      // (no flamethrower in King of the Hill)
+    const pool = ['boots','flame','sniper','minigun','grapple','shieldgen'].filter(k => !(S.koth && k === 'flame') && !(k === 'grapple' && !hookable));      // (no flamethrower in King of the Hill)
     for (let q = pool.length - 1; q > 0; q--){ const r = Math.random()*(q+1)|0; [pool[q], pool[r]] = [pool[r], pool[q]]; }
     const free = S.chests.map((c, ci) => ci);
-    for (const k of pool.slice(0, 2)){ if (!free.length) break; S.chests[free.splice(Math.random()*free.length|0, 1)[0]][k] = true; }
+    for (const k of pool.slice(0, SPECIALS_PER_GAME)){ if (!free.length) break; S.chests[free.splice(Math.random()*free.length|0, 1)[0]][k] = true; }
   }
   const clampW = v => Math.max(100, Math.min(W-100, Math.round(v)));
   const byPid = {};
@@ -956,6 +957,7 @@ function feedText(q){
 }
 function damage(a, dmg, owner, wpn){
   if (a.invT > 0 || (S.koth && S.over)) return;       // respawn protection
+  if (a.inv.includes('shieldgen')) dmg *= 0.5;      // shield generator: half damage from everything, no need to equip it
   a.heal = 0;   // taking damage interrupts healing
   if (a.sh > 0){ const s = Math.min(a.sh, dmg); a.sh -= s; dmg -= s; }
   a.hp -= dmg; a.lastHit = performance.now();
@@ -983,7 +985,7 @@ function damage(a, dmg, owner, wpn){
     a.inv.forEach(w => {
       if (!w || w === 'pickaxe') return;
       const n = STACK[w] ? a[STACK[w].key] : 1;
-      for (let i=0;i<n;i++) S.loot.push({x:a.x+rnd(-20,20), y:a.y+rnd(-20,20), type:w, rar:GUN_W[w] ? a.gr[w] : w === 'grenade' ? 4 : w === 'boots' ? BOOT_RAR : w === 'flame' || w === 'sniper' || w === 'minigun' || w === 'grapple' ? 4 : 0});
+      for (let i=0;i<n;i++) S.loot.push({x:a.x+rnd(-20,20), y:a.y+rnd(-20,20), type:w, rar:GUN_W[w] ? a.gr[w] : w === 'grenade' ? 4 : w === 'boots' ? BOOT_RAR : w === 'flame' || w === 'sniper' || w === 'minigun' || w === 'grapple' || w === 'shieldgen' ? 4 : 0});
     });
   }
 }
@@ -1184,6 +1186,12 @@ function giveItem(a, type, rar){
     if (a === S.player) toast(type === 'minigun' ? 'Mini-Gun! Each pull fires 10 bullets, no ammo needed' : 'Grapple Gun! Aim at something solid and fire to zip across the map', 3000);
     return true;
   }
+  if (type === 'shieldgen'){            // shield generator: one, takes a slot but never needs equipping: while it is in your loadout all damage to you is halved
+    if (a.inv.includes('shieldgen')) return false;
+    const gi = a.inv.indexOf(null, 1);
+    if (gi < 0) return false;
+    a.inv[gi] = 'shieldgen'; if (a === S.player) toast('Shield Generator! All damage to you is halved while you carry it', 3000); return true;
+  }
   if (type === 'boots'){                // speed boots: one pair, takes a slot, doesn't change what you hold
     if (a.inv.includes('boots')) return false;
     const bi = a.inv.indexOf(null, 1);
@@ -1227,7 +1235,7 @@ function dropItem(a){
   const i = a.cur, it = a.inv[i];
   if (!it || it === 'pickaxe') return;
   const st = STACK[it], n = st ? a[st.key] : 1;
-  const rar = GUN_W[it] ? a.gr[it] : it === 'grenade' ? 4 : it === 'boots' ? BOOT_RAR : it === 'flame' || it === 'sniper' || it === 'minigun' || it === 'grapple' ? 4 : 0;
+  const rar = GUN_W[it] ? a.gr[it] : it === 'grenade' ? 4 : it === 'boots' ? BOOT_RAR : it === 'flame' || it === 'sniper' || it === 'minigun' || it === 'grapple' || it === 'shieldgen' ? 4 : 0;
   const px = Math.max(20, Math.min(W-20, a.x + Math.cos(a.angle)*60)), py = Math.max(20, Math.min(W-20, a.y + Math.sin(a.angle)*60));
   for (let k=0;k<n;k++) S.loot.push({x:px + (n>1 ? rnd(-14,14) : 0), y:py + (n>1 ? rnd(-14,14) : 0), type:it, rar, ban:a.pid, until:performance.now()+1500});
   if (st) a[st.key] = 0;
@@ -1328,6 +1336,7 @@ function openChest(c){
   if (c.sniper) drops.push({type:'sniper', rar:4});
   if (c.minigun) drops.push({type:'minigun', rar:4});
   if (c.grapple) drops.push({type:'grapple', rar:4});
+  if (c.shieldgen) drops.push({type:'shieldgen', rar:4});
   if (Math.random() < GR_CHANCE) drops.push({type:'grenade', rar:4});   // 7%: a (gold) grenade
   drops.filter(d => GUN_W[d.type]).forEach(d => { if (!S.koth || Math.random() < 0.2) drops.push({type:'ammo_'+d.type, n:AMMO['ammo_'+d.type].box}); });      // every gun comes with a box of its bullets (King of the Hill: guns are plentiful, ammo comes from the drops)
   if (!S.koth && Math.random() < 0.4){ const t = ['ammo_pistol','ammo_shotgun','ammo_ar'][Math.random()*3|0]; drops.push({type:t, n:AMMO[t].box}); }   // 40%: an extra box
@@ -1346,7 +1355,7 @@ function canTake(a, l){
   if (AMMO[type]) return a.ammo[AMMO[type].gun] < AMMO[type].max;
   const st = STACK[type];
   if (st) return a[st.key] < st.max && (a.inv.includes(type) || a.inv.includes(null));     // only if there is room for it
-  if (type === 'boots' || type === 'flame') return !a.inv.includes(type) && a.inv.includes(null);
+  if (type === 'boots' || type === 'flame' || type === 'shieldgen') return !a.inv.includes(type) && a.inv.includes(null);
   if (type === 'sniper' || type === 'minigun' || type === 'grapple') return !!a.isPlayer && !a.inv.includes(type) && a.inv.includes(null);
   if (type === 'grenade') return a.inv.includes(null);
   if (a.inv.includes(type)) return (l.rar || 0) > a.gr[type];     // already holding one: only a better one is worth taking
@@ -1567,7 +1576,7 @@ function update(dt){
 
   if (S.koth){
     S.chestT = (S.chestT === undefined ? 35 : S.chestT) - dt;
-    if (S.chestT <= 0){ S.chestT = 45; const used = S.chests.filter(c => c.open && !c.island); for (let n = 0; n < 3 && used.length; n++){ const c = used.splice(Math.random()*used.length|0, 1)[0]; c.open = false; c.boots = c.flame = c.sniper = c.minigun = c.grapple = false; } }      // chests refill so nobody runs dry
+    if (S.chestT <= 0){ S.chestT = 45; const used = S.chests.filter(c => c.open && !c.island); for (let n = 0; n < 3 && used.length; n++){ const c = used.splice(Math.random()*used.length|0, 1)[0]; c.open = false; c.boots = c.flame = c.sniper = c.minigun = c.grapple = c.shieldgen = false; } }      // chests refill so nobody runs dry
     if (S.hill && S.hill.t === undefined) S.hill.t = 0;
   }
   for (const a of S.actors){
@@ -1687,7 +1696,7 @@ function update(dt){
 
 // ---------- Networking: host side ----------
 // Star topology: every guest connects to the host. The host runs the match and streams the state back out.
-const ITEM_CODE = {pickaxe:'1', pistol:'2', shotgun:'3', ar:'4', bandage:'5', med:'6', shield:'7', grenade:'8', boots:'9', flame:'a', sniper:'b', minigun:'c', grapple:'d'}, ITEM_BY = [null,'pickaxe','pistol','shotgun','ar','bandage','med','shield','grenade','boots','flame','sniper','minigun','grapple'];
+const ITEM_CODE = {pickaxe:'1', pistol:'2', shotgun:'3', ar:'4', bandage:'5', med:'6', shield:'7', grenade:'8', boots:'9', flame:'a', sniper:'b', minigun:'c', grapple:'d', shieldgen:'e'}, ITEM_BY = [null,'pickaxe','pistol','shotgun','ar','bandage','med','shield','grenade','boots','flame','sniper','minigun','grapple','shieldgen'];
 const encInv = inv => inv.map(w => w ? ITEM_CODE[w] : '0').join('');
 const decInv = str => str.split('').map(c => ITEM_BY[parseInt(c, 36)] || null);
 const peerCount = () => Object.keys(NET.peers).length;
@@ -2300,6 +2309,12 @@ function drawItem(c, type, s){
     c.strokeStyle = '#000'; c.lineWidth = 1.6/s; c.beginPath(); c.moveTo(18,-1); c.lineTo(15,8); c.moveTo(24,-1); c.lineTo(27,8); c.stroke();   // bipod
     rr(-3,3, 4,8, 1, '#333');                                                                              // grip
     c.fillStyle = '#ffc400'; c.fillRect(-6,-2.6, 12, 1.4);                                                 // gold trim
+  } else if (type === 'shieldgen'){   // shield generator: a little emitter box inside a glowing blue bubble
+    c.fillStyle = 'rgba(80,160,255,0.35)'; c.beginPath(); c.arc(0,0, 17, 0, 7); c.fill(); c.strokeStyle = '#9fd4ff'; c.lineWidth = 2/s; c.stroke(); c.strokeStyle = '#000'; c.lineWidth = 1.6/s;
+    rr(-9,-1, 18,11, 2.5, '#4a5560'); rr(-6,-6, 12,6, 2, '#6b7a86');                                       // emitter body
+    c.fillStyle = '#5ad1ff'; c.beginPath(); c.arc(0,-8, 4.2, 0, 7); c.fill(); c.stroke();                  // glowing core
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(-1.3,-9.4, 1.3, 0, 7); c.fill();
+    c.fillStyle = '#ffc400'; c.fillRect(-7,4, 14, 2);                                                      // gold trim
   } else if (type === 'minigun'){     // Mini-Gun: six-barrel cluster, ammo drum, grip (points right)
     rr(-14,-8, 14,16, 3, '#555'); rr(-18,-5, 5,10, 2, '#3a3a3a');                                          // motor + butt
     rr(-8,6, 14,9, 3, '#7a5a20'); rr(-6,8, 10,2, 0, '#e8b84a');                                            // ammo drum
@@ -2547,11 +2562,11 @@ function draw(){
   // loot
   for (const l of S.loot){ if (!vis(l.x,l.y)) continue;
     // every drop lies on a white plate with a coloured ring so it stands out on the grass
-    const ring = GUN_W[l.type] ? RARITY[l.rar || 0].col : l.type === 'grenade' ? RARITY[4].col : l.type === 'boots' || l.type === 'flame' || l.type === 'sniper' || l.type === 'minigun' || l.type === 'grapple' ? RARITY[4].col : ITEM_RING;
+    const ring = GUN_W[l.type] ? RARITY[l.rar || 0].col : l.type === 'grenade' ? RARITY[4].col : l.type === 'boots' || l.type === 'flame' || l.type === 'sniper' || l.type === 'minigun' || l.type === 'grapple' || l.type === 'shieldgen' ? RARITY[4].col : ITEM_RING;
     ctx.fillStyle = '#fffffff0'; ctx.beginPath(); ctx.arc(l.x, l.y, 19, 0, 7); ctx.fill();
     ctx.strokeStyle = '#000'; ctx.lineWidth = 6; ctx.stroke();                         // dark edge so every ring shows up on the grass
     ctx.strokeStyle = ring; ctx.lineWidth = 3.5; ctx.stroke();
-    if (l.rar === 4 || l.type === 'grenade' || l.type === 'boots' || l.type === 'flame' || l.type === 'sniper' || l.type === 'minigun' || l.type === 'grapple'){ ctx.strokeStyle = '#fff6'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(l.x, l.y, 24 + Math.sin(performance.now()/250)*2, 0, 7); ctx.stroke(); }   // gold guns shimmer
+    if (l.rar === 4 || l.type === 'grenade' || l.type === 'boots' || l.type === 'flame' || l.type === 'sniper' || l.type === 'minigun' || l.type === 'grapple' || l.type === 'shieldgen'){ ctx.strokeStyle = '#fff6'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(l.x, l.y, 24 + Math.sin(performance.now()/250)*2, 0, 7); ctx.stroke(); }   // gold guns shimmer
     ctx.save(); ctx.translate(l.x, l.y);
     if (GUN_W[l.type]){
       ctx.rotate(-0.35); const gs = 28 / GUN_W[l.type]; ctx.translate(-GUN_CX[l.type]*gs, 0); drawGun(ctx, l.type, gs, RARITY[l.rar || 0].col);
@@ -2581,6 +2596,12 @@ function draw(){
       const tw = performance.now()/400; ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
       for (let q = 0; q < 2; q++){ const rr = a.r + 4 + ((tw + q*0.5) % 1)*12; ctx.globalAlpha = 0.7*(1 - ((tw + q*0.5) % 1)); ctx.beginPath(); ctx.arc(a.x, a.y, rr, 0, 7); ctx.stroke(); }
       ctx.globalAlpha = 1;
+    }
+    if (a.inv.includes('shieldgen')){           // the generator's blue bubble
+      const pu = 0.5 + 0.5*Math.sin(performance.now()/400), br = a.r + 11 + pu*2;
+      ctx.fillStyle = 'rgba(70,150,255,0.22)'; ctx.beginPath(); ctx.arc(a.x, a.y, br, 0, 7); ctx.fill();
+      ctx.strokeStyle = `rgba(120,200,255,${0.65 + 0.3*pu})`; ctx.lineWidth = 2.5; ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a.x, a.y, br - 3, -2.3, -1.2); ctx.stroke();
     }
     if (a.inv.includes('boots')){ ctx.fillStyle = 'rgba(255,230,60,0.28)'; ctx.beginPath(); ctx.arc(a.x,a.y,a.r+6+Math.sin(performance.now()/120)*1.5,0,7); ctx.fill(); }   // speed-boot glow
     ctx.save(); ctx.translate(a.x,a.y); ctx.rotate(a.angle);
@@ -2754,7 +2775,7 @@ function drawHUD(){
   for (let i=0;i<6;i++){
     const r = slotRect(i), id = p.inv[i];
     ctx.fillStyle = i===p.cur ? '#fc4' : '#0009'; ctx.fillRect(r.x,r.y,r.w,r.h);
-    if (id && (GUN_W[id] || id === 'grenade' || id === 'boots' || id === 'flame' || id === 'sniper' || id === 'minigun' || id === 'grapple')){        // the whole slot is tinted with the gun's rarity colour (grenades are always gold)
+    if (id && (GUN_W[id] || id === 'grenade' || id === 'boots' || id === 'flame' || id === 'sniper' || id === 'minigun' || id === 'grapple' || id === 'shieldgen')){        // the whole slot is tinted with the gun's rarity colour (grenades are always gold)
       ctx.globalAlpha = i===p.cur ? 0.55 : 0.4; ctx.fillStyle = RARITY[GUN_W[id] ? (p.gr[id] || 0) : id === 'boots' ? BOOT_RAR : 4].col; ctx.fillRect(r.x,r.y,r.w,r.h); ctx.globalAlpha = 1;
     }
     ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.strokeRect(r.x,r.y,r.w,r.h);
@@ -2770,9 +2791,9 @@ function drawHUD(){
       ctx.font = 'bold ' + (tm ? 11 : 13) + 'px sans-serif'; ctx.textAlign = 'right'; ctx.lineWidth = 3.5; ctx.strokeStyle = '#000'; ctx.lineJoin = 'round';
       ctx.strokeText(am, r.x+r.w-5, r.y+(tm ? 12 : 14)); ctx.fillStyle = am > 0 ? '#fff' : '#ff5a4a'; ctx.fillText(am, r.x+r.w-5, r.y+(tm ? 12 : 14));
       ctx.textAlign = 'center';
-    } else if (id === 'grenade' || id === 'boots' || id === 'flame' || id === 'sniper' || id === 'minigun' || id === 'grapple'){
+    } else if (id === 'grenade' || id === 'boots' || id === 'flame' || id === 'sniper' || id === 'minigun' || id === 'grapple' || id === 'shieldgen'){
       ctx.save(); ctx.translate(r.x + r.w/2, r.y + r.h*(tm ? 0.5 : 0.42)); drawItem(ctx, id, tm ? 0.65 : 0.85); ctx.restore();
-      if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(id === 'boots' ? 'Boots' : id === 'flame' ? 'Flame' : id === 'sniper' ? 'Sniper' : id === 'minigun' ? 'Mini-Gun' : id === 'grapple' ? 'Grapple' : 'Grenade', r.x+r.w/2, r.y+r.h*0.9); }
+      if (!tm){ ctx.fillStyle = i===p.cur ? '#000' : '#fff'; ctx.fillText(id === 'boots' ? 'Boots' : id === 'flame' ? 'Flame' : id === 'sniper' ? 'Sniper' : id === 'minigun' ? 'Mini-Gun' : id === 'grapple' ? 'Grapple' : id === 'shieldgen' ? 'Generator' : 'Grenade', r.x+r.w/2, r.y+r.h*0.9); }
       ctx.strokeStyle = '#000'; ctx.lineWidth = 5; ctx.strokeRect(r.x+3, r.y+3, r.w-6, r.h-6);
       if (id === 'flame'){                                                   // heat meter: fills while burning, greys out while cooling down
         const h = flameHeat(p), cool = h >= 2, f = cool ? h - 2 : h, bx = r.x+6, bw = r.w-12, by = r.y + r.h*(tm ? 0.74 : 0.66);
