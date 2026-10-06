@@ -178,7 +178,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 14;
+const VERSION = 16;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -240,18 +240,20 @@ const MAPS = {
   desert:{name:'Desert',   build:false, water:false, ground:'#e0c07a', mini:'#6a4a14cc'},
   city:{name:'War-Torn City', build:true, water:false, ground:'#6f6b64', mini:'#2a2a30cc', res:'Metal', fenceHp:300},
   snow:{name:'Snow & Ice', build:true, water:false, ground:'#d3e0ea', mini:'#7f9fb4cc'},
-  ocean:{name:'Ocean', build:false, water:false, ground:'#2a78b4', mini:'#0a3a6acc'}
+  ocean:{name:'Ocean', build:false, water:false, ground:'#2a78b4', mini:'#0a3a6acc'},
+  swamp:{name:'Swamp', build:true, water:true, ground:'#2c4a2b', mini:'#0c2410cc'}
 };
-const MAP_IDS = ['grass','desert','city','snow','ocean'];
+const MAP_IDS = ['grass','desert','city','snow','ocean','swamp'];
 const okMap = m => m === 'random' || MAPS[m] ? m : 'random';
 const DESERT_COUNT = Math.round(220 * MS * MS), CITY_COUNT = Math.round(240 * MS * MS);
 const OCEAN_COUNT = Math.round(90 * MS * MS);
 const SNOW_COUNT = Math.round(250 * MS * MS);
-const obsCount = m => m === 'snow' ? SNOW_COUNT : m === 'ocean' ? OCEAN_COUNT : m === 'desert' ? DESERT_COUNT : m === 'city' ? CITY_COUNT : TREE_COUNT;
+const SWAMP_COUNT = Math.round(300 * MS * MS);
+const obsCount = m => m === 'swamp' ? SWAMP_COUNT : m === 'snow' ? SNOW_COUNT : m === 'ocean' ? OCEAN_COUNT : m === 'desert' ? DESERT_COUNT : m === 'city' ? CITY_COUNT : TREE_COUNT;
 const RD = 750, RHALF = 75;      // city streets: one every 750 px, 150 px wide
 const mapOf = () => MAPS[(S && S.map) || 'grass'] || MAPS.grass;
 // desert obstacles reuse the tree list: every third one is a rock, the rest are cacti (solid: the pickaxe cannot remove them)
-const mkObstacle = (map, id, x, y) => map === 'ocean' ? {id, x, y, r:id % 3 === 0 ? 30 : 22, wood:100, solid:true} : map === 'city' ? (id % 4 === 0 ? {id, x, y, r:22, wood:100, solid:true} : {id, x, y, r:22, wood:100}) : map === 'desert' ? {id, x, y, r:id % 3 === 0 ? 26 : 17, wood:100, solid:true} : {id, x, y, r:22, wood:100};
+const mkObstacle = (map, id, x, y) => map === 'swamp' ? (id % 4 === 0 ? {id, x, y, r:20, wood:100, solid:true} : {id, x, y, r:23, wood:100}) : map === 'ocean' ? {id, x, y, r:id % 3 === 0 ? 30 : 22, wood:100, solid:true} : map === 'city' ? (id % 4 === 0 ? {id, x, y, r:22, wood:100, solid:true} : {id, x, y, r:22, wood:100}) : map === 'desert' ? {id, x, y, r:id % 3 === 0 ? 26 : 17, wood:100, solid:true} : {id, x, y, r:22, wood:100};
 const TREE_COUNT = Math.round(320 * MS * MS);                  // same tree density as before
 const STORM_R0 = Math.round(2900 * MS);                        // the storm starts outside the whole board
 const WEAP = {
@@ -291,7 +293,7 @@ const GRAPPLE_RANGE = 720, GH_FLY = 3200, GH_PULL = 1500, GH_CD = 0.8;
 const SN_RANGE = 2800, SN_DMG = 150, SN_CD = 5, SN_ZOOM = 0.5;   // sniper: reach in px, damage, seconds between shots, how far the view zooms out
 const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 12.5;   // flamethrower: reach in px, a burst every 0.1 s, 12.5 damage each = 125 damage/s to everything in the flame
 const SWIM_MULT = 0.25;     // swimming (anyone in open water, not on a boat) moves at a quarter of walking speed
-const BOOT_MULT = 1.5, BOOT_RAR = 4, bootMul = a => (a.inv.includes('boots') ? BOOT_MULT : 1) * (!a.boat && inWater(a.x, a.y) ? SWIM_MULT : 1);   // speed boots: 1.5x move speed while in your loadout (one pair per match)
+const BOOT_MULT = 1.5, BOOT_RAR = 4, bootMul = a => (a.inv.includes('boots') ? BOOT_MULT : 1) * (!a.boat && inWater(a.x, a.y) ? SWIM_MULT : 1) * (!a.boat && !inWater(a.x, a.y) && onBog(a.x, a.y) ? BOG_MULT : 1);   // speed boots: 1.5x move speed while in your loadout (one pair per match)
 const CHEST_COUNT = Math.round(32 * MS), CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
 // Gun rarities: the rarer the gun, the harder it hits, the faster it fires and the straighter it shoots.
 const RARITY = [
@@ -548,6 +550,18 @@ function botPlan(humans, humansOnly, koth){
 // Builds a fresh match on this device: solo, or the host of a multiplayer game.
 // humans = [{pid, name, mate}] (pid 0 is the host)
 const onIce = (x, y, m = 0) => { const I = S && S.ice; if (!I) return false; for (let i = 0; i < I.length; i++){ const c = I[i]; if (Math.hypot(x-c[0], y-c[1]) < c[2] + m) return true; } return false; };
+const onBog = (x, y, m = 0) => { const I = S && S.bog; if (!I) return false; for (let i = 0; i < I.length; i++){ const c = I[i]; if (Math.hypot(x-c[0], y-c[1]) < c[2] + m) return true; } return false; };
+const BOG_MULT = 0.5;      // trudging through bog: half speed (a boat floats over it)
+function genBog(){
+  S.bog = []; const cs = [];
+  for (let n = 0, tries = 0; n < 15 && tries < 400; tries++){
+    const x = rnd(450, W-450), y = rnd(450, W-450);
+    if (cs.some(c => Math.hypot(c[0]-x, c[1]-y) < 700) || nearLake(x, y, 420)) continue;
+    cs.push([x, y]); n++;
+    const r = rnd(170, 270); S.bog.push([Math.round(x), Math.round(y), Math.round(r)]);
+    for (let k = 0; k < 3; k++){ const a = rnd(0, 6.28), r2 = r*rnd(0.5, 0.75); S.bog.push([Math.round(x + Math.cos(a)*r*0.7), Math.round(y + Math.sin(a)*r*0.7), Math.round(r2)]); }
+  }
+}
 const ICE_ACC = 1.3;      // how quickly your speed follows your stick/keys while on ice (per second): low = slidey
 function iceVel(a, vx, vy, dt){
   if (a.boat) return [vx, vy];
@@ -615,9 +629,10 @@ function init(humans, humansOnly, mapId, koth){
   }
   if (mapId === 'city') genCity();
   if (mapId === 'snow') genIce();
+  S.bog = []; if (mapId === 'swamp') genBog();
   for (let i=0, N = obsCount(mapId); i<N; i++){
     let x, y, tries = 0;
-    do { x = Math.round(rnd(100,W-100)); y = Math.round(rnd(100,W-100)); } while ((nearLake(x, y, 30) || inBldg(x, y, 30) || onIce(x, y, 30)) && ++tries < 40);
+    do { x = Math.round(rnd(100,W-100)); y = Math.round(rnd(100,W-100)); } while ((nearLake(x, y, 30) || inBldg(x, y, 30) || onIce(x, y, 30) || onBog(x, y, 20)) && ++tries < 40);
     S.trees.push(mkObstacle(mapId, i, x, y));
   }
   // no loot lies on the ground at the start: everything comes from chests (or from eliminated players)
@@ -626,7 +641,7 @@ function init(humans, humansOnly, mapId, koth){
   for (let n=0, nCh = S.koth ? 14 : CHEST_COUNT; n<nCh;n++){
     for (let tries=0;tries<30;tries++){
       const x = Math.round(rnd(150,W-150)), y = Math.round(rnd(150,W-150));
-      if (!nearLake(x, y, 40) && !inBldg(x, y, 40) && !onIce(x, y, 20) && S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 50)){ S.chests.push({x, y, open:false}); break; }
+      if (!nearLake(x, y, 40) && !inBldg(x, y, 40) && !onIce(x, y, 20) && !onBog(x, y, 20) && S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 50)){ S.chests.push({x, y, open:false}); break; }
     }
   }
   if (S.chests.length){                        // six special items exist (boots, flamethrower, sniper, Mini-Gun, grapple gun, shield generator) but only 3 of them turn up in any one game, each in its own chest
@@ -697,7 +712,7 @@ function setupStorm(humansOnly){
     for (let n = 0; n < 4; n++){                    // a few chests near the hill so everyone can arm up right where the fight is
       for (let t = 0; t < 30; t++){
         const ang = (n + rnd(-0.3, 0.3))/4*Math.PI*2, d = h.r*rnd(1.2, 2.2), x = Math.round(h.x + Math.cos(ang)*d), y = Math.round(h.y + Math.sin(ang)*d);
-        if (x < 150 || y < 150 || x > W-150 || y > W-150 || nearLake(x, y, 40) || inBldg(x, y, 40) || onIce(x, y, 20) || S.trees.some(q => Math.hypot(q.x-x, q.y-y) < 50) || S.chests.some(c => Math.hypot(c.x-x, c.y-y) < 60)) continue;
+        if (x < 150 || y < 150 || x > W-150 || y > W-150 || nearLake(x, y, 40) || inBldg(x, y, 40) || onIce(x, y, 20) || onBog(x, y, 20) || S.trees.some(q => Math.hypot(q.x-x, q.y-y) < 50) || S.chests.some(c => Math.hypot(c.x-x, c.y-y) < 60)) continue;
         S.chests.push({x, y, open:false}); break;
       }
     }
@@ -1755,7 +1770,7 @@ function sendSnapshot(){
 }
 function sendInit(){
   const base = {t:'init',
-    map:S.map, ice:S.ice || [], koth:S.koth ? 1 : 0, hill:S.hill || null, bots:S.hasBots ? 1 : 0, trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]), lakes:S.lakes.map(l => [l.x, l.y, ...l.h, l.ox, l.oy]), boats:S.boats.map(b => [b.x, b.y, b.ang]),
+    map:S.map, ice:S.ice || [], bog:S.bog || [], koth:S.koth ? 1 : 0, hill:S.hill || null, bots:S.hasBots ? 1 : 0, trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]), lakes:S.lakes.map(l => [l.x, l.y, ...l.h, l.ox, l.oy]), boats:S.boats.map(b => [b.x, b.y, b.ang]),
     actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, s:a.shirt || null, k:a.skin, hr:a.hair || null, hs:a.hstyle | 0, sl:a.sleeve | 0, pt:a.pat | 0, s2:a.shirt2 || null, cw:a.crown ? 1 : 0, x:Math.round(a.x), y:Math.round(a.y)}))};
   for (const pid in NET.peers){
     const me = S.actors.findIndex(a => a.isPlayer && a.pid === +pid);
@@ -1955,7 +1970,7 @@ function onLobbyMsg(m){
 function buildGuestState(m){
   S = {actors:[], players:[], bullets:[], trees:[], allTrees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[], lakes:(m.lakes || []).map(a => makeLake(a[0], a[1], a.slice(2,8), a[8], a[9])), boats:(m.boats || []).map(([x,y,ang]) => ({x, y, tx:x, ty:y, ang, rider:null})),
     over:false, winTeam:null, overAt:0, storm:{i:0, state:'wait', t:PHASES[0].wait, r:STORM_R0, cx:CENTER.x, cy:CENTER.y, nx:CENTER.x, ny:CENTER.y, nr:PHASES[0].r, rFrom:STORM_R0, rTo:PHASES[0].r}};
-  S.hasBots = !!m.bots; S.map = MAPS[m.map] ? m.map : 'grass'; S.ice = m.ice || []; S.koth = !!m.koth; S.hill = m.hill || null;
+  S.hasBots = !!m.bots; S.map = MAPS[m.map] ? m.map : 'grass'; S.ice = m.ice || []; S.bog = m.bog || []; S.koth = !!m.koth; S.hill = m.hill || null;
   m.trees.forEach(([x,y], id) => { const t = mkObstacle(S.map, id, x, y); S.allTrees.push(t); S.trees.push(t); });
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
   m.actors.forEach(d => S.actors.push({x:d.x, y:d.y, tx:d.x, ty:d.y, r:15, hp:100, sh:0, wood:0,
@@ -2162,6 +2177,37 @@ function makeTree(variant, chopped, snow){
   return c;
 }
 const OB_SPRITE = {};
+function makeCypress(v, chopped){
+  const S2 = 2, size = 64, c = document.createElement('canvas'); c.width = c.height = size * S2;
+  const g = c.getContext('2d'); g.scale(S2, S2); g.translate(size/2, size/2);
+  let seed = 777 + v * 4421; const r2 = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  g.fillStyle = 'rgba(0,0,0,0.3)'; g.beginPath(); g.ellipse(3, 5, 24, 21, 0, 0, 7); g.fill();
+  g.lineJoin = 'round'; g.lineCap = 'round';
+  const dk = chopped ? '#25432f' : '#1d3a28', md = chopped ? '#34603d' : '#2c5736', lt = chopped ? '#4c7d4a' : '#437a46';
+  for (let ring = 0; ring < 3; ring++){            // feathery frond layers, outer to inner
+    const n = 11 - ring*2, rad = 21 - ring*6.5, col = [dk, md, lt][ring], off = r2()*6.28;
+    g.strokeStyle = col; g.lineWidth = 5.5 - ring;
+    for (let i = 0; i < n; i++){ const a = off + i*6.28318/n, l = rad*(0.85 + r2()*0.3); g.beginPath(); g.moveTo(Math.cos(a)*3, Math.sin(a)*3); g.lineTo(Math.cos(a)*l, Math.sin(a)*l); g.stroke(); }
+    g.lineWidth = 2; for (let i = 0; i < n*2; i++){ const a = off + i*6.28318/(n*2) + 0.1, l = rad*0.9; g.beginPath(); g.moveTo(Math.cos(a)*l*0.5, Math.sin(a)*l*0.5); g.lineTo(Math.cos(a+0.35)*l, Math.sin(a+0.35)*l); g.stroke(); }
+  }
+  g.strokeStyle = 'rgba(170,190,150,0.55)'; g.lineWidth = 1.6;                        // hanging Spanish moss
+  for (let i = 0; i < 5; i++){ const a = r2()*6.28, rr = 8 + r2()*9; g.beginPath(); g.moveTo(Math.cos(a)*rr, Math.sin(a)*rr); g.quadraticCurveTo(Math.cos(a)*rr+3, Math.sin(a)*rr+5, Math.cos(a)*rr+1, Math.sin(a)*rr+11); g.stroke(); }
+  g.fillStyle = '#4a3320'; g.beginPath(); g.arc(0, 0, chopped ? 3.6 : 2.6, 0, 7); g.fill();
+  return c;
+}
+function makeStump(v){
+  const S2 = 2, size = 64, c = document.createElement('canvas'); c.width = c.height = size * S2;
+  const g = c.getContext('2d'); g.scale(S2, S2); g.translate(size/2, size/2); g.lineJoin = 'round';
+  g.fillStyle = 'rgba(0,0,0,0.28)'; g.beginPath(); g.ellipse(3, 5, 22, 17, 0, 0, 7); g.fill();
+  g.strokeStyle = '#2a1e12'; g.lineWidth = 2;
+  const pts = []; for (let i = 0; i < 12; i++){ const a = i/12*6.283, r = 15 + ((i*29 + v*13) % 6) + (i % 3 === 0 ? 4 : 0); pts.push([Math.cos(a)*r, Math.sin(a)*r]); }
+  g.fillStyle = '#5a4a38'; g.beginPath(); pts.forEach(([x,y],i) => i ? g.lineTo(x,y) : g.moveTo(x,y)); g.closePath(); g.fill(); g.stroke();      // buttressed base
+  g.fillStyle = '#8b765a'; g.beginPath(); g.arc(-1, -1, 12, 0, 7); g.fill(); g.stroke();                                                         // sawn-off top
+  g.strokeStyle = 'rgba(60,40,20,0.55)'; g.lineWidth = 1; for (const rr of [4, 8]){ g.beginPath(); g.arc(-1, -1, rr, 0, 7); g.stroke(); }
+  g.beginPath(); g.moveTo(-1, -1); g.lineTo(9, 5 - v*3); g.stroke();
+  g.fillStyle = 'rgba(90,140,70,0.75)'; for (let i = 0; i < 4; i++){ const a = 0.8 + i*1.5 + v, rr = 10 + (i%2)*3; g.beginPath(); g.ellipse(Math.cos(a)*rr, Math.sin(a)*rr, 4.5, 3, a, 0, 7); g.fill(); }   // moss
+  return c;
+}
 function makeObstacle(rock, v){
   const S2 = 2, size = 64, c = document.createElement('canvas'); c.width = c.height = size * S2;
   const g = c.getContext('2d'); g.scale(S2, S2); g.translate(size/2, size/2); g.lineJoin = 'round'; g.lineWidth = 2; g.strokeStyle = '#2a1c0a';
@@ -2238,6 +2284,7 @@ function makeReef(big, v){
 }
 function obstacleSprite(t){
   if (S.map === 'ocean'){ const big = t.id % 3 === 0, k = 'o'+(big?'b':'s')+(t.id%4); return OB_SPRITE[k] || (OB_SPRITE[k] = makeReef(big, t.id % 4)); }
+  if (S.map === 'swamp'){ if (t.solid){ const k = 'st'+(t.id%3); return OB_SPRITE[k] || (OB_SPRITE[k] = makeStump(t.id % 3)); } const k = 'cy'+(t.id%4)+(t.wood < 100 ? 'c' : ''); return OB_SPRITE[k] || (OB_SPRITE[k] = makeCypress(t.id % 4, t.wood < 100)); }
   if (S.map === 'city'){ if (t.solid) return OB_SPRITE['b'+(t.id%4)] || (OB_SPRITE['b'+(t.id%4)] = makeBarrier(t.id % 4)); const k = 's'+(t.id%5)+(t.wood < 100 ? 'c' : ''); return OB_SPRITE[k] || (OB_SPRITE[k] = makeScrap(t.id % 5, t.wood < 100)); }
   const rock = t.id % 3 === 0, v = t.id % 4, k = (rock ? 'r' : 'c') + v; return OB_SPRITE[k] || (OB_SPRITE[k] = makeObstacle(rock, v)); }
 function treeSprite(t){
@@ -2551,6 +2598,25 @@ function draw(){
     for (const c of near){ for (let q = 0; q < 3; q++){ const a = 3.7 + q*0.5, rr = c[2]*(0.45 + q*0.17); ctx.beginPath(); ctx.arc(c[0], c[1], rr, a, a+0.5); ctx.stroke(); } }
     ctx.strokeStyle = 'rgba(120,170,200,0.35)'; ctx.lineWidth = 2; for (const c of near){ ctx.beginPath(); ctx.moveTo(c[0]-c[2]*0.3, c[1]-c[2]*0.1); ctx.lineTo(c[0]+c[2]*0.1, c[1]+c[2]*0.25); ctx.lineTo(c[0]+c[2]*0.4, c[1]+c[2]*0.2); ctx.stroke(); }
   }
+  if (S.map === 'swamp'){
+    const CS = 120, tw = performance.now()/1000;
+    for (let cx = Math.floor(cam.x/CS)-1; cx < (cam.x+vw)/CS+1; cx++) for (let cy = Math.floor(cam.y/CS)-1; cy < (cam.y+vh)/CS+1; cy++){      // moss, reeds and puddles
+      let h = (cx*73856093 ^ cy*19349663) >>> 0; h = (h ^ (h>>>13)) * 1274126177 >>> 0;
+      const px = cx*CS + (h & 127), py = cy*CS + ((h>>>7) & 127), k = (h>>>14) & 7;
+      if (k < 2){ ctx.fillStyle = 'rgba(20,50,30,0.5)'; ctx.beginPath(); ctx.ellipse(px, py, 30, 16, 0.3, 0, 7); ctx.fill(); }
+      else if (k < 4){ ctx.strokeStyle = 'rgba(120,170,80,0.45)'; ctx.lineWidth = 2; ctx.beginPath(); for (let q = -1; q <= 1; q++){ ctx.moveTo(px+q*4, py+4); ctx.lineTo(px+q*7, py-8); } ctx.stroke(); }
+    }
+    const near = (S.bog || []).filter(c => c[0]+c[2] > cam.x && c[0]-c[2] < cam.x+vw && c[1]+c[2] > cam.y && c[1]-c[2] < cam.y+vh);
+    ctx.fillStyle = '#4a6a2a'; for (const c of near){ ctx.beginPath(); ctx.arc(c[0], c[1], c[2]+9, 0, 7); ctx.fill(); }              // long grass rim
+    ctx.fillStyle = '#2b4a36'; for (const c of near){ ctx.beginPath(); ctx.arc(c[0], c[1], c[2], 0, 7); ctx.fill(); }                 // shallow murky water
+    ctx.fillStyle = 'rgba(60,110,90,0.35)'; for (const c of near){ ctx.beginPath(); ctx.arc(c[0]-c[2]*0.12, c[1]-c[2]*0.1, c[2]*0.7, 0, 7); ctx.fill(); }
+    ctx.strokeStyle = 'rgba(150,200,170,0.3)'; ctx.lineWidth = 2; ctx.beginPath();                                                    // ripples
+    for (const c of near) for (let q = 0; q < 6; q++){ const a = q*2.1 + c[0], rr = c[2]*(0.2 + (q%3)*0.2), x = c[0]+Math.cos(a)*rr, y = c[1]+Math.sin(a)*rr, ph = Math.sin(tw*1.2 + q + c[1])*3; ctx.moveTo(x-10+ph, y); ctx.quadraticCurveTo(x+ph, y-3, x+10+ph, y); }
+    ctx.stroke();
+    ctx.strokeStyle = '#7fae4a'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath();                                          // tufts of long grass
+    for (const c of near) for (let q = 0; q < Math.floor(c[2]/9); q++){ const a = q*2.39996 + c[1], rr = ((q*61) % 100)/100*c[2]*0.95, x = c[0]+Math.cos(a)*rr, y = c[1]+Math.sin(a)*rr; ctx.moveTo(x-3, y+5); ctx.lineTo(x-5, y-6); ctx.moveTo(x, y+5); ctx.lineTo(x, y-9); ctx.moveTo(x+3, y+5); ctx.lineTo(x+5, y-6); }
+    ctx.stroke();
+  }
   if (S.map === 'ocean'){     // drifting swells
     const CS = 110, tw = performance.now()/1000; ctx.lineCap = 'round'; ctx.lineWidth = 3;
     for (let cx = Math.floor(cam.x/CS)-1; cx < (cam.x+vw)/CS+1; cx++) for (let cy = Math.floor(cam.y/CS)-1; cy < (cam.y+vh)/CS+1; cy++){
@@ -2591,18 +2657,19 @@ function draw(){
   for (const l of S.lakes){
     if (l.x+l.r+40 < cam.x || l.x-l.r-40 > cam.x+vw || l.y+l.r+40 < cam.y || l.y-l.r-40 > cam.y+vh) continue;
     const blob = (grow) => { ctx.beginPath(); for (let k = 0; k <= 72; k++){ const t = (k%72)/72*Math.PI*2, e = l.E[k%72] + grow; k ? ctx.lineTo(l.x + Math.cos(t)*e, l.y + Math.sin(t)*e) : ctx.moveTo(l.x + e, l.y); } ctx.closePath(); };
-    ctx.fillStyle = '#dcc98e'; blob(SHORE+4); ctx.fill();
-    ctx.fillStyle = '#2f82d4'; blob(0); ctx.fill();
-    ctx.save(); blob(-60); ctx.fillStyle = 'rgba(15,60,140,.22)'; ctx.fill(); ctx.restore();
-    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 2; ctx.beginPath();
+    const sw = S.map === 'swamp';
+    ctx.fillStyle = sw ? '#3e4a2a' : '#dcc98e'; blob(SHORE+4); ctx.fill();
+    ctx.fillStyle = sw ? '#14302f' : '#2f82d4'; blob(0); ctx.fill();
+    ctx.save(); blob(-60); ctx.fillStyle = sw ? 'rgba(0,15,20,.35)' : 'rgba(15,60,140,.22)'; ctx.fill(); ctx.restore();
+    ctx.strokeStyle = sw ? 'rgba(150,200,170,.2)' : 'rgba(255,255,255,.25)'; ctx.lineWidth = 2; ctx.beginPath();
     for (let i = 0; i < 90; i++){
       const ang = i*2.39996, rr = 40 + ((i*137) % Math.max(10, l.r - 70)), x = l.x + Math.cos(ang)*rr, y = l.y + Math.sin(ang)*rr;
       if (!vis(x, y, 30) || !lakeIn(l, x, y, -30) || onIsland(l, x, y, 40)) continue;
       const ph = Math.sin(tt*1.4 + i)*4; ctx.moveTo(x-12+ph, y); ctx.quadraticCurveTo(x+ph, y-4, x+12+ph, y);
     }
     ctx.stroke();
-    ctx.fillStyle = '#dcc98e'; ctx.beginPath(); ctx.arc(l.ix, l.iy, l.i+SHORE, 0, 7); ctx.fill();                 // island: sand rim, grass top
-    ctx.fillStyle = '#5d9f4b'; ctx.beginPath(); ctx.arc(l.ix, l.iy, l.i-4, 0, 7); ctx.fill();
+    ctx.fillStyle = sw ? '#3e4a2a' : '#dcc98e'; ctx.beginPath(); ctx.arc(l.ix, l.iy, l.i+SHORE, 0, 7); ctx.fill();                 // island: sand rim, grass top
+    ctx.fillStyle = sw ? '#3d6a36' : '#5d9f4b'; ctx.beginPath(); ctx.arc(l.ix, l.iy, l.i-4, 0, 7); ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 2; ctx.stroke();
   }
   for (const b of S.boats){ const r = b.rider; drawBoat(ctx, r ? r.x : b.x, r ? r.y : b.y, b.ang || 0, !!r, tt); }
@@ -2801,6 +2868,20 @@ function draw(){
     const gx = Math.floor((p.x+Math.cos(p.angle)*62)/G), gy = Math.floor((p.y+Math.sin(p.angle)*62)/G);
     ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.setLineDash([5,5]); ctx.lineWidth=2; ctx.strokeRect(gx*G,gy*G,G,G); ctx.setLineDash([]);
   }
+  if (S.map === 'swamp'){      // night: a dark blue wash with a pool of dim light around you, and fireflies
+    const lx = p.x, ly = p.y, gr = ctx.createRadialGradient(lx, ly, 70, lx, ly, Math.max(vw, vh)*0.62);
+    gr.addColorStop(0, 'rgba(4,10,34,0.3)'); gr.addColorStop(0.5, 'rgba(3,8,30,0.52)'); gr.addColorStop(1, 'rgba(2,5,22,0.66)');
+    ctx.fillStyle = gr; ctx.fillRect(cam.x-4, cam.y-4, vw+8, vh+8);
+    const FS = 170, ft = performance.now()/1000; ctx.fillStyle = 'rgba(210,255,120,0.85)';
+    for (let cx = Math.floor(cam.x/FS)-1; cx < (cam.x+vw)/FS+1; cx++) for (let cy = Math.floor(cam.y/FS)-1; cy < (cam.y+vh)/FS+1; cy++){
+      let h = (cx*73856093 ^ cy*19349663) >>> 0; h = (h ^ (h>>>13)) * 1274126177 >>> 0;
+      if ((h & 3) !== 0) continue;
+      const fx = cx*FS + (h>>>4 & 127) + Math.sin(ft*0.7 + (h&63))*14, fy = cy*FS + (h>>>11 & 127) + Math.cos(ft*0.6 + (h&31))*10, tw = 0.5 + 0.5*Math.sin(ft*2.2 + (h&15));
+      ctx.globalAlpha = 0.25 + 0.7*tw; ctx.beginPath(); ctx.arc(fx, fy, 2, 0, 7); ctx.fill();
+      ctx.globalAlpha = 0.12*tw; ctx.beginPath(); ctx.arc(fx, fy, 7, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
   // storm overlay (hole in the middle)
   ctx.fillStyle = 'rgba(110,40,170,0.42)';
   ctx.beginPath(); ctx.rect(cam.x-10,cam.y-10,vw+20,vh+20);
@@ -2904,7 +2985,7 @@ function drawHUD(){
   ctx.fillText((st.state==='wait'?'Storm shrinks in ':'Storm closing ')+Math.max(0,st.t|0)+'s', tx, ty+lh*2);
   ctx.shadowBlur = 0;
   ctx.fillStyle=mapOf().mini; ctx.fillRect(mx,my,ms,ms);
-  for (const l of S.lakes){ ctx.fillStyle = '#3b8ee0'; ctx.beginPath(); for (let q = 0; q < 36; q++){ const t = q/36*Math.PI*2, e = l.E[q*2]; const X = mx+(l.x+Math.cos(t)*e)*k, Y = my+(l.y+Math.sin(t)*e)*k; q ? ctx.lineTo(X,Y) : ctx.moveTo(X,Y); } ctx.closePath(); ctx.fill(); ctx.fillStyle = '#6fbf5a'; ctx.beginPath(); ctx.arc(mx+l.ix*k, my+l.iy*k, Math.max(1.5, l.i*k), 0, 7); ctx.fill(); }
+  for (const l of S.lakes){ ctx.fillStyle = S.map === 'swamp' ? '#1a4a48' : '#3b8ee0'; ctx.beginPath(); for (let q = 0; q < 36; q++){ const t = q/36*Math.PI*2, e = l.E[q*2]; const X = mx+(l.x+Math.cos(t)*e)*k, Y = my+(l.y+Math.sin(t)*e)*k; q ? ctx.lineTo(X,Y) : ctx.moveTo(X,Y); } ctx.closePath(); ctx.fill(); ctx.fillStyle = '#6fbf5a'; ctx.beginPath(); ctx.arc(mx+l.ix*k, my+l.iy*k, Math.max(1.5, l.i*k), 0, 7); ctx.fill(); }
   if (S.koth && S.hill){ ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.arc(mx+S.hill.x*k, my+S.hill.y*k, Math.max(3, S.hill.r*k), 0, 7); ctx.fill(); }
   ctx.strokeStyle='#c6f'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(mx+st.cx*k,my+st.cy*k,st.r*k,0,7); ctx.stroke();
   if (st.state !== 'final' && st.nr < st.r - 1){ ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(mx+st.nx*k,my+st.ny*k,st.nr*k,0,7); ctx.stroke(); }
