@@ -177,7 +177,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 7;
+const VERSION = 8;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -326,14 +326,16 @@ const MAX_PLAYERS = 8;
 const SHIRTS = ['#e53935','#fb8c00','#fdd835','#43a047','#00acc1','#1e88e5','#8e24aa','#ec407a','#f5f5f5',
   '#b71c1c','#ff7043','#ffee58','#c6ff00','#1b5e20','#00e676','#009688','#4dd0e1','#0d47a1','#64b5f6','#303f9f','#7e57c2','#4a148c','#f06292','#880e4f','#8d6e63','#4e342e','#9e9e9e','#455a64','#212121'];      // (the first nine are the originals: saved avatars keep their colours)
 const HAIRS = ['#1a1410','#4a3020','#8a5a35','#c9a24b','#e8d28a','#b5361b','#7a7a85','#f2f2f2','#3a7bd5','#e0457b','#43a047','#8e24aa'];
-const HAIRSTYLES = ['Short','Buzz Cut','Long','Ponytail','Bun','Mohawk','Afro','Bald'];
+const HAIRSTYLES = ['Short','Long','Ponytail','Bun','Mohawk','Afro','Bald'];
 const PATTERNS = ['Solid','Horizontal Stripes','Vertical Stripes','Half & Half'];
 const SKINS = ['#fde0c8','#f1c7a0','#d9a26e','#b9814f','#8a5a35','#5c3a21'];
 const lookMsg = () => ({shirt:look.shirt, skin:look.skin, hair:look.hair, pat:look.pat, shirt2:look.shirt2, style:look.style});      // what other players are told about my avatar
 const okIdx = (i, n, d) => Number.isInteger(i) && i >= 0 && i < n ? i : d;
 let soloCrown = false;           // solo: did I win my previous game?
-let look = {shirt:5, skin:1, hair:1, pat:0, shirt2:8, style:0};      // my avatar: shirt colour, skin tone, hair colour, shirt pattern and its second colour (indexes into SHIRTS / SKINS / HAIRS / PATTERNS)
-try { const l = JSON.parse(localStorage.getItem('sr-look')); if (l){ look.shirt = okIdx(l.shirt, SHIRTS.length, 5); look.skin = okIdx(l.skin, SKINS.length, 1); look.hair = okIdx(l.hair, HAIRS.length, 1); look.pat = okIdx(l.pat, PATTERNS.length, 0); look.shirt2 = okIdx(l.shirt2, SHIRTS.length, 8); look.style = okIdx(l.style, HAIRSTYLES.length, 0); } else look.shirt = Math.random()*SHIRTS.length|0; } catch(_){}
+let look = {shirt:5, skin:1, hair:1, pat:0, shirt2:8, style:0, hv:2};      // my avatar: shirt colour, skin tone, hair colour, shirt pattern and its second colour (indexes into SHIRTS / SKINS / HAIRS / PATTERNS)
+// (the Buzz Cut was removed: avatars saved before that have their hair style shifted down one, once, below)
+try { const l = JSON.parse(localStorage.getItem('sr-look')); if (l){ look.shirt = okIdx(l.shirt, SHIRTS.length, 5); look.skin = okIdx(l.skin, SKINS.length, 1); look.hair = okIdx(l.hair, HAIRS.length, 1); look.pat = okIdx(l.pat, PATTERNS.length, 0); look.shirt2 = okIdx(l.shirt2, SHIRTS.length, 8); look.style = okIdx(l.style, HAIRSTYLES.length + 1, 0); if (l.hv !== 2) look.style = look.style === 1 ? 0 : look.style > 1 ? look.style - 1 : look.style; look.style = okIdx(look.style, HAIRSTYLES.length, 0); }      else look.shirt = Math.random()*SHIRTS.length|0; } catch(_){}
+try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){}      // keep the (migrated) avatar
 const PLAYER_COLORS = ['#4af','#fa4','#e5e','#5e8','#ee4','#f66','#4ee','#a8f'];
 const NET = {
   role:'solo',               // 'solo' | 'host' | 'guest'
@@ -2428,19 +2430,26 @@ function drawPerson(c, shirt, skinCol, ph, crown, opt){
         c.fillStyle = skin; c.lineWidth = 1.6; c.strokeStyle = '#000'; c.beginPath(); c.arc(14, sy*5.5, 3, 0, 7); c.fill(); c.stroke();   // hands
       }
       c.lineWidth = 2; c.strokeStyle = '#000';
-      const hc = opt.hair || '#4a3020', hs = opt.style | 0;                            // hair style: 0 short, 1 buzz, 2 long, 3 ponytail, 4 bun, 5 mohawk, 6 afro, 7 bald
-      c.fillStyle = hc;
-      if (hs === 2){ c.beginPath(); c.ellipse(-4.5, 0, 9, 10.5, 0, 0, 7); c.fill(); c.stroke(); }                 // long hair falling down the back
-      else if (hs === 3){ c.beginPath(); c.ellipse(-12, 0, 7, 2.8, 0, 0, 7); c.fill(); c.stroke(); }          // ponytail trailing behind
-      else if (hs === 6){ c.beginPath(); c.arc(-0.5, 0, 12.2, 0, 7); c.fill(); c.stroke(); }                   // afro: a big round cloud
-      c.fillStyle = skin; c.beginPath(); c.arc(1.5, 0, 7.2, 0, 7); c.fill(); c.stroke();                   // head
-      c.fillStyle = hc;
-      if (hs === 5){ c.beginPath(); c.roundRect(-5.5, -2.3, 12.5, 4.6, 2); c.fill(); c.stroke(); }                // mohawk: a strip down the middle
-      else if (hs === 1) { c.beginPath(); c.arc(1.5, 0, 7.2, Math.PI*0.3, Math.PI*1.7); c.closePath(); c.fill(); }   // buzz cut: covers most of the head
-      else if (hs !== 7){ c.beginPath(); c.arc(1.5, 0, 7.2, Math.PI*0.5, Math.PI*1.5); c.closePath(); c.fill(); }   // hair on the back of the head
-      c.beginPath(); c.arc(1.5, 0, 7.2, 0, 7); c.stroke();
-      if (hs === 3){ c.fillStyle = '#e53935'; c.fillRect(-6.3, -1.8, 2, 3.6); c.fillStyle = hc; c.beginPath(); c.arc(-5.2, 0, 2.4, 0, 7); c.fill(); c.stroke(); c.fillStyle = '#e53935'; c.beginPath(); c.arc(-5.2, 0, 1.1, 0, 7); c.fill(); }   // hair tie
-      else if (hs === 4){ c.fillStyle = hc; c.beginPath(); c.arc(-3.2, 0, 3.8, 0, 7); c.fill(); c.stroke(); }                                       // bun on top of the head
+      const hc = opt.hair || '#4a3020', hs = opt.style | 0;                            // hair style: 0 short, 1 long, 2 ponytail, 3 bun, 4 mohawk, 5 afro, 6 bald
+      if (hs === 5){                                                                   // afro: a fluffy ball of hair that covers the whole head, with the face peeking out the front
+        const puffs = [[0, 0, 9.5]]; for (let k = 0; k < 11; k++){ const g = k*Math.PI*2/11; puffs.push([Math.cos(g)*8.2, Math.sin(g)*8.2, 4.6]); }
+        c.strokeStyle = '#000'; c.lineWidth = 3;
+        for (const [px, py, pr] of puffs){ c.beginPath(); c.arc(px, py, pr, 0, 7); c.stroke(); }          // outline first...
+        c.fillStyle = hc;
+        for (const [px, py, pr] of puffs){ c.beginPath(); c.arc(px, py, pr, 0, 7); c.fill(); }            // ...then fill, which hides the inner outlines
+        c.lineWidth = 2; c.fillStyle = skin; c.beginPath(); c.arc(5, 0, 5.2, 0, 7); c.fill(); c.stroke();   // face
+      } else {
+        c.fillStyle = hc;
+        if (hs === 1){ c.beginPath(); c.roundRect(-19, -7.5, 21, 15, 6); c.fill(); c.stroke(); }             // long hair: a wide curtain falling down the back
+        else if (hs === 2){ c.beginPath(); c.ellipse(-12, 0, 7, 2.8, 0, 0, 7); c.fill(); c.stroke(); }      // ponytail trailing behind
+        c.fillStyle = skin; c.beginPath(); c.arc(1.5, 0, 7.2, 0, 7); c.fill(); c.stroke();                   // head
+        c.fillStyle = hc;
+        if (hs === 4){ c.beginPath(); c.roundRect(-6.5, -1.6, 11, 3.2, 1.4); c.fill(); c.stroke(); }         // mohawk: a narrow strip, set back from the forehead
+        else if (hs !== 6){ c.beginPath(); c.arc(1.5, 0, 7.2, Math.PI*0.5, Math.PI*1.5); c.closePath(); c.fill(); }   // hair on the back of the head
+        c.beginPath(); c.arc(1.5, 0, 7.2, 0, 7); c.stroke();
+        if (hs === 2){ c.fillStyle = '#e53935'; c.fillRect(-6.3, -1.8, 2, 3.6); c.fillStyle = hc; c.beginPath(); c.arc(-5.2, 0, 2.4, 0, 7); c.fill(); c.stroke(); c.fillStyle = '#e53935'; c.beginPath(); c.arc(-5.2, 0, 1.1, 0, 7); c.fill(); }   // hair tie
+        else if (hs === 3){ c.fillStyle = hc; c.beginPath(); c.arc(-3.2, 0, 3.8, 0, 7); c.fill(); c.stroke(); }     // bun on top of the head
+      }
       c.fillStyle = '#222'; c.beginPath(); c.arc(6, -2.6, 1, 0, 7); c.arc(6, 2.6, 1, 0, 7); c.fill();      // eyes
       if (crown){                                                                        // crown seen from above: a gold ring of points around the head
         c.beginPath();
