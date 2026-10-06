@@ -39,6 +39,10 @@
   .look canvas{width:56px;height:56px;flex:none;background:#2e4a33;border-radius:10px;border:1px solid #3a5a40}
   .look .lbl{margin:0 0 2px}
   .sws{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
+  .sws.big{gap:7px;margin-bottom:8px;justify-content:center}.sws.big .sw{width:32px;height:32px}
+  #avprev{display:block;position:sticky;top:6px;z-index:3;margin:4px auto 8px;width:130px;height:130px;box-shadow:0 4px 12px #0008;background:#2e4a33;border-radius:14px;border:1px solid #3a5a40}
+  #s-avatar .lbl{margin:8px 0 4px;text-align:center}
+  #av-pats,#av-styles{justify-content:center}
   .sw{width:21px;height:21px;border-radius:50%;border:2px solid #000a;padding:0;cursor:pointer;touch-action:manipulation}
   .sw.on{border-color:#fff;box-shadow:0 0 0 2px #fc4}
   .txt.name{font-size:20px;letter-spacing:1px;text-transform:none;padding:9px;margin-bottom:6px}
@@ -120,8 +124,7 @@
       <div id="winsbox" title="Royale wins in solo and bot matches">🏆 Royale wins: <b id="wincount">0</b></div>
       <label class="lbl" for="pname">Your name</label>
       <input id="pname" class="txt name" maxlength="12" placeholder="Enter a name" autocomplete="off" spellcheck="false">
-      <div class="look"><canvas id="lookprev" width="112" height="112"></canvas>
-        <div><div class="lbl">Shirt colour</div><div class="sws" id="shirts"></div><div class="lbl">Skin tone</div><div class="sws" id="skins"></div></div></div>
+      <div class="look"><canvas id="lookprev" width="112" height="112"></canvas><button class="btn" id="b-avatar">🎨 Design Your Avatar</button></div>
       <div class="lbl">Mode</div><div class="mapbox" id="modebox-main"><button class="mini" data-smode="classic">Battle Royale</button><button class="mini" data-smode="koth">King of the Hill</button></div>
       <div class="lbl">Map</div><div class="mapbox" id="mapbox-main"></div>
       <button class="btn" id="b-solo">Play Solo</button>
@@ -129,6 +132,18 @@
       <button class="btn" id="b-join">Join a Game</button>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
       <div class="ver" id="ver">G Royale</div>
+    </div>
+
+    <div id="s-avatar" hidden>
+      <p><b>Design Your Avatar</b></p>
+      <canvas id="avprev" width="150" height="150"></canvas>
+      <div class="lbl">Skin tone</div><div class="sws big" id="av-skins"></div>
+      <div class="lbl">Hair style</div><div class="mapbox" id="av-styles"></div>
+      <div class="lbl">Hair colour</div><div class="sws big" id="av-hairs"></div>
+      <div class="lbl">Shirt pattern</div><div class="mapbox" id="av-pats"></div>
+      <div class="lbl">Shirt colour</div><div class="sws big" id="av-shirts"></div>
+      <div id="av-c2"><div class="lbl">Second colour</div><div class="sws big" id="av-shirts2"></div></div>
+      <button class="btn" id="b-avdone">Save &amp; Back to Main Menu</button>
     </div>
 
     <div id="s-join" hidden>
@@ -162,7 +177,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 5;
+const VERSION = 7;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -308,12 +323,17 @@ const KOTH_PHASES = [
 // ---------- Game / network state ----------
 let phase = 'menu';          // 'menu' | 'lobby' | 'play'
 const MAX_PLAYERS = 8;
-const SHIRTS = ['#e53935','#fb8c00','#fdd835','#43a047','#00acc1','#1e88e5','#8e24aa','#ec407a','#f5f5f5'];
+const SHIRTS = ['#e53935','#fb8c00','#fdd835','#43a047','#00acc1','#1e88e5','#8e24aa','#ec407a','#f5f5f5',
+  '#b71c1c','#ff7043','#ffee58','#c6ff00','#1b5e20','#00e676','#009688','#4dd0e1','#0d47a1','#64b5f6','#303f9f','#7e57c2','#4a148c','#f06292','#880e4f','#8d6e63','#4e342e','#9e9e9e','#455a64','#212121'];      // (the first nine are the originals: saved avatars keep their colours)
+const HAIRS = ['#1a1410','#4a3020','#8a5a35','#c9a24b','#e8d28a','#b5361b','#7a7a85','#f2f2f2','#3a7bd5','#e0457b','#43a047','#8e24aa'];
+const HAIRSTYLES = ['Short','Buzz Cut','Long','Ponytail','Bun','Mohawk','Afro','Bald'];
+const PATTERNS = ['Solid','Horizontal Stripes','Vertical Stripes','Half & Half'];
 const SKINS = ['#fde0c8','#f1c7a0','#d9a26e','#b9814f','#8a5a35','#5c3a21'];
+const lookMsg = () => ({shirt:look.shirt, skin:look.skin, hair:look.hair, pat:look.pat, shirt2:look.shirt2, style:look.style});      // what other players are told about my avatar
 const okIdx = (i, n, d) => Number.isInteger(i) && i >= 0 && i < n ? i : d;
 let soloCrown = false;           // solo: did I win my previous game?
-let look = {shirt:5, skin:1};      // my chosen shirt colour / skin tone (indexes into SHIRTS / SKINS)
-try { const l = JSON.parse(localStorage.getItem('sr-look')); if (l){ look.shirt = okIdx(l.shirt, SHIRTS.length, 5); look.skin = okIdx(l.skin, SKINS.length, 1); } else look.shirt = Math.random()*SHIRTS.length|0; } catch(_){}
+let look = {shirt:5, skin:1, hair:1, pat:0, shirt2:8, style:0};      // my avatar: shirt colour, skin tone, hair colour, shirt pattern and its second colour (indexes into SHIRTS / SKINS / HAIRS / PATTERNS)
+try { const l = JSON.parse(localStorage.getItem('sr-look')); if (l){ look.shirt = okIdx(l.shirt, SHIRTS.length, 5); look.skin = okIdx(l.skin, SKINS.length, 1); look.hair = okIdx(l.hair, HAIRS.length, 1); look.pat = okIdx(l.pat, PATTERNS.length, 0); look.shirt2 = okIdx(l.shirt2, SHIRTS.length, 8); look.style = okIdx(l.style, HAIRSTYLES.length, 0); } else look.shirt = Math.random()*SHIRTS.length|0; } catch(_){}
 const PLAYER_COLORS = ['#4af','#fa4','#e5e','#5e8','#ee4','#f66','#4ee','#a8f'];
 const NET = {
   role:'solo',               // 'solo' | 'host' | 'guest'
@@ -485,7 +505,7 @@ function newActor(kind, i, h){
     color: human ? PLAYER_COLORS[pid % PLAYER_COLORS.length] : `hsl(${rnd(0,360)|0},60%,55%)`,
     strafe:1, strafeT:0, wp:null, wpT:0};
   a.crown = !!(human && h.crown);
-  if (human){ a.shirt = SHIRTS[okIdx(h.shirt, SHIRTS.length, -1)] || null; a.skin = SKINS[okIdx(h.skin, SKINS.length, 1)]; }
+  if (human){ a.shirt = SHIRTS[okIdx(h.shirt, SHIRTS.length, -1)] || null; a.skin = SKINS[okIdx(h.skin, SKINS.length, 1)]; a.hair = HAIRS[okIdx(h.hair, HAIRS.length, 1)]; a.hstyle = okIdx(h.style, HAIRSTYLES.length, 0); a.pat = okIdx(h.pat, PATTERNS.length, 0); a.shirt2 = SHIRTS[okIdx(h.shirt2, SHIRTS.length, 8)]; }
   else a.skin = SKINS[Math.random()*SKINS.length|0];
   return a;
 }
@@ -563,7 +583,7 @@ function genCity(){
 }
 function init(humans, humansOnly, mapId, koth){
   mapId = okMap(mapId); if (mapId === 'random') mapId = MAP_IDS[Math.random()*MAP_IDS.length|0];
-  humans = humans || [{pid:0, name:cleanName($('pname').value) || 'Player 1', tm:null, shirt:look.shirt, skin:look.skin, crown:soloCrown}];
+  humans = humans || [{pid:0, name:cleanName($('pname').value) || 'Player 1', tm:null, ...lookMsg(), crown:soloCrown}];
   S = {actors:[], players:[], bullets:[], trees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[], lakes:[], boats:[],
     over:false, winTeam:null, overAt:0,
     map:mapId, koth:!!koth, humansOnly:!!humansOnly && !koth, hasBots:!humansOnly || !!koth, phases:koth ? KOTH_PHASES : PHASES,
@@ -1731,14 +1751,14 @@ function sendSnapshot(){
 function sendInit(){
   const base = {t:'init',
     map:S.map, ice:S.ice || [], koth:S.koth ? 1 : 0, hill:S.hill || null, bots:S.hasBots ? 1 : 0, trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]), lakes:S.lakes.map(l => [l.x, l.y, ...l.h, l.ox, l.oy]), boats:S.boats.map(b => [b.x, b.y, b.ang]),
-    actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, s:a.shirt || null, k:a.skin, cw:a.crown ? 1 : 0, x:Math.round(a.x), y:Math.round(a.y)}))};
+    actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, s:a.shirt || null, k:a.skin, hr:a.hair || null, hs:a.hstyle | 0, pt:a.pat | 0, s2:a.shirt2 || null, cw:a.crown ? 1 : 0, x:Math.round(a.x), y:Math.round(a.y)}))};
   for (const pid in NET.peers){
     const me = S.actors.findIndex(a => a.isPlayer && a.pid === +pid);
     try { NET.peers[pid].conn.send(Object.assign({me}, base)); } catch(_){}
   }
   NET.last = {W:'',L:'',C:'',T:''};
 }
-const currentHumans = () => NET.lobby.map(p => ({pid:p.pid, name:p.name, tm:NET.mode === 'koth' ? null : p.tm, bm:NET.mode === 'humans' || NET.mode === 'koth' ? 0 : p.bm || 0, shirt:p.shirt, skin:p.skin, crown:!!p.crown}));
+const currentHumans = () => NET.lobby.map(p => ({pid:p.pid, name:p.name, tm:NET.mode === 'koth' ? null : p.tm, bm:NET.mode === 'humans' || NET.mode === 'koth' ? 0 : p.bm || 0, shirt:p.shirt, skin:p.skin, hair:p.hair, style:p.style, pat:p.pat, shirt2:p.shirt2, crown:!!p.crown}));
 function hostBeginMatch(){
   if (NET.role !== 'host' || phase !== 'lobby') return;
   if (!teamsEven(currentHumans(), NET.mode !== 'humans')){ toast('Teams must all be the same size', 2500); return; }
@@ -1833,7 +1853,7 @@ function hostAcceptConnection(conn){
     pid = NET.nextPid++;
     const name = uniqueName(cleanName(m.name) || 'Player ' + (pid+1));
     NET.peers[pid] = {conn, name};
-    NET.lobby.push({pid, name, tm:null, bm:0, wins:0, shirt:okIdx(m.shirt, SHIRTS.length, 0), skin:okIdx(m.skin, SKINS.length, 1)});   // wins only count inside this room
+    NET.lobby.push({pid, name, tm:null, bm:0, wins:0, shirt:okIdx(m.shirt, SHIRTS.length, 0), skin:okIdx(m.skin, SKINS.length, 1), hair:okIdx(m.hair, HAIRS.length, 1), style:okIdx(m.style, HAIRSTYLES.length, 0), pat:okIdx(m.pat, PATTERNS.length, 0), shirt2:okIdx(m.shirt2, SHIRTS.length, 8)});   // wins only count inside this room
     try { conn.send({t:'welcome', pid, name}); } catch(_){}
     lobbyBroadcast();
     toast(name + ' joined'); playSnd('ui');
@@ -1935,7 +1955,7 @@ function buildGuestState(m){
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
   m.actors.forEach(d => S.actors.push({x:d.x, y:d.y, tx:d.x, ty:d.y, r:15, hp:100, sh:0, wood:0,
     inv:['pickaxe',null,null,null,null,null], gr:newGr(), ammo:newAmmo(), band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, down:0, rv:0, rvT:0, kills:0, place:0,
-    isPlayer:!!d.h, pid:d.pid, team:d.tm, name:d.n, color:d.c, shirt:d.s || null, skin:d.k, crown:!!d.cw, seen:false}));
+    isPlayer:!!d.h, pid:d.pid, team:d.tm, name:d.n, color:d.c, shirt:d.s || null, skin:d.k, hair:d.hr || null, hstyle:d.hs | 0, pat:d.pt | 0, shirt2:d.s2 || null, crown:!!d.cw, seen:false}));
   S.player = S.actors[m.me];
   S.player.seen = true;
 }
@@ -2039,7 +2059,7 @@ function guestAttach(conn, name){
   conn.on('data', onGuestData);
   conn.on('close', onHostLeft);
   conn.on('error', onHostLeft);
-  const hello = () => { try { conn.send({t:'hello', name:cleanName(name), shirt:look.shirt, skin:look.skin}); } catch(_){} };
+  const hello = () => { try { conn.send(Object.assign({t:'hello', name:cleanName(name)}, lookMsg())); } catch(_){} };
   if (conn.open) hello(); else conn.on('open', hello);
 }
 
@@ -2383,23 +2403,44 @@ function drawCrownIcon(c, x, y, k){      // little upright crown shown above a c
   c.beginPath(); c.moveTo(-9,4); c.lineTo(-10,-6); c.lineTo(-4.5,-1); c.lineTo(0,-8); c.lineTo(4.5,-1); c.lineTo(10,-6); c.lineTo(9,4); c.closePath(); c.fill(); c.stroke();
   c.fillStyle = '#e53935'; c.beginPath(); c.arc(0,0,1.7,0,7); c.fill(); c.restore();
 }
-function drawPerson(c, shirt, skinCol, ph, crown){
+function drawPerson(c, shirt, skinCol, ph, crown, opt){
+    opt = opt || {};
     {   // a little person seen from above, facing right: feet, shoulders (team colour), arms, head with hair
       const skin = skinCol;
       c.fillStyle = '#3b3b44';                                                       // shoes step as you move
       c.beginPath(); c.ellipse(ph, -6, 5.5, 3.6, 0, 0, 7); c.fill(); c.stroke();
       c.beginPath(); c.ellipse(-ph, 6, 5.5, 3.6, 0, 0, 7); c.fill(); c.stroke();
-      c.fillStyle = shirt; c.beginPath(); c.ellipse(-1, 0, 7.5, 13.5, 0, 0, 7); c.fill(); c.stroke();   // body / shoulders
+      const pat = opt.pat | 0, shirt2 = opt.shirt2 || shirt;
+      c.fillStyle = shirt; c.beginPath(); c.ellipse(-1, 0, 7.5, 13.5, 0, 0, 7); c.fill();   // body / shoulders
+      if (pat > 0){                                                                      // shirt pattern in a second colour (clipped to the body)
+        c.save(); c.beginPath(); c.ellipse(-1, 0, 7.5, 13.5, 0, 0, 7); c.clip(); c.fillStyle = shirt2;
+        if (pat === 1){ for (let k = 1; k < 6; k += 2) c.fillRect(-8.5 + k*3, -14, 3, 28); }          // bands across the shoulders
+        else if (pat === 2){ for (let k = 1; k < 6; k += 2) c.fillRect(-9, -13.5 + k*4.5, 18, 4.5); }  // stripes running front to back
+        else c.fillRect(-9, 0, 18, 14);                                                                  // each shoulder a different colour
+        c.restore();
+      }
+      c.beginPath(); c.ellipse(-1, 0, 7.5, 13.5, 0, 0, 7); c.stroke();
       c.fillStyle = shirt; c.lineWidth = 2;
       for (const sy of [-1, 1]){                                                        // arms reaching forward to the item
+        const sleeve = pat === 3 && sy === 1 ? shirt2 : shirt;
         c.beginPath(); c.moveTo(-1, sy*11); c.lineTo(13, sy*5.5); c.lineWidth = 6.5; c.strokeStyle = '#000'; c.stroke();
-        c.lineWidth = 3.8; c.strokeStyle = shirt; c.stroke();
+        c.lineWidth = 3.8; c.strokeStyle = sleeve; c.stroke();
         c.fillStyle = skin; c.lineWidth = 1.6; c.strokeStyle = '#000'; c.beginPath(); c.arc(14, sy*5.5, 3, 0, 7); c.fill(); c.stroke();   // hands
       }
       c.lineWidth = 2; c.strokeStyle = '#000';
+      const hc = opt.hair || '#4a3020', hs = opt.style | 0;                            // hair style: 0 short, 1 buzz, 2 long, 3 ponytail, 4 bun, 5 mohawk, 6 afro, 7 bald
+      c.fillStyle = hc;
+      if (hs === 2){ c.beginPath(); c.ellipse(-4.5, 0, 9, 10.5, 0, 0, 7); c.fill(); c.stroke(); }                 // long hair falling down the back
+      else if (hs === 3){ c.beginPath(); c.ellipse(-12, 0, 7, 2.8, 0, 0, 7); c.fill(); c.stroke(); }          // ponytail trailing behind
+      else if (hs === 6){ c.beginPath(); c.arc(-0.5, 0, 12.2, 0, 7); c.fill(); c.stroke(); }                   // afro: a big round cloud
       c.fillStyle = skin; c.beginPath(); c.arc(1.5, 0, 7.2, 0, 7); c.fill(); c.stroke();                   // head
-      c.fillStyle = '#4a3020'; c.beginPath(); c.arc(1.5, 0, 7.2, Math.PI*0.5, Math.PI*1.5); c.closePath(); c.fill();   // hair on the back of the head
+      c.fillStyle = hc;
+      if (hs === 5){ c.beginPath(); c.roundRect(-5.5, -2.3, 12.5, 4.6, 2); c.fill(); c.stroke(); }                // mohawk: a strip down the middle
+      else if (hs === 1) { c.beginPath(); c.arc(1.5, 0, 7.2, Math.PI*0.3, Math.PI*1.7); c.closePath(); c.fill(); }   // buzz cut: covers most of the head
+      else if (hs !== 7){ c.beginPath(); c.arc(1.5, 0, 7.2, Math.PI*0.5, Math.PI*1.5); c.closePath(); c.fill(); }   // hair on the back of the head
       c.beginPath(); c.arc(1.5, 0, 7.2, 0, 7); c.stroke();
+      if (hs === 3){ c.fillStyle = '#e53935'; c.fillRect(-6.3, -1.8, 2, 3.6); c.fillStyle = hc; c.beginPath(); c.arc(-5.2, 0, 2.4, 0, 7); c.fill(); c.stroke(); c.fillStyle = '#e53935'; c.beginPath(); c.arc(-5.2, 0, 1.1, 0, 7); c.fill(); }   // hair tie
+      else if (hs === 4){ c.fillStyle = hc; c.beginPath(); c.arc(-3.2, 0, 3.8, 0, 7); c.fill(); c.stroke(); }                                       // bun on top of the head
       c.fillStyle = '#222'; c.beginPath(); c.arc(6, -2.6, 1, 0, 7); c.arc(6, 2.6, 1, 0, 7); c.fill();      // eyes
       if (crown){                                                                        // crown seen from above: a gold ring of points around the head
         c.beginPath();
@@ -2619,7 +2660,7 @@ function draw(){
       ctx.save(); if (Math.cos(a.angle) < 0) ctx.scale(1,-1);      // keep the gun the right way up when aiming left
       ctx.translate(a.inv[a.cur] === 'pistol' ? 10 : 18, 0); drawGun(ctx, a.inv[a.cur], a.inv[a.cur] === 'pistol' ? 1 : 0.78, RARITY[a.gr[a.inv[a.cur]] || 0].col); ctx.restore();
     }
-    drawPerson(ctx, a.shirt || a.color, a.skin || SKINS[1], Math.sin((a.x + a.y)*0.12)*5, a.crown);
+    drawPerson(ctx, a.shirt || a.color, a.skin || SKINS[1], Math.sin((a.x + a.y)*0.12)*5, a.crown, a.shirt ? {pat:a.pat, shirt2:a.shirt2, hair:a.hair, style:a.hstyle} : null);
     ctx.restore();
     // healing progress ring
     if (a.heal > 0){
@@ -2977,7 +3018,7 @@ function toast(t, ms){
   const el = $('toast'); el.textContent = t; el.style.display = 'block';
   clearTimeout(toastT); toastT = setTimeout(() => el.style.display = 'none', ms || 3500);
 }
-const SCREENS = ['s-main','s-join','s-lobby'];
+const SCREENS = ['s-main','s-avatar','s-join','s-lobby'];
 function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); menuMsg(''); }
 function menuMsg(t){ $('msg').textContent = t || ''; }
 function hideMenu(){ $('menu').classList.add('hide'); $('exit').style.display = 'block'; }
@@ -2992,22 +3033,33 @@ try { $('pname').value = localStorage.getItem('sr-name') || ''; } catch(_){}
 $('pname').addEventListener('input', () => { try { localStorage.setItem('sr-name', cleanName($('pname').value)); } catch(_){} });
 const myName = () => cleanName($('pname').value);
 function drawLookPreview(){
-  const c = $('lookprev').getContext('2d'); c.clearRect(0,0,112,112);
-  c.save(); c.translate(56,58); c.rotate(-Math.PI/2); c.scale(2.3,2.3); c.lineWidth = 2; c.strokeStyle = '#000'; c.lineJoin = 'round';
-  drawPerson(c, SHIRTS[look.shirt], SKINS[look.skin], 0); c.restore();
+  for (const [id, sc] of [['lookprev', 2.3], ['avprev', 4.2]]){
+    const cv2 = $(id), c = cv2.getContext('2d'), w = cv2.width; c.clearRect(0, 0, w, w);
+    c.save(); c.translate(w/2, w*0.52); c.rotate(-Math.PI/2); c.scale(sc, sc); c.lineWidth = 2; c.strokeStyle = '#000'; c.lineJoin = 'round';
+    drawPerson(c, SHIRTS[look.shirt], SKINS[look.skin], 0, false, {pat:look.pat, shirt2:SHIRTS[look.shirt2], hair:HAIRS[look.hair], style:look.style}); c.restore();
+  }
 }
 function buildLookPickers(){
+  const save = () => { try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){} buildLookPickers(); playSnd('ui'); };
   const mk = (id, cols, key) => {
     const box = $(id); box.textContent = '';
     cols.forEach((col, i) => {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'sw' + (look[key] === i ? ' on' : ''); b.style.background = col; b.setAttribute('aria-label', key + ' ' + (i+1));
-      b.onclick = () => { look[key] = i; try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){} buildLookPickers(); playSnd('ui'); };
+      b.onclick = () => { look[key] = i; save(); };
       box.appendChild(b);
     });
   };
-  mk('shirts', SHIRTS, 'shirt'); mk('skins', SKINS, 'skin'); drawLookPreview();
+  mk('av-skins', SKINS, 'skin'); mk('av-hairs', HAIRS, 'hair'); mk('av-shirts', SHIRTS, 'shirt'); mk('av-shirts2', SHIRTS, 'shirt2');
+  const hb = $('av-styles'); hb.textContent = '';
+  HAIRSTYLES.forEach((nm, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'mini' + (look.style === i ? ' sel' : ''); b.textContent = nm; b.onclick = () => { look.style = i; save(); }; hb.appendChild(b); });
+  const pb = $('av-pats'); pb.textContent = '';
+  PATTERNS.forEach((nm, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'mini' + (look.pat === i ? ' sel' : ''); b.textContent = nm; b.onclick = () => { look.pat = i; save(); }; pb.appendChild(b); });
+  $('av-c2').hidden = look.pat === 0;                      // a second colour only matters for stripes and half & half
+  drawLookPreview();
 }
 buildLookPickers();
+$('b-avatar').onclick = () => { showScreen('s-avatar'); buildLookPickers(); $('menu').scrollTop = 0; document.querySelectorAll('#menu *').forEach(n => { if (n.scrollTop) n.scrollTop = 0; }); };
+$('b-avdone').onclick = () => showScreen('s-main');
 
 function renderLobby(){
   const kothSolo = NET.viewMode === 'koth';      // King of the Hill: no teams
@@ -3107,7 +3159,7 @@ function createRoom(tries){
   const code = genCode(), peer = new Peer('stormroyale-'+code);
   NET.peer = peer;
   peer.on('open', () => {
-    Object.assign(NET, {role:'host', code, myPid:0, nextPid:1, peers:{}, lobby:[{pid:0, name:myName() || 'Player 1', tm:null, bm:0, wins:0, shirt:look.shirt, skin:look.skin}],
+    Object.assign(NET, {role:'host', code, myPid:0, nextPid:1, peers:{}, lobby:[{pid:0, name:myName() || 'Player 1', tm:null, bm:0, wins:0, ...lookMsg()}],
       invites:[], incoming:[], sent:new Set(), mode:'bots', map:soloMap});
     phase = 'lobby'; $('roomcode').textContent = code; showScreen('s-lobby'); lobbyBroadcast();
   });
