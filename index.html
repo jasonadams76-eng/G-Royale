@@ -67,6 +67,8 @@
   #modebox{display:flex;gap:8px;justify-content:center;margin:8px 0}
   #modebox .mini{background:#2a3a2a;color:#cfe;border:2px solid #4a6}
   #modebox .mini.sel{background:#fc4;color:#102010;border-color:#fc4}
+  .chk{display:flex;align-items:flex-start;gap:8px;text-align:left;font-size:12px;color:#cde;margin:8px 2px;cursor:pointer}
+  .chk input{width:20px;height:20px;flex:none;margin:0;accent-color:#fc4}
   .mapbox{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:6px 0}
   .mapbox .mini{background:#2a3a2a;color:#cfe;border:2px solid #4a6}
   #modebox-main .mini{background:#2a3a2a;color:#cfe;border:2px solid #4a6}
@@ -129,6 +131,7 @@
       <div class="look"><canvas id="lookprev" width="112" height="112"></canvas><button class="btn" id="b-avatar">🎨 Design Your Avatar</button></div>
       <div class="lbl">Mode</div><div class="mapbox" id="modebox-main"><button class="mini" data-smode="classic">Battle Royale</button><button class="mini" data-smode="koth">King of the Hill</button></div>
       <div class="lbl">Map</div><div class="mapbox" id="mapbox-main"></div>
+      <label class="chk" id="chk-auto"><input type="checkbox" id="autofire"> <span><b>Autofire</b> (touch controls): the gun fires by itself while you aim at an enemy you can see. Off: fire when you let go of the aim stick.</span></label>
       <button class="btn" id="b-solo">Play Solo</button>
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
@@ -181,7 +184,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 22;
+const VERSION = 24;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -489,7 +492,7 @@ addEventListener('pointermove', e => {
 function endPointer(e){
   if (e.pointerType === 'mouse'){ if (e.type === 'pointercancel' || e.button === 0) mouse.down = false; return; }
   if (revPtr === e.pointerId){ revHold = false; revPtr = null; }
-  if (touch.aim && touch.aim.id === e.pointerId && e.type === 'pointerup' && phase === 'play' && S && S.player.alive && Math.hypot(touch.aim.dx, touch.aim.dy) > 10){
+  if ((!autoFire || (S && S.player.inv[S.player.cur] === 'sniper')) && touch.aim && touch.aim.id === e.pointerId && e.type === 'pointerup' && phase === 'play' && S && S.player.alive && Math.hypot(touch.aim.dx, touch.aim.dy) > 10){
     const wp = WEAP[S.player.inv[S.player.cur]] || WEAP.pickaxe;      // release = fire (pull the stick back to the middle first to cancel)
     touchFireUntil = performance.now() + (wp.flame ? 700 : wp.burst ? 300 : 120);
   }
@@ -535,6 +538,7 @@ const KOTH_PLAYERS = 10;
 // A teammate who stays next to you for REVIVE_TIME seconds gets you back up; if the timer runs out, or nobody on your team can still help, you are eliminated.
 const DOWN_TIME = 30, REVIVE_TIME = 4, REVIVE_HP = 30, REVIVE_RANGE = 70;
 let revHold = false, revPtr = null;                   // touch: the REVIVE button is held
+let autoFire = false; try { autoFire = localStorage.getItem('sr-autofire') === '1'; } catch(_){}      // touch aiming: fire by itself when an enemy is in the aim line
 let touchFireUntil = 0;      // touch: the aim stick was just released, so the trigger is held for a moment
 const wantRevive = () => !!(keys['e'] || revHold);
 const canGoDown = a => !S.koth && !a.noDown && !(a.down > 0) && S.actors.some(o => o !== a && o.alive && o.team === a.team && !(o.down > 0));
@@ -1554,6 +1558,26 @@ function botThink(b, dt){
 }
 
 // ---------- Local player input (used by solo/host for the host's player and by every guest for their own) ----------
+// Autofire: is an enemy standing in the line the weapon is aimed along, within its reach, with nothing solid in between?
+function autoSees(a){
+  const id = a.inv[a.cur], w = WEAP[id]; if (!w || w.heal || w.grenade || w.passive || w.grapple) return false;
+  if (a.ammo && a.ammo[id] !== undefined && !(a.ammo[id] > 0)) return false;
+  if (id === 'sniper') return false;       // the sniper rifle never autofires: it is always aim and release
+  const range = w.melee ? w.range : w.flame ? 300 : w.sniper ? SN_RANGE : w.minigun ? MG_SPD*MG_LIFE : w.spd*w.life;
+  const ca = Math.cos(a.angle), sa = Math.sin(a.angle), fly = a.inv.includes('jetpack');
+  for (const o of S.actors){
+    if (o === a || !o.alive || o.team === a.team) continue;
+    const dx = o.x - a.x, dy = o.y - a.y, al = dx*ca + dy*sa;
+    if (al <= 0 || al > range + o.r || Math.abs(-dx*sa + dy*ca) > o.r + 4) continue;
+    let blocked = false;
+    if (!fly){
+      for (const t of S.trees){ const tx = t.x - a.x, ty = t.y - a.y, ta = tx*ca + ty*sa; if (ta > 0 && ta < al && Math.abs(-tx*sa + ty*ca) < t.r){ blocked = true; break; } }
+      for (let d = 30; !blocked && d < al; d += 16) if (S.walls.has(wallKey(Math.floor((a.x+ca*d)/G), Math.floor((a.y+sa*d)/G)))) blocked = true;
+    }
+    if (!blocked) return true;
+  }
+  return false;
+}
 function localInput(a, dt){
   const cam = camera();
   let vx = 0, vy = 0, fireNow = false;
@@ -1590,6 +1614,7 @@ function localInput(a, dt){
       }
     }
     if (performance.now() < touchFireUntil) fireNow = true;
+    if (autoFire && am && Math.hypot(am.dx, am.dy) > 10 && autoSees(a)) fireNow = true;
   }
   return {vx, vy, fire:fireNow};
 }
@@ -3083,7 +3108,7 @@ function drawHUD(){
       if (!s){ ctx.font='10px sans-serif'; ctx.textAlign='center'; ctx.fillText(label, ox, oy+STICK_R+14); }
     };
     drawStick(touch.move, 95, vh-115, 'MOVE');
-    drawStick(touch.aim, vw-95, vh-115, 'AIM · RELEASE TO FIRE');
+    drawStick(touch.aim, vw-95, vh-115, autoFire ? 'AIM · AUTOFIRE' : 'AIM · RELEASE TO FIRE');
   } else {
     if (S.map === 'snow'){ ctx.shadowColor = '#000'; ctx.shadowBlur = 4; }
     ctx.textAlign='left'; ctx.fillStyle='#fff'; ctx.font='12px sans-serif';
@@ -3374,6 +3399,7 @@ const markSoloMap = () => document.querySelectorAll('#mapbox-main .mini').forEac
 mkMapBox('mapbox-main', m => { soloMap = m; try { localStorage.setItem('sr-map', m); } catch(_){} markSoloMap(); });
 mkMapBox('mapbox-lobby', m => { if (NET.role !== 'host' || phase !== 'lobby') return; NET.map = m; lobbyBroadcast(); });
 markSoloMap();
+{ const cb = $('autofire'); cb.checked = autoFire; cb.onchange = () => { autoFire = cb.checked; try { localStorage.setItem('sr-autofire', autoFire ? '1' : '0'); } catch(_){} }; }
 $('b-leaveteam').onclick = () => sendLobbyMsg({t:'leaveteam'});
 $('b-leave').onclick = () => { resetNet(); showScreen('s-main'); };
 document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => showScreen('s-main'));
