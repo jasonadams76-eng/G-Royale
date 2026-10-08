@@ -248,7 +248,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 51;
+const VERSION = 52;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -1259,7 +1259,7 @@ function storyReset(){
   for (const a of S.actors) if (a.enemy && a.alive && a.camp === -1) a.alive = false;      // the boss's summoned helpers vanish
   for (const a of S.actors){
     if (!a.enemy || !a.alive) continue;
-    a.x = a.tx = a.home.x; a.y = a.ty = a.home.y; a.alert = false; a.wp = null; a.avT = 0; a.lastHit = 0; a.rt = 0.5; a.fg = 0; a.cd = 0; if (a.boar){ a.chG = a.chW = 0; a.flash = false; }
+    a.x = a.tx = a.home.x; a.y = a.ty = a.home.y; a.alert = false; a.ret = false; a.keep = 0; a.wp = null; a.avT = 0; a.lastHit = 0; a.rt = 0.5; a.fg = 0; a.cd = 0; if (a.boar){ a.chG = a.chW = 0; a.flash = false; }
     if (!a.boss) a.hp = a.hpMax; else { const bs = S.story.bs; bs.awake = false; bs.wind = bs.charge = 0; bs.tShot = 1.5; bs.tBurst = 3; bs.tCharge = 5; bs.tSpawn = 6; bs.waveWind = 0; bs.pend = []; a.flash = false; S.story.mounds = []; }
   }
   S.bullets = []; S.grenades = [];
@@ -1640,7 +1640,7 @@ function drawWarden(c, ph){
   c.shadowBlur = 0;
   c.strokeStyle = '#8bd36a'; c.lineWidth = 0.7; c.beginPath(); c.moveTo(-4, -3); c.quadraticCurveTo(2, -6, 8, -2.5); c.moveTo(-4, 3); c.quadraticCurveTo(2, 6, 8, 2.5); c.stroke();      // veins on the hood
 }
-function alertCamp(b){ for (const o of S.actors) if (o.enemy && o.alive && !o.boss && (o === b || (b.camp >= 0 && o.camp === b.camp) || Math.hypot(o.x-b.x, o.y-b.y) < 320)){ if (!o.alert) o.rt = 0.45 + Math.random()*0.35; o.alert = true; } }
+function alertCamp(b){ for (const o of S.actors) if (o.enemy && o.alive && !o.boss && (o === b || !o.ret) && (o === b || (b.camp >= 0 && o.camp === b.camp) || Math.hypot(o.x-b.x, o.y-b.y) < 320)){ if (!o.alert) o.rt = 0.45 + Math.random()*0.35; o.alert = true; } }
 function enemyThink(b, dt){
   if (S.over) return [0,0];
   if (b.emT > 0){ b.emT -= dt; return [0,0]; }      // still climbing out of the sand
@@ -1649,8 +1649,13 @@ function enemyThink(b, dt){
   const d = p.alive ? Math.hypot(p.x-b.x, p.y-b.y) : 1e9, hurt = performance.now() - (b.lastHit || -1e9) < 2500;
   const dh = Math.hypot(b.x-b.home.x, b.y-b.home.y);
   b.losT = (b.losT || 0) - dt; if (b.losT <= 0){ b.losT = 0.25; b.los = p.alive && d < 700 && storyLOS(b.x, b.y, p.x, p.y); }
-  if (!b.alert && p.alive && ((d < b.aggro && b.los) || hurt)) alertCamp(b);
-  if (b.alert && (!p.alive || (b.camp >= 0 && dh > 620) || (b.camp >= 0 && !b.los && dh > 300 && d > 250))) b.alert = false;      // gave up the chase: walk home
+  // No invisible fence: a foe chases for as long as you are close, gives up once you are well out of reach, then marches home and ignores you until it gets there
+  // (unless you shoot it on the way: it turns to fight and stays committed for a while, so it never dithers back and forth at an edge)
+  if (b.keep > 0) b.keep -= dt;
+  if (b.ret && (dh < 140 || (!p.alive && dh < 400))) b.ret = false;
+  if (b.ret && hurt && d < 520){ b.ret = false; b.keep = 7; }
+  if (!b.alert && !b.ret && p.alive && ((d < b.aggro && b.los) || hurt)) alertCamp(b);
+  if (b.alert && b.camp >= 0 && !(b.keep > 0) && (!p.alive || dh > 1600 || (dh > 750 && d > 480) || (!b.los && dh > 300 && d > 250 && !hurt))){ b.alert = false; b.ret = true; b.wp = null; }      // gave up the chase: walk home
   let mx = 0, my = 0, speed = b.spd;
   if (b.alert && p.alive){
     const a = Math.atan2(p.y-b.y, p.x-b.x), diff = Math.atan2(Math.sin(a-b.angle), Math.cos(a-b.angle));
@@ -1699,7 +1704,7 @@ function enemyThink(b, dt){
     b.wpT -= dt;
     if (dh > 170){ b.wp = {x:b.home.x, y:b.home.y}; b.wpT = 1; }
     else if (!b.wp || b.wpT <= 0){ b.wp = Math.random() < 0.35 ? null : {x:b.home.x + rnd(-110, 110), y:b.home.y + rnd(-110, 110)}; b.wpT = rnd(2.5, 5); }
-    if (b.wp && Math.hypot(b.wp.x-b.x, b.wp.y-b.y) > 12){ const a = Math.atan2(b.wp.y-b.y, b.wp.x-b.x); mx = Math.cos(a); my = Math.sin(a); speed = dh > 170 ? b.spd*0.9 : b.spd*0.4; b.angle = a; }
+    if (b.wp && Math.hypot(b.wp.x-b.x, b.wp.y-b.y) > 12){ const a = Math.atan2(b.wp.y-b.y, b.wp.x-b.x); mx = Math.cos(a); my = Math.sin(a); speed = b.ret ? b.spd : dh > 170 ? b.spd*0.9 : b.spd*0.4; b.angle = a; }
   }
   if (mx || my){                  // stuck on a tree or stump? sidestep for a moment
     b.stT = (b.stT || 0) + dt;
@@ -2184,6 +2189,50 @@ MUSIC.victory = {bpm:120, len:192,
       if (fin) m.tone(mtof(l-12), mtof(l-12), d, 'square', .04);
     }
   }};
+
+// ---- cut scene music: dramatic and cinematic, nothing like the menu theme ----
+// 'cine': D minor, slow and ominous: timpani heartbeat, low string pads, a lonely horn line
+MUSIC.cine = {bpm:66, chords:[[50,53,57],[46,50,53],[43,46,50],[45,49,52]], roots:[26,22,19,21],
+  lead:[[74,0,0,0,0,0,0,0,77,0,0,0,76,0,74,0],[72,0,0,0,0,0,0,0,74,0,0,0,70,0,0,0],
+        [70,0,0,0,74,0,0,0,73,0,0,0,70,0,0,0],[69,0,0,0,0,0,73,0,76,0,0,0,81,0,0,0]],
+  step(m, st, bar, i){
+    const ch = this.chords[bar], r = this.roots[bar];
+    if (i === 0){ ch.forEach(n => { m.tone(mtof(n-12), mtof(n-12), 16*m.spb, 'sawtooth', .05); m.tone(mtof(n), mtof(n), 16*m.spb, 'triangle', .06); }); m.tone(mtof(r), mtof(r), 16*m.spb, 'sine', .4); }
+    if (i === 0 || i === 6 || i === 10) m.drum('t', i === 0 ? .95 : .55);
+    if (bar === 3 && i >= 12) m.drum('t', .5 + (i-12)*.12);
+    if (i === 0 && bar === 0 && st % 64 === 0) m.drum('c', .45);
+    const l = this.lead[bar][i];
+    if (l){ let len = 1; while (i+len < 16 && !this.lead[bar][i+len] && len < 8) len++; const d = len*m.spb*.95;
+      m.tone(mtof(l), mtof(l), d, 'sawtooth', .07); m.tone(mtof(l-12), mtof(l-12), d, 'square', .035); }
+  }};
+// 'cineWar': faster, relentless war drums, rising D minor ostinato (Ravenrock)
+MUSIC.cineWar = {bpm:104, chords:[[50,53,57],[46,50,53],[48,52,55],[45,49,52]], roots:[26,22,24,21],
+  lead:[[74,0,74,0,77,0,74,0,81,0,0,0,79,0,77,0],[70,0,70,0,74,0,70,0,77,0,0,0,76,0,74,0],
+        [72,0,72,0,76,0,72,0,79,0,0,0,77,0,76,0],[73,0,73,0,76,0,81,0,85,0,0,0,84,0,81,0]],
+  step(m, st, bar, i){
+    const ch = this.chords[bar], r = this.roots[bar];
+    if (i === 0) ch.forEach(n => { m.tone(mtof(n-12), mtof(n-12), 16*m.spb, 'sawtooth', .05); m.tone(mtof(n), mtof(n), 16*m.spb, 'sawtooth', .035); });
+    if (i % 2 === 0){ const n = r + 12; m.tone(mtof(n), mtof(n), .14, 'sawtooth', .17); }
+    if (i % 4 === 0 || i === 3 || i === 11) m.drum('t', i % 8 === 0 ? .95 : .6);
+    if (i === 4 || i === 12) m.drum('s', .45);
+    if (bar === 3 && i >= 12) m.drum('s', .25 + (i-12)*.12);
+    if (i === 0 && bar === 0 && st % 64 === 0) m.drum('c', .6);
+    const l = this.lead[bar][i];
+    if (l){ m.tone(mtof(l), mtof(l), .3, 'sawtooth', .075); m.tone(mtof(l), mtof(l), .3, 'square', .04); }
+  }};
+// 'cineHope': slow and noble, D major swell for victories and the ending
+MUSIC.cineHope = {bpm:72, chords:[[50,54,57],[45,49,52],[47,50,54],[43,47,50]], roots:[38,33,35,31],
+  lead:[[78,0,0,0,0,0,81,0,83,0,0,0,81,0,0,0],[76,0,0,0,0,0,80,0,81,0,0,0,0,0,0,0],
+        [74,0,0,0,78,0,0,0,79,0,0,0,78,0,76,0],[74,0,0,0,0,0,76,0,78,0,0,0,86,0,0,0]],
+  step(m, st, bar, i){
+    const ch = this.chords[bar], r = this.roots[bar];
+    if (i === 0){ ch.forEach(n => { m.tone(mtof(n), mtof(n), 16*m.spb, 'triangle', .07); m.tone(mtof(n+12), mtof(n+12), 16*m.spb, 'sawtooth', .03); }); m.tone(mtof(r), mtof(r), 16*m.spb, 'sine', .38); }
+    if (i === 0) m.drum('t', .8); if (i === 8) m.drum('t', .4);
+    if (i % 2 === 0){ const n = ch[(i/2) % 3] + 12; m.tone(mtof(n), mtof(n), .3, 'sine', .07); }
+    const l = this.lead[bar][i];
+    if (l){ let len = 1; while (i+len < 16 && !this.lead[bar][i+len] && len < 8) len++; const d = len*m.spb*.95;
+      m.tone(mtof(l), mtof(l), d, 'sawtooth', .06); m.tone(mtof(l), mtof(l), d, 'sine', .08); }
+  }};
 const M = {cur:null, gain:null, timer:0, off:false};
 try { M.off = localStorage.getItem('sr-nomusic') === '1'; } catch(_){}
 $('mus').textContent = M.off ? '🚫' : '🎵';
@@ -2193,7 +2242,9 @@ function setMusicOff(o){
   $('mus').textContent = o ? '🚫' : '🎵';
 }
 $('mus').onclick = e => { e.stopPropagation(); audioUnlock(); setMusicOff(!M.off); };
+const CS_MUS = {'ravenrock-intro':'cineWar', 'ravenrock-kane':'cineWar', 'ravenrock-outro':'cineHope', 'epilogue':'cineHope', 'marsh-outro':'cineHope', 'cold-outro':'cineHope', 'desert-outro':'cineHope', 'forest-outro':'cineHope', 'sea-outro':'cineHope'};
 function musicWanted(){
+  if (CS) return CS_MUS[CS.id] || 'cine';
   if (phase === 'play'){
     if (S && S.over) return S.winTeam !== null && S.winTeam === S.player.team ? 'victory' : null;   // winners get the fanfare, others a short jingle over silence
     return 'battle';
@@ -2225,6 +2276,7 @@ function musicTick(){
     drum:(k, v) => { sOut = c.bus; const d = c.at - AC.currentTime;
       if (k === 'k'){ tone(150, 42, .16, 'sine', v*.9, d); }
       else if (k === 's'){ noise(.13, v*.5, 'bandpass', 2200, 1500, d); tone(210, 130, .08, 'triangle', v*.3, d); }
+      else if (k === 't'){ tone(95, 48, .45, 'sine', v*1.1, d); tone(60, 40, .6, 'sine', v*.7, d); noise(.12, v*.25, 'lowpass', 600, 200, d); }
       else if (k === 'c'){ noise(1.3, v*.35, 'highpass', 5000, 3000, d); }
       else noise(.04, v*.22, 'highpass', 7000, 7000, d); }};
   while (c.next < AC.currentTime + 0.3 && !(c.tr.len && c.step >= c.tr.len)){
@@ -5665,15 +5717,18 @@ const SCENES = {
     SC_N('But when {n} reached home, the street was silent.', 'ruin'),
     SC_D('hero', 'Mother? Father? ...Can you hear me?', 'ruin', {R:null}),
     SC_N('The house was gone. Only a few blackened beams were left standing. The silence said the rest.'),
-    SC_D('hero', 'Whoever sent that machine... whoever those soldiers answer to... I will find them. I swear it.'),
+    SC_N('{p}, {n}’s brother, had held the south wall that night. He found {n} in the ashes, and for a long time neither of them said a word.', null, {co:true}),
+    SC_D('hero', 'Whoever sent that machine... whoever those soldiers answer to... I will find them. I swear it.', null, {solo:true}),
+    SC_D('hero', 'Whoever sent that machine... {p}, we will find them. For Mother and Father. I swear it.', null, {co:true}),
     SC_N('In the ashes lay a scorched scrap of black cloth, stitched with a silver raven.'),
     SC_D('hero', 'A raven. Somebody, somewhere, knows what this means.'),
-    SC_M(['home'], 'With a weapon in hand and a scrap of cloth in his pocket, {n} set out across the dangerous countryside.')
+    SC_M(['home'], 'With a weapon in hand and a scrap of cloth in his pocket, {n} set out across the dangerous countryside.', {solo:true}),
+    SC_M(['home'], 'With weapons in hand and a scrap of cloth in his pocket, {n} and his brother {p} set out together across the dangerous countryside.', {co:true})
   ]},
   'marsh-intro':{title:'Chapter 1 · The Sunken Marsh', beats:[
     SC_C('CHAPTER 1', 'The Sunken Marsh', 'marsh'),
     SC_N('Days of walking brought {n} to the Sunken Marsh, where the road melts into black water and crooked trees.', 'marsh'),
-    SC_N('{p} walked beside {n}, ready for whatever lurked in the reeds.', null, {co:true}),
+    SC_N('{n}’s brother {p} walked beside him, ready for whatever lurked in the reeds.', null, {co:true}),
     SC_D('elder', 'Careful, traveller! Not many people wander out into the marsh. What brings you here?', 'marsh:huts'),
     SC_D('hero', 'I am looking for a war machine. An iron tank bigger than a house, flying a raven banner. Have you seen it?'),
     SC_D('elder', 'A tank? Never heard of such a thing. Out here we only have boats and boggarts.'),
@@ -5684,7 +5739,7 @@ const SCENES = {
     SC_N('Deep in the fog, two yellow eyes opened.', 'marsh:mist'),
     SC_D('vagar', 'Another little wanderer wades into my marsh... The water has swallowed braver than you. Come, little one, and sink.'),
     SC_N('{n} gripped the weapon tighter and stepped into the mist.', null, {solo:true}),
-    SC_N('Side by side, {n} and {p} stepped into the mist.', null, {co:true})
+    SC_N('Side by side, {n} and his brother {p} stepped into the mist.', null, {co:true})
   ]},
   'marsh-outro':{title:'Chapter 1 · The Warden Falls', beats:[
     SC_N('Vagar the Swamp Warden crashed into the black water, and for the first time in years the marsh fell quiet. The fog began to lift.', 'marsh:dawn'),
@@ -5704,7 +5759,7 @@ const SCENES = {
     SC_D('hero', 'I am only passing through. Stand aside.'),
     SC_D('gajin', 'Then you will pass through the snow... in pieces!'),
     SC_N('{n} raised a weapon against the Frost Colossus.', null, {solo:true}),
-    SC_N('{n} and {p} raised their weapons against the Frost Colossus.', null, {co:true})
+    SC_N('{n} and his brother {p} raised their weapons against the Frost Colossus.', null, {co:true})
   ]},
   'cold-outro':{title:'Chapter 2 · The Pass Is Open', beats:[
     SC_N('With a groan like splitting ice, Gajin the Frost Colossus toppled, and the whole pass thundered. Then, slowly, the howling wind died.', 'pass:dawn'),
@@ -5721,7 +5776,7 @@ const SCENES = {
     SC_D('hero', 'I am not paying anyone anything.'),
     SC_D('zareth', 'Then my children will collect it. Sssstings are very patient.'),
     SC_N('{n} drew a weapon and stepped onto the burning sand.', null, {solo:true}),
-    SC_N('{n} and {p} drew their weapons and stepped onto the burning sand.', null, {co:true})
+    SC_N('{n} and his brother {p} drew their weapons and stepped onto the burning sand.', null, {co:true})
   ]},
   'desert-outro':{title:'Chapter 3 · Escape from the Dunes', beats:[
     SC_N('The Scorpion King’s stinger sank into the sand one last time, and the desert fell silent.', 'desert'),
@@ -5733,7 +5788,7 @@ const SCENES = {
   'forest-intro':{title:'Chapter 4 · The Greenwood', beats:[
     SC_C('CHAPTER 4', 'The Greenwood', 'forest'),
     SC_N('The forest swallowed the road whole. Trees as old as kingdoms leaned overhead, and the light came down green and thin. Somewhere ahead, smoke rose from a village.', 'forest'),
-    SC_N('{p} kept close to {n}. Every creaking branch sounded like a warning.', null, {co:true}),
+    SC_N('{n}’s brother {p} kept close. Every creaking branch sounded like a warning.', null, {co:true}),
     SC_D('maren', 'Stop there, stranger! ...Forgive me. We have not seen a friendly face on this road in a long time.', 'forest:village'),
     SC_D('hero', 'I am looking for a war machine: an iron tank under a raven banner. Scouts, orders and coins, every trail leads to somewhere beyond this forest.'),
     SC_D('maren', 'The iron beast? Aye, we know of it. Its crews bought our timber, and the carts rolled away to the coast. We know where it came from, and the name of the man who sent it.'),
@@ -5745,7 +5800,7 @@ const SCENES = {
     SC_D('korvath', 'Little seedling... you walk on my roots and breathe my air. I have watched kingdoms rise and rot. You will not be remembered.'),
     SC_D('hero', 'Then I will give them something to remember.'),
     SC_N('{n} gripped a weapon and stepped beneath the great dark boughs.', null, {solo:true}),
-    SC_N('{n} and {p} gripped their weapons and stepped beneath the great dark boughs.', null, {co:true})
+    SC_N('{n} and his brother {p} gripped their weapons and stepped beneath the great dark boughs.', null, {co:true})
   ]},
   'forest-outro':{title:'Chapter 4 · The Forest Is Quiet', beats:[
     SC_N('Korvath groaned, and a sound like a hundred oaks falling rolled across the Greenwood. His branches split, the fire in his eyes went out, and the ancient giant sank into the earth. The goblins fled into the dark, and the wild boars wandered peacefully away.', 'forest:dawn'),
@@ -5761,7 +5816,7 @@ const SCENES = {
   'sea-intro':{title:'Chapter 5 · The Dreadwater Sea', beats:[
     SC_C('CHAPTER 5', 'The Dreadwater Sea', 'sea'),
     SC_N('At the edge of the Greenwood the fishermen’s boats waited on grey water. Somewhere beyond the horizon lay the Iron Coast, and the war-torn city of Ravenrock.', 'sea'),
-    SC_N('{p} took an oar beside {n}, and together they pushed out into the rain.', null, {co:true}),
+    SC_N('{n}’s brother {p} took an oar beside him, and together they pushed out into the rain.', null, {co:true}),
     SC_D('hero', 'Ravenrock is out there, past the Dreadwater. Let us not waste the tide.'),
     SC_N('Sails as black as ink slid out of the fog, flying skull flags, their cannons already run out.', 'sea:ships'),
     SC_D('hero', 'Pirates! Somebody is paying them to keep this sea shut.'),
@@ -5772,7 +5827,7 @@ const SCENES = {
     SC_D('thalassa', 'Kane pays me in iron and sorrow, and I let his ships sail. But you... you I will keep.'),
     SC_D('hero', 'Then I will cut through you, witch.'),
     SC_N('{n} lifted a weapon as the first great wave rose.', null, {solo:true}),
-    SC_N('{n} and {p} lifted their weapons as the first great wave rose.', null, {co:true})
+    SC_N('{n} and his brother {p} lifted their weapons as the first great wave rose.', null, {co:true})
   ]},
   'sea-outro':{title:'Chapter 5 · Calm Water', beats:[
     SC_N('Thalassa shrieked as her tentacles thrashed for the last time, and the black water closed over her. The storm broke apart, and the waves lay down like sleeping dogs.', 'sea:dawn'),
@@ -5784,9 +5839,9 @@ const SCENES = {
   'ravenrock-intro':{title:'Chapter 6 · Ravenrock', beats:[
     SC_C('CHAPTER 6', 'Ravenrock', 'war'),
     SC_N('The boat scraped onto the black shingle of the Iron Coast. Above the beach, the walled city of Ravenrock burned against the night, and the raven banners on its towers did not stir in the smoke.', 'war'),
-    SC_N('{p} climbed ashore beside {n}, weapon ready.', null, {co:true}),
+    SC_N('{p}, {n}’s brother, climbed ashore beside him, weapon ready.', null, {co:true}),
     SC_D('hero', 'The raven on the cloth, the soldiers at the gate, the machine that burned my home... It all started here. And it all ends here.', null, {solo:true}),
-    SC_D('hero', 'Everything that burned Wynford came from this city. Stay close, {p}. We end it tonight.', null, {co:true}),
+    SC_D('hero', 'Everything that burned Wynford came from this city. Stay close, {p}. We end it tonight, for Mother and Father.', null, {co:true}),
     SC_N('From a loudspeaker on the tower, a cold voice rolled across the rooftops.'),
     SC_D('kane', 'Citizens of Ravenrock, stay indoors. A stray has crossed my sea, my forests and my deserts. Tonight it learns the price of walking into my city.'),
     SC_D('kane', 'Soldiers: hold every street. Leave the rest to me.'),
@@ -5801,7 +5856,7 @@ const SCENES = {
     SC_N('The engines thundered. Four machine-gun turrets swung toward the intruders, and the great cannon dropped level.'),
     SC_D('hero', 'Its armour is too thick to hurt directly. Break the plates on its four corners, and the turrets go with them!'),
     SC_D('kane', 'Send in the reserves! Let us see how long you last against sixty tons of iron!'),
-    SC_N('{n} and {p} spread out, weapons ready.', null, {co:true}),
+    SC_N('{n} and his brother {p} spread out, weapons ready.', null, {co:true}),
     SC_N('{n} planted both feet and raised the weapon.', null, {solo:true})
   ]},
   'ravenrock-outro':{title:'Chapter 6 · The War Machine Falls', beats:[
@@ -5819,7 +5874,7 @@ const SCENES = {
     SC_D('hero', 'It will not bring them back. But nobody else will lose their home to that banner.'),
     SC_M(['home', 'marsh', 'cold', 'desert', 'forest', 'sea', 'raven'], 'Word travelled faster than any army. The marsh, the mountains, the dunes, the forest and the sea: every land {n} had crossed was free again.'),
     SC_N('In Wynford the people began to rebuild, stone by stone. The scrap of black cloth with its silver raven was folded away in a drawer, no longer a mystery. Only a memory.', 'war:end'),
-    SC_N('{n} and {p} watched the sun climb over the hills, side by side, and for the first time in a very long while, nothing was left to fight.', null, {co:true}),
+    SC_N('{n} and his brother {p} watched the sun climb over the hills, side by side, and for the first time in a very long while, nothing was left to fight.', null, {co:true}),
     SC_N('{n} watched the sun climb over the hills, and for the first time in a very long while, there was nothing left to fight.', null, {solo:true}),
     SC_C('THANK YOU FOR PLAYING', 'The End', 'war:end')
   ]}
