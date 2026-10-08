@@ -26,11 +26,16 @@
   .card p{margin:8px 0;font-size:14px;color:#cde}
   /* PC browsers: a wider menu, with the main screen in two columns */
   .cols{display:block}
+  #advgrid{display:grid;grid-template-columns:1fr;gap:8px;margin:6px 0}
+  .advcard{display:block;width:100%;box-sizing:border-box;text-align:left;padding:10px 14px;border-radius:12px;border:2px solid #4a6;background:#223a2a;color:#e8fff0;cursor:pointer;font-family:inherit}
+  .advcard .at{font-size:17px;font-weight:800}.advcard .as{font-size:12px;opacity:.85;margin-top:2px}.advcard .ast{font-size:12px;font-weight:700;margin-top:4px;color:#fc4}
+  .advcard.last{border-color:#fc4}.advcard.locked,.advcard.soon{opacity:.55;border-style:dashed;cursor:default}.advcard.done .ast{color:#7dff7d}
   .pconly{display:none}
   @media (pointer:fine) and (min-width:820px){
     .card{width:min(820px,calc(100% - 40px));padding:20px 28px 14px}
     .logo{width:min(340px,100%)}
     .cols{display:grid;grid-template-columns:1fr 1fr;gap:0 32px;align-items:start;text-align:left}
+    #advgrid{grid-template-columns:1fr 1fr}
     .colL,.colR{min-width:0}
     #s-main .hint{text-align:center}
     #chk-auto{display:none}                                  /* Autofire is a touch-screen option: not shown on PC */
@@ -162,7 +167,7 @@
       <div class="look"><canvas id="lookprev" width="112" height="112"></canvas><button class="btn" id="b-avatar">🎨 Design Your Avatar</button></div>
       <label class="chk" id="chk-auto"><input type="checkbox" id="autofire"> <span><b>Autofire</b> (touch controls): the gun fires by itself while you aim at an enemy you can see. Off: fire when you let go of the aim stick.</span></label>
       </div><div class="colR">
-      <div class="lbl">Mode</div><div class="mapbox" id="modebox-main"><button class="mini" data-smode="classic">Battle Royale</button><button class="mini" data-smode="koth">King of the Hill</button><button class="mini" data-smode="story">Adventure Mode</button></div><div id="storyhint" style="display:none;font-size:13px;opacity:.85;margin:4px 0 8px">Adventure (solo): fight through The Sunken Marsh, past the enemy camps, and defeat the Swamp Warden to finish the level.</div>
+      <div class="lbl">Mode</div><div class="mapbox" id="modebox-main"><button class="mini" data-smode="classic">Battle Royale</button><button class="mini" data-smode="koth">King of the Hill</button><button class="mini" data-smode="story">Adventure</button></div><div id="storyhint" style="display:none;font-size:13px;opacity:.85;margin:4px 0 8px">Adventure (solo): fight through a level full of enemy camps and defeat the boss. Press Play Solo to choose your adventure.</div>
       <div class="lbl">Map</div><div class="mapbox" id="mapbox-main"></div>
       </div></div>
       <div class="menubtns">
@@ -190,6 +195,11 @@
       <button class="btn" id="b-avdone">Save &amp; Back to Main Menu</button>
     </div>
 
+    <div id="s-adv" hidden>
+      <p style="font-size:18px;font-weight:700;margin:4px 0 10px">Choose your Adventure</p>
+      <div id="advgrid"></div>
+      <button class="btn ghost" data-back>Back</button>
+    </div>
     <div id="s-join" hidden>
       <div class="cols"><div class="colL">
       <p>Enter the room code</p>
@@ -229,7 +239,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 39;
+const VERSION = 41;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -345,7 +355,7 @@ const GRAPPLE_RANGE = 720, GH_FLY = 3200, GH_PULL = 1500, GH_CD = 0.8;
 const SN_RANGE = 2800, SN_DMG = 150, SN_CD = 5, SN_ZOOM = 0.5;   // sniper: reach in px, damage, seconds between shots, how far the view zooms out
 const FL_RANGE = 230, FL_TICK = 0.1, FL_DMG = 12.5;   // flamethrower: reach in px, a burst every 0.1 s, 12.5 damage each = 125 damage/s to everything in the flame
 const SWIM_MULT = 0.25;     // swimming (anyone in open water, not on a boat) moves at a quarter of walking speed
-const BOOT_MULT = 1.5, BOOT_RAR = 4, FLAME_MULT = 0.7, JET_MULT = 1.2, bootMul = a => (a.inv.includes('boots') ? BOOT_MULT : 1) * (a.inv[a.cur] === 'flame' ? FLAME_MULT : 1) * (a.inv.includes('jetpack') ? JET_MULT : (!a.boat && inWater(a.x, a.y) ? SWIM_MULT : 1) * (!a.boat && !inWater(a.x, a.y) && onBog(a.x, a.y) ? BOG_MULT : 1));   // speed boots: 1.5x move speed while in your loadout (one pair per match)
+const BOOT_MULT = 1.5, BOOT_RAR = 4, FLAME_MULT = 0.7, JET_MULT = 1.2, bootMul = a => (a.slowT > 0 ? 0.7 : 1) * (a.inv.includes('boots') ? BOOT_MULT : 1) * (a.inv[a.cur] === 'flame' ? FLAME_MULT : 1) * (a.inv.includes('jetpack') ? JET_MULT : (!a.boat && inWater(a.x, a.y) ? SWIM_MULT : 1) * (!a.boat && !inWater(a.x, a.y) && onBog(a.x, a.y) ? BOG_MULT : 1));   // speed boots: 1.5x move speed while in your loadout (one pair per match)
 const CHEST_COUNT = Math.round(32 * MS), CHEST_WEAPONS = ['pistol','pistol','pistol','shotgun','shotgun','ar','ar'];  // weighted odds
 // Gun rarities: the rarer the gun, the harder it hits, the faster it fires and the straighter it shoots.
 const RARITY = [
@@ -827,17 +837,27 @@ function init(humans, humansOnly, mapId, koth){
 // ---------- Adventure mode: a single player fights through a big map to a Level Boss ----------
 // One hand-placed level on the Swamp map. Enemy camps guard the route from the bottom-left to the boss arena in the top-right.
 // Dying sends you back to the last checkpoint (enemies you already beat stay beaten); the level ends when the boss falls.
-const STORY = {name:'The Sunken Marsh', HW:160, R:{S:330, C:450, B:620}, LIVES:5,
-  // the route: [x, y, kind] — S start, C camp, B boss, anything else is just a bend in the path
-  nodes:[[500,5500,'S'],[1300,5000],[2000,5300,'C'],[3000,5600],[3900,5300,'C'],[5000,5500],[5300,4600],[5000,4000,'C'],[4300,3300],[2600,3300,'C'],[1200,3400],[800,2400],[1500,1800,'C'],[1900,1100],[2900,900,'C'],[4100,1050],[5200,700,'B']],
-  cpAfter:[2, 4, 6]};      // checkpoints sit in the paths after camps 2, 4 and 6
-const BOSS_HP = 1800, SHAPE_DEF = null;
+// Adventure levels. nodes: the route as [x, y, kind] (S start, C camp, B boss, anything else is just a bend in the path); cpAfter: checkpoints sit in the paths after those camps.
+const STORY_LEVELS = {
+  marsh:{id:'marsh', ch:1, name:'The Sunken Marsh', map:'swamp', theme:'marsh', HW:160, R:{S:330, C:450, B:620}, LIVES:5, cpAfter:[2, 4, 6],
+    nodes:[[500,5500,'S'],[1300,5000],[2000,5300,'C'],[3000,5600],[3900,5300,'C'],[5000,5500],[5300,4600],[5000,4000,'C'],[4300,3300],[2600,3300,'C'],[1200,3400],[800,2400],[1500,1800,'C'],[1900,1100],[2900,900,'C'],[4100,1050],[5200,700,'B']],
+    campN:[3,4,5,6,6,6], campEl:[0,1,1,2,2,3], hpMul:1, bossName:'SWAMP WARDEN', bossTitle:'Swamp Warden', bossShort:'Warden', bossHp:1800, bossBar:['#b8844a','#8e5a2a','#b5481f'], bossBack:'#2e1d0e', bossBullet:'#7be04a', bossDot:'#b8844a', xp:[100, 8],
+    thicket:{base:'#08130d', cols:['#0f2a1b','#143522','#0b2016','#1a3d27']}, mmDark:'#06100b',
+    hint:'Adventure (solo): fight through The Sunken Marsh, past the enemy camps, and defeat the Swamp Warden to finish the level.'},
+  cold:{id:'cold', ch:2, name:'Bitter Cold', map:'snow', theme:'cold', HW:160, R:{S:330, C:450, B:620}, LIVES:5, cpAfter:[2, 4, 5, 7],
+    nodes:[[5500,5200,'S'],[3900,5200,'C'],[2000,5200,'C'],[700,5200],[700,3900,'C'],[700,3100],[3000,3100,'C'],[5300,3100],[5300,2100,'C'],[5300,1000],[4200,1000,'C'],[2900,1000,'C'],[700,1000,'B']],
+    campN:[4,4,5,5,6,6,7], campEl:[0,1,1,2,2,3,3], hpMul:1.25, bossName:'FROST COLOSSUS', bossTitle:'Frost Colossus', bossShort:'Colossus', bossHp:2400, bossBar:['#8fd6ff','#5fb2ee','#e8f6ff'], bossBack:'#10283a', bossBullet:'#bfe8ff', bossDot:'#7fd0ff', xp:[150, 10], slow:true,
+    thicket:{base:'#1e2f3b', cols:['#2a4352','#314c5c','#25404f','#3a5a6c','#cfe0ec','#27414f']}, mmDark:'#1b2a35',
+    hint:'Adventure (solo): climb the frozen mountain past living snowmen and defeat the Frost Colossus. Unlocked by beating the Swamp Warden.'}
+};
+let STORY = STORY_LEVELS.marsh;
 function mkEnemy(x, y, kind, camp){
   const a = newActor('bot', ++S.story.n), elite = kind === 'elite', gun = elite ? 'ar' : kind === 'shot' ? 'shotgun' : 'pistol';
   a.x = a.tx = x; a.y = a.ty = y; a.team = 'E'; a.enemy = true; a.noDown = true; a.camp = camp; a.home = {x, y}; a.alert = camp < 0; a.rt = 0.5;
-  a.name = elite ? 'Marsh Brute' : 'Marsh Raider'; a.hp = a.hpMax = elite ? 110 : 60; a.dmgMul = elite ? 0.55 : 0.4; a.spd = elite ? 165 : 145; a.aggro = elite ? 560 : 440;
+  a.snow = STORY.theme === 'cold'; a.elite = elite;
+  a.name = a.snow ? (elite ? 'Frost Brute' : 'Snowman') : elite ? 'Marsh Brute' : 'Marsh Raider'; a.hp = a.hpMax = Math.round((elite ? 110 : 60) * STORY.hpMul); a.dmgMul = elite ? 0.55 : 0.4; a.spd = elite ? 165 : 145; a.aggro = elite ? 560 : 440;
   a.inv = ['pickaxe', gun, null, null, null, null]; a.cur = 1; a.ammo[gun] = 14; a.started[gun] = true; a.gr[gun] = elite ? 1 : 0; a.wood = 0;
-  a.color = elite ? 'hsl(0,70%,32%)' : 'hsl(18,55%,38%)'; a.pref = gun === 'shotgun' ? 120 : gun === 'ar' ? 300 : 260;
+  a.color = elite ? 'hsl(0,70%,32%)' : 'hsl(18,55%,38%)'; if (a.snow){ a.color = '#e8f2fa'; if (elite) a.r = 17; } a.pref = gun === 'shotgun' ? 120 : gun === 'ar' ? 300 : 260;
   S.actors.push(a); return a;
 }
 // Which ground is open? Paths (capsules) and arenas (circles) are open; everything else is impassable swamp thicket.
@@ -874,21 +894,22 @@ function storyLOS(x1, y1, x2, y2){
   for (let i = 1; i < n; i++){ const t = i/n; if (storyClr(x1 + (x2-x1)*t, y1 + (y2-y1)*t) < 0) return false; }
   return true;
 }
-function initStory(){
-  init(null, false, 'swamp', false);
+function initStory(levelId){
+  STORY = STORY_LEVELS[levelId] || STORY_LEVELS.marsh;
+  init(null, false, STORY.map, false);
   const st = S.storm; st.r = st.nr = st.rTo = 99999; st.state = 'final'; st.t = 99999; S.ammoChk = 1e12;      // no storm in Adventure
-  S.actors = S.actors.filter(a => a.isPlayer); S.players = S.actors.slice(); S.loot = []; S.lakes = []; S.boats = []; S.trees = []; S.bog = []; S.chests = []; S.walls = new Map();
+  S.actors = S.actors.filter(a => a.isPlayer); S.players = S.actors.slice(); S.loot = []; S.lakes = []; S.boats = []; S.trees = []; S.bog = []; S.ice = []; S.chests = []; S.walls = new Map();
   const p = S.player = S.players[0];
   const sh = storyShapes(), N = STORY.nodes;
-  S.story = {n:0, cp:-1, deaths:0, lives:STORY.LIVES, deadT:0, t:0, boss:null, bs:{awake:false, ph:1, tShot:1.5, tBurst:3, tCharge:5, wind:0, charge:0, hitCd:0}, total:0, segs:sh.segs, circs:sh.circs,
+  S.story = {levelId:STORY.id, n:0, cp:-1, deaths:0, lives:STORY.LIVES, deadT:0, t:0, boss:null, bs:{awake:false, ph:1, tShot:1.5, tBurst:3, tCharge:5, wind:0, charge:0, hitCd:0}, total:0, segs:sh.segs, circs:sh.circs,
     special: Math.random() < 0.5 ? 'minigun' : 'flame', camps:[], cps:[]};
   const sy = S.story;
   // camps, in route order
-  N.forEach((n, i) => { if (n[2] === 'C') sy.camps.push({x:n[0], y:n[1], idx:i, n:3 + Math.min(3, sy.camps.length), el:[0,1,1,2,2,3][sy.camps.length], cleared:false}); });
+  N.forEach((n, i) => { if (n[2] === 'C') sy.camps.push({x:n[0], y:n[1], idx:i, n:STORY.campN[sy.camps.length], el:STORY.campEl[sy.camps.length], cleared:false}); });
   const bo = N.find(n => n[2] === 'B'), st0 = N[0];
   // scenery: solid thicket trees line the outside of every path and arena
   let tid = 1000;
-  const addTree = (x, y) => { const stump = (tid % 3) === 0; S.trees.push(stump ? {id:tid++, x:Math.round(x), y:Math.round(y), r:20, wood:100, solid:true} : {id:tid++, x:Math.round(x), y:Math.round(y), r:23, wood:1e6}); };
+  const addTree = (x, y) => { if (x < -30 || y < -30 || x > W + 30 || y > W + 30) return; const stump = STORY.map === 'swamp' && (tid % 3) === 0; S.trees.push(stump ? {id:tid++, x:Math.round(x), y:Math.round(y), r:20, wood:100, solid:true} : {id:tid++, x:Math.round(x), y:Math.round(y), r:23, wood:1e6}); };
   for (const q of sh.segs){
     const L = Math.hypot(q[2]-q[0], q[3]-q[1]), ux = (q[2]-q[0])/L, uy = (q[3]-q[1])/L;
     for (const sd of [-1, 1]) for (let d = 0; d <= L; d += 62){ const ox = q[0] + ux*d - uy*sd*(STORY.HW+30), oy = q[1] + uy*d + ux*sd*(STORY.HW+30); if (storyClr(ox, oy) < -14) addTree(ox + rnd(-6, 6), oy + rnd(-6, 6)); }
@@ -902,7 +923,14 @@ function initStory(){
   // chests: the start chest (a gun) and one per camp, which only appears once the camp is cleared
   const ammo = (g, n) => Array.from({length:n}, () => ({type:'ammo_'+g, n:AMMO['ammo_'+g].box})), heal = (k, n) => Array.from({length:n}, () => ({type:k}));
   S.chests.push({x:st0[0] + 170, y:st0[1] - 90, open:false, loot:[{type:'pistol', rar:0}, ...ammo('pistol', 3)]});
-  const L = [
+  const L = STORY.id === 'cold' ? [
+    [{type:'shotgun', rar:1}, ...ammo('shotgun', 3), ...ammo('pistol', 2), ...heal('bandage', 2)],
+    [{type:'pistol', rar:2}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 1), ...heal('bandage', 2)],
+    [{type:'shotgun', rar:2}, ...ammo('shotgun', 3), ...ammo('pistol', 3), ...heal('shield', 1), ...heal('bandage', 2)],
+    [{type:'pistol', rar:3}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 2), ...heal('bandage', 2)],
+    [{type:'shotgun', rar:3}, ...ammo('shotgun', 3), ...ammo('pistol', 3), ...heal('shield', 2), ...heal('bandage', 3)],
+    [{type:'pistol', rar:4}, ...ammo('pistol', 3), ...ammo('shotgun', 3), ...heal('shield', 2), ...heal('bandage', 3)],
+    [{type:sy.special, rar:4}, {type:'shotgun', rar:4}, ...ammo('pistol', 3), ...ammo('shotgun', 3), ...heal('shield', 3), ...heal('bandage', 3)]] : [
     [{type:'shotgun', rar:0}, ...ammo('shotgun', 3), ...ammo('pistol', 2), ...heal('bandage', 2)],
     [{type:'pistol', rar:1}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 1), ...heal('bandage', 2)],
     [{type:'shotgun', rar:2}, ...ammo('shotgun', 3), ...ammo('pistol', 2), ...heal('shield', 1), ...heal('bandage', 2)],
@@ -917,8 +945,8 @@ function initStory(){
     }
   });
   const b = newActor('bot', 99);
-  b.x = b.tx = bo[0]; b.y = b.ty = bo[1]; b.r = 44; b.scale = 2.9; b.team = 'E'; b.enemy = true; b.boss = true; b.noDown = true; b.name = 'SWAMP WARDEN'; b.hp = b.hpMax = BOSS_HP;
-  b.color = 'hsl(280,55%,30%)'; b.home = {x:bo[0], y:bo[1]}; b.inv = ['pickaxe', null, null, null, null, null]; b.wood = 0;
+  b.x = b.tx = bo[0]; b.y = b.ty = bo[1]; b.r = 44; b.scale = 2.9; b.team = 'E'; b.enemy = true; b.boss = true; b.noDown = true; b.name = STORY.bossName; b.hp = b.hpMax = STORY.bossHp;
+  b.color = STORY.theme === 'cold' ? '#7fa6c8' : 'hsl(280,55%,30%)'; b.home = {x:bo[0], y:bo[1]}; b.inv = ['pickaxe', null, null, null, null, null]; b.wood = 0;
   S.actors.push(b); sy.boss = b;
   // checkpoints: in the path after camps 2, 4 and 6, at the spot that is farthest from every camp and from the boss
   const route = [];                       // the route sampled every 25 units: [x, y, node index of the segment start]
@@ -931,10 +959,17 @@ function initStory(){
     sy.cps.push({x:Math.round(best[0]), y:Math.round(best[1]), away:Math.round(bs)});
   }
   sy.total = S.actors.filter(a => a.enemy && !a.boss).length;
-  // a few bog patches in the paths (half speed): never on a checkpoint
+  if (STORY.map === 'swamp'){
+    // a few bog patches in the paths (half speed): never on a checkpoint
   [[1,2],[3,4],[8,9],[10,11],[13,14]].forEach(([a, b]) => { const x = (N[a][0] + N[b][0])/2, y = (N[a][1] + N[b][1])/2; if (sy.cps.every(c => Math.hypot(c.x-x, c.y-y) > 300)) S.bog.push([Math.round(x), Math.round(y), 95]); });
+  } else {      // Bitter Cold: slippery ice patches in the paths and arenas (never on a checkpoint)
+    const spots = [];
+    for (let i = 0; i < N.length - 1; i++){ if (i % 2) continue; spots.push([(N[i][0] + N[i+1][0])/2, (N[i][1] + N[i+1][1])/2, 100]); }
+    sy.camps.forEach((c, ci) => { const an = ci*2.1 + 0.7; spots.push([c.x + Math.cos(an)*250, c.y + Math.sin(an)*250, 125]); });
+    for (const q of spots) if (sy.cps.every(c => Math.hypot(c.x-q[0], c.y-q[1]) > q[2] + 170) && sy.camps.every(c => Math.hypot(c.x-q[0], c.y-q[1]) > 120)) S.ice.push([Math.round(q[0]), Math.round(q[1]), q[2]]);
+  }
   S.actors.forEach(a => { a.invT = a === p ? 2 : 0; });
-  toast('Chapter 1 · ' + STORY.name + ' — find the chest near the start, then fight your way to the Swamp Warden', 5500);
+  toast('Chapter ' + STORY.ch + ' · ' + STORY.name + ' — find the chest near the start, then fight your way to the ' + STORY.bossTitle, 5500);
 }
 // You died: everything that is still alive goes back to where it started (the Warden keeps his health)
 function storyReset(){
@@ -962,6 +997,63 @@ function storyDrop(a){
   const r = Math.random();
   if (r < (el ? 0.45 : 0.30)) S.loot.push({x:a.x + j(), y:a.y + j(), type:'bandage', rar:0});
   else if (r < (el ? 0.70 : 0.45)) S.loot.push({x:a.x + j(), y:a.y + j(), type:'shield', rar:0});
+}
+
+// The Frost Colossus, seen from above and facing right (x+): a bald, bearded ice giant with crystal armour on the shoulders and forearms
+function drawColossus(c, ph){
+  const rim = '#1d3345', t = performance.now()/1000; c.lineJoin = 'round';
+  c.fillStyle = '#cfe8f7'; c.strokeStyle = rim; c.lineWidth = 0.8;
+  for (let i = 0; i < 10; i++){ const an = Math.PI + (i - 4.5)*0.42, l = 17 + (i % 3)*3; c.beginPath(); c.moveTo(Math.cos(an)*6 - Math.sin(an)*2.4, Math.sin(an)*6 + Math.cos(an)*2.4); c.lineTo(Math.cos(an)*l, Math.sin(an)*l); c.lineTo(Math.cos(an)*6 + Math.sin(an)*2.4, Math.sin(an)*6 - Math.cos(an)*2.4); c.closePath(); c.fill(); c.stroke(); }    // ice shards trailing behind
+  for (const sd of [-1, 1]){                                  // arms with icy gauntlets and claws
+    c.fillStyle = '#6a92b8'; c.beginPath(); c.ellipse(9, sd*12, 9, 4.8, sd*0.15, 0, 7); c.fill(); c.stroke();
+    c.fillStyle = '#b9ddf2'; for (let k = 0; k < 4; k++){ c.beginPath(); c.moveTo(6 + k*3.2, sd*(15.6 + (k % 2))); c.lineTo(8 + k*3.2, sd*(21 + (k % 2)*2)); c.lineTo(10 + k*3.2, sd*15.6); c.closePath(); c.fill(); c.stroke(); }
+    c.fillStyle = '#93b9d6'; c.beginPath(); c.arc(19.5, sd*11, 3.8, 0, 7); c.fill(); c.stroke();
+    c.strokeStyle = '#e8f6ff'; c.lineWidth = 1; for (let k = -1; k <= 1; k++){ c.beginPath(); c.moveTo(22, sd*11 + k*1.8); c.lineTo(25.5, sd*11 + k*2.6); c.stroke(); } c.strokeStyle = rim; c.lineWidth = 0.8;
+  }
+  c.fillStyle = '#7fa6c8'; c.beginPath(); c.ellipse(-1, 0, 12.5, 11, 0, 0, 7); c.fill(); c.stroke();      // torso
+  c.fillStyle = '#a9cbe3'; c.beginPath(); c.ellipse(3, 0, 6, 6.5, 0, 0, 7); c.fill();
+  for (const sd of [-1, 1]){                                  // shoulder armour: big plates with crystal spikes
+    c.fillStyle = '#6a94bb'; c.beginPath(); c.ellipse(0, sd*12.5, 8, 6.5, sd*0.2, 0, 7); c.fill(); c.stroke();
+    c.fillStyle = '#d8eefa'; for (let k = 0; k < 3; k++){ const bx = -5 + k*5; c.beginPath(); c.moveTo(bx - 2.2, sd*15); c.lineTo(bx + 0.4, sd*(21 + k)); c.lineTo(bx + 2.4, sd*14.5); c.closePath(); c.fill(); c.stroke(); }
+  }
+  c.fillStyle = '#9bbfd8'; c.beginPath(); c.arc(2, 0, 6.8, 0, 7); c.fill(); c.stroke();                                // bald head
+  c.fillStyle = '#e9f4fb'; c.beginPath(); c.moveTo(3, -5.2); c.quadraticCurveTo(12, -6, 15, 0); c.quadraticCurveTo(12, 6, 3, 5.2); c.quadraticCurveTo(7, 0, 3, -5.2); c.fill(); c.stroke();      // long white-blue beard
+  c.strokeStyle = '#b6d6ea'; c.lineWidth = 0.6; for (let k = -2; k <= 2; k++){ c.beginPath(); c.moveTo(5, k*1.6); c.lineTo(13, k*0.9); c.stroke(); } c.strokeStyle = rim; c.lineWidth = 0.8;
+  c.fillStyle = ph === 3 ? '#ff8a7a' : '#7fe8ff'; c.shadowColor = c.fillStyle; c.shadowBlur = 5;
+  for (const sd of [-1, 1]){ c.beginPath(); c.arc(4.6, sd*2.4, 1.1, 0, 7); c.fill(); }
+  c.shadowBlur = 0;
+}
+// A living snowman, facing right: a white body ball, a head with coal eyes and a carrot nose, a red scarf and stick arms (Frost Brutes wear a spiked ice helmet)
+function drawSnowman(c, elite){
+  const rim = '#6f8ea8'; c.lineJoin = 'round'; c.lineWidth = 1;
+  c.strokeStyle = '#5a3b20'; c.lineWidth = 1.6; for (const sd of [-1, 1]){ c.beginPath(); c.moveTo(-1, sd*10); c.lineTo(9, sd*8.5); c.moveTo(6, sd*8.8); c.lineTo(9, sd*11.5); c.stroke(); }
+  c.lineWidth = 1; c.strokeStyle = rim;
+  c.fillStyle = '#f6fafd'; c.beginPath(); c.arc(-2, 0, 12.5, 0, 7); c.fill(); c.stroke();
+  c.fillStyle = 'rgba(150,185,215,0.35)'; c.beginPath(); c.ellipse(-5, 3, 8, 6, 0.3, 0, 7); c.fill();
+  c.strokeStyle = elite ? '#7a1e1e' : '#c42b2b'; c.lineWidth = 3; c.beginPath(); c.arc(1, 0, 9.5, -1.35, 1.35); c.stroke(); c.lineWidth = 2.2; c.beginPath(); c.moveTo(-3, 8.8); c.lineTo(-9, 12); c.stroke();      // scarf
+  c.lineWidth = 1; c.strokeStyle = rim;
+  c.fillStyle = '#ffffff'; c.beginPath(); c.arc(3.5, 0, 8.2, 0, 7); c.fill(); c.stroke();
+  if (elite){ c.fillStyle = '#a8dcf2'; c.strokeStyle = '#3d7ea6'; c.beginPath(); for (let k = 0; k < 7; k++){ const an = -2.6 + k*0.87; c.lineTo(Math.cos(an)*7 + 2, Math.sin(an)*7); c.lineTo(Math.cos(an+0.43)*11.5 + 2, Math.sin(an+0.43)*11.5); } c.closePath(); c.fill(); c.stroke(); c.strokeStyle = rim; }
+  else { c.fillStyle = '#2b2b33'; c.beginPath(); c.arc(0.5, 0, 5.2, 0, 7); c.fill(); c.fillStyle = '#44444f'; c.beginPath(); c.arc(0.5, 0, 3.2, 0, 7); c.fill(); }      // little top hat
+  c.fillStyle = '#16161a'; for (const sd of [-1, 1]){ c.beginPath(); c.arc(8.6, sd*3, 1.3, 0, 7); c.fill(); }      // coal eyes
+  c.fillStyle = '#ff8a1e'; c.strokeStyle = '#b5560a'; c.beginPath(); c.moveTo(9.5, -1.7); c.lineTo(17, 0); c.lineTo(9.5, 1.7); c.closePath(); c.fill(); c.stroke();      // carrot nose
+}
+// the snowman's snowball gun: a chunky white tube with a hopper full of snow
+function drawSnowGun(c, kind){
+  const L = kind === 'shotgun' ? 17 : kind === 'ar' ? 24 : 14, W2 = kind === 'shotgun' ? 6 : 4.2;
+  c.lineWidth = 1; c.strokeStyle = '#6f8ea8'; c.fillStyle = '#e4eff7'; c.beginPath(); c.rect(8, -W2, L, W2*2); c.fill(); c.stroke();
+  c.fillStyle = '#ffffff'; c.beginPath(); c.arc(8 + L*0.45, 0, W2 + 1.6, 0, 7); c.fill(); c.stroke();
+  c.fillStyle = '#9ec9e6'; c.beginPath(); c.arc(8 + L*0.45, 0, W2*0.5, 0, 7); c.fill();
+  c.fillStyle = '#4d6b82'; c.beginPath(); c.rect(8 + L - 2, -W2 - 1, 3.5, W2*2 + 2); c.fill();
+}
+function drawSnowfall(cam, vw, vh){          // cold levels: a cool overcast wash and drifting snowflakes
+  const t = performance.now()/1000;
+  ctx.fillStyle = 'rgba(70,105,150,0.16)'; ctx.fillRect(cam.x - 4, cam.y - 4, vw + 8, vh + 8);
+  ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.strokeStyle = 'rgba(120,150,185,0.55)'; ctx.lineWidth = 0.6;
+  for (let i = 0; i < 150; i++){
+    const sp = 40 + (i % 7)*13, x = ((i*97.31 + t*(14 + (i % 5)*5) + Math.sin(t*0.7 + i)*18) % vw + vw) % vw, y = (i*53.77 + t*sp) % vh, r = 1.4 + (i % 4)*0.55;
+    ctx.beginPath(); ctx.arc(cam.x + x, cam.y + y, r, 0, 7); ctx.fill(); ctx.stroke();
+  }
 }
 // The Swamp Warden, seen from above and facing right (x+): a hooded root-golem with a green hood, brown clothes and green leaf armour
 function drawWarden(c, ph){
@@ -1027,27 +1119,27 @@ function enemyThink(b, dt){
   return [mx*speed, my*speed];
 }
 function bossShot(b, ang, n, spread, dmg, spd){
-  for (let i = 0; i < n; i++){ const an = ang + (i - (n-1)/2)*spread; S.bullets.push({x:b.x + Math.cos(an)*50, y:b.y + Math.sin(an)*50, vx:Math.cos(an)*spd, vy:Math.sin(an)*spd, life:1.8, dmg, owner:b, wpn:'boss', color:'#7be04a'}); }
+  for (let i = 0; i < n; i++){ const an = ang + (i - (n-1)/2)*spread; S.bullets.push({x:b.x + Math.cos(an)*50, y:b.y + Math.sin(an)*50, vx:Math.cos(an)*spd, vy:Math.sin(an)*spd, life:1.8, dmg, owner:b, wpn:'boss', color:STORY.bossBullet}); }
   sfx('sh', b.x, b.y);
 }
 function bossThink(b, dt){
   const p = S.player, bs = S.story.bs;
   if (S.over) return [0,0];
   const d = p.alive ? Math.hypot(p.x-b.x, p.y-b.y) : 1e9, dh = Math.hypot(b.x-b.home.x, b.y-b.home.y);
-  if (!bs.awake){ if (d < 640){ bs.awake = true; toast('The Swamp Warden awakens!', 2800); } else return [0,0]; }
+  if (!bs.awake){ if (d < 640){ bs.awake = true; toast('The ' + STORY.bossTitle + ' awakens!', 2800); } else return [0,0]; }
   if (d > 1150 || !p.alive){ b.flash = false; bs.wind = bs.charge = 0; if (dh < 20) return [0,0]; const a = Math.atan2(b.home.y-b.y, b.home.x-b.x); return [Math.cos(a)*140, Math.sin(a)*140]; }      // the player left: walk back home
   const f = b.hp / b.hpMax, ph = f > 0.6 ? 1 : f > 0.25 ? 2 : 3, a = Math.atan2(p.y-b.y, p.x-b.x);
   if (ph > bs.ph){
     bs.ph = ph;
-    if (ph === 2){ toast('The Warden calls for help!', 2800); const sp = [0, 1.57, 3.14, 4.71]; sp.forEach(q => mkEnemy(Math.round(b.x + Math.cos(q)*190), Math.round(b.y + Math.sin(q)*190), 'grunt', -1)); }
-    else toast('The Warden is ENRAGED!', 2800);
+    if (ph === 2){ toast(STORY.theme === 'cold' ? 'The Colossus calls the snowmen!' : 'The Warden calls for help!', 2800); const sp = [0, 1.57, 3.14, 4.71]; sp.forEach(q => mkEnemy(Math.round(b.x + Math.cos(q)*190), Math.round(b.y + Math.sin(q)*190), 'grunt', -1)); }
+    else toast('The ' + STORY.bossShort + ' is ENRAGED!', 2800);
   }
   const diff = Math.atan2(Math.sin(a-b.angle), Math.cos(a-b.angle)); b.angle += diff * Math.min(1, dt*(bs.wind > 0 ? 1 : 5));
   bs.tShot -= dt; bs.tBurst -= dt; bs.tCharge -= dt; bs.hitCd -= dt;
   if (bs.charge > 0){ bs.charge -= dt; b.flash = false; return [Math.cos(bs.cdir)*560, Math.sin(bs.cdir)*560]; }
   if (bs.wind > 0){ bs.wind -= dt; b.flash = true; if (bs.wind <= 0){ b.flash = false; bs.charge = 0.55; bs.cdir = Math.atan2(p.y-b.y, p.x-b.x); } return [0,0]; }
   if (d < 900 && bs.tShot <= 0){ bs.tShot = ph === 3 ? 0.9 : 1.4; bossShot(b, a, ph === 3 ? 7 : 5, 0.13, 9, 520); }
-  if (ph >= 2 && d < 900 && bs.tBurst <= 0){ bs.tBurst = ph === 3 ? 2.6 : 4; const n = ph === 3 ? 22 : 16, off = rnd(0, 6.28); for (let i = 0; i < n; i++) bossShot(b, off + i/n*Math.PI*2, 1, 0, 8, 380); }
+  if (ph >= 2 && d < 900 && bs.tBurst <= 0){ bs.tBurst = ph === 3 ? 2.6 : 4; const n = ph === 3 ? (STORY.theme === 'cold' ? 28 : 22) : 16, off = rnd(0, 6.28); for (let i = 0; i < n; i++) bossShot(b, off + i/n*Math.PI*2, 1, 0, 8, 380); }
   if (ph === 3 && bs.tCharge <= 0 && d > 160 && d < 800){ bs.tCharge = 6; bs.wind = 0.7; }
   const sp = ph === 3 ? 175 : ph === 2 ? 135 : 112, fwd = d > 340 ? 1 : d < 230 ? -0.6 : 0, st = Math.sin(performance.now()/900)*0.5;
   return [(Math.cos(a)*fwd + Math.cos(a+1.57)*st)*sp, (Math.sin(a)*fwd + Math.sin(a+1.57)*st)*sp];
@@ -1420,7 +1512,8 @@ function feedText(q){
 function damage(a, dmg, owner, wpn){
   if (a.invT > 0 || (S.koth && S.over)) return;       // respawn protection
   if (S.story && S.over && a === S.player) return;      // level complete: nothing can hurt you any more
-  if (owner && owner.dmgMul) dmg *= owner.dmgMul;      // Adventure enemies hit softer than a human player would
+  if (owner && owner.dmgMul) dmg *= owner.dmgMul;
+  if (wpn === 'boss' && S.story && STORY.slow && a === S.player) a.slowT = 2;      // ice shards chill you: slower for a couple of seconds      // Adventure enemies hit softer than a human player would
   if (a.inv.includes('shieldgen')) dmg *= 0.5;      // shield generator: half damage from everything, no need to equip it
   a.heal = 0;   // taking damage interrupts healing
   if (a.sh > 0){ const s = Math.min(a.sh, dmg); a.sh -= s; dmg -= s; }
@@ -1448,6 +1541,7 @@ function damage(a, dmg, owner, wpn){
     if (owner && owner !== a) owner.kills++;
     a.place = S.actors.filter(x => x.alive).length + 1;
     if (S.koth){ a.deaths = (a.deaths || 0) + 1; a.respawnT = KOTH_RESPAWN; }
+    if (a.snow) burst(a.x, a.y, '#ffffff', 16);
     if (a.enemy){ if (!a.boss) storyDrop(a); a.wood = 0; a.ammo = {}; a.inv = ['pickaxe', null, null, null, null, null]; }      // Adventure enemies only ever drop a bandage or shield potion
     // drop the whole inventory: all wood in one pile, plus every weapon and bandage
     if (a.wood > 0) S.loot.push({x:a.x, y:a.y, type:'wood', n:a.wood});
@@ -2090,6 +2184,7 @@ function update(dt){
   for (const a of S.actors){
     if (!a.alive){ if (S.koth && a.respawnT > 0){ a.respawnT -= dt; if (a.respawnT <= 0) kothRespawn(a); } continue; }
     if (a.invT > 0) a.invT -= dt;
+    if (a.slowT > 0) a.slowT -= dt;
     if (a.rvT > 0) a.rvT -= dt;
     if (a.down > 0){ downStep(a, dt); if (!a.alive) continue; }
     if (S.koth && S.hill && Math.hypot(a.x-S.hill.x, a.y-S.hill.y) < S.hill.r) a.pts = (a.pts || 0) + dt;
@@ -2280,7 +2375,7 @@ function showLobbyScreen(){
 function hostRestart(){
   if (NET.role === 'host') hostToLobby();
   else if (S.story && S.story.lost) location.reload();
-  else if (soloMode === 'story') initStory();
+  else if (S.story || soloMode === 'story') initStory(S.story ? S.story.levelId : soloLevel);
   else init(null, false, soloMap, soloMode === 'koth');
 }
 function onHostData(pid, m){
@@ -3050,15 +3145,15 @@ function drawThicket(cam, vw, vh){          // the impassable swamp outside the 
   const CS = 20, x0 = Math.floor(cam.x/CS) - 1, x1 = Math.ceil((cam.x+vw)/CS) + 1, y0 = Math.floor(cam.y/CS) - 1, y1 = Math.ceil((cam.y+vh)/CS) + 1;
   const cells = [];
   for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) if (storyClr(cx*CS + CS/2, cy*CS + CS/2) < 0) cells.push(cx, cy);
-  ctx.fillStyle = '#08130d'; ctx.beginPath(); for (let i = 0; i < cells.length; i += 2) ctx.rect(cells[i]*CS - 1, cells[i+1]*CS - 1, CS + 2, CS + 2); ctx.fill();
-  const cols = ['#0f2a1b', '#143522', '#0b2016', '#1a3d27'], paths = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+  ctx.fillStyle = STORY.thicket.base; ctx.beginPath(); for (let i = 0; i < cells.length; i += 2) ctx.rect(cells[i]*CS - 1, cells[i+1]*CS - 1, CS + 2, CS + 2); ctx.fill();
+  const cols = STORY.thicket.cols, paths = cols.map(() => new Path2D());
   for (let i = 0; i < cells.length; i += 2){
     const cx = cells[i], cy = cells[i+1]; let h = (cx*73856093 ^ cy*19349663) >>> 0; h = (h ^ (h>>>13)) * 1274126177 >>> 0;
     if ((h & 7) === 7) continue;
-    const px = cx*CS + 2 + (h >>> 3 & 15), py = cy*CS + 2 + (h >>> 9 & 15), r = 11 + (h >>> 15 & 9), P = paths[h >>> 20 & 3];
+    const px = cx*CS + 2 + (h >>> 3 & 15), py = cy*CS + 2 + (h >>> 9 & 15), r = 11 + (h >>> 15 & 9), P = paths[(h >>> 20) % cols.length];
     P.moveTo(px + r, py); P.arc(px, py, r, 0, 6.2832);
   }
-  for (let k = 0; k < 4; k++){ ctx.fillStyle = cols[k]; ctx.fill(paths[k]); }
+  for (let k = 0; k < cols.length; k++){ ctx.fillStyle = cols[k]; ctx.fill(paths[k]); }
 }
 function draw(){
   syncExitBtn();
@@ -3218,7 +3313,7 @@ function draw(){
   for (const t of S.trees){ if (!vis(t.x,t.y,40)) continue;
     ctx.drawImage(S.map === 'grass' || S.map === 'snow' ? treeSprite(t) : obstacleSprite(t), t.x-32, t.y-32, 64, 64); }
   // bullets
-  for (const b of S.bullets){ ctx.strokeStyle=b.color; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-b.vx*0.025, b.y-b.vy*0.025); ctx.stroke(); }
+  for (const b of S.bullets){ if (b.owner && b.owner.snow){ ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#7fa6c8'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(b.x, b.y, 5.5, 0, 7); ctx.fill(); ctx.stroke(); continue; } ctx.strokeStyle=b.color; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-b.vx*0.025, b.y-b.vy*0.025); ctx.stroke(); }
   // actors
   for (const a of S.actors){ if (!a.alive || !vis(a.x,a.y)) continue;
     if (S.map === 'ocean'){ if (a.lx !== undefined && Math.hypot(a.x-a.lx, a.y-a.ly) > 0.3) a.bang = Math.atan2(a.y-a.ly, a.x-a.lx); a.lx = a.x; a.ly = a.y; drawBoat(ctx, a.x, a.y, a.bang || 0, true, tt); }      // everyone is out on a boat
@@ -3245,6 +3340,7 @@ function draw(){
     const w = WEAP[a.inv[a.cur]] || WEAP.pickaxe;
     ctx.fillStyle = w.color; ctx.strokeStyle='#000'; ctx.lineWidth=2;
     if (a.boss){}
+    else if (a.snow){ drawSnowGun(ctx, a.inv[a.cur]); }
     else if (w.melee){ const sw = a.swing > 0 ? 0.8 : 0; ctx.save(); ctx.rotate(-0.4+sw); ctx.translate(26,0); ctx.rotate(Math.PI/2); drawItem(ctx, 'pickaxe', 1); ctx.restore(); }
     else if (w.heal){ ctx.fillRect(14,-5,12,10); ctx.strokeRect(14,-5,12,10); }
     else if (w.passive){}
@@ -3257,7 +3353,7 @@ function draw(){
       ctx.save(); if (Math.cos(a.angle) < 0) ctx.scale(1,-1);      // keep the gun the right way up when aiming left
       ctx.translate(a.inv[a.cur] === 'pistol' ? 10 : 18, 0); drawGun(ctx, a.inv[a.cur], a.inv[a.cur] === 'pistol' ? 1 : 0.78, RARITY[a.gr[a.inv[a.cur]] || 0].col); ctx.restore();
     }
-    if (a.boss) drawWarden(ctx, S.story ? S.story.bs.ph : 1); else drawPerson(ctx, a.shirt || a.color, a.skin || SKINS[1], Math.sin((a.x + a.y)*0.12)*5, a.crown, a.shirt ? {pat:a.pat, shirt2:a.shirt2, hair:a.hair, style:a.hstyle, sleeve:a.sleeve} : null);
+    if (a.boss) (STORY.theme === 'cold' ? drawColossus : drawWarden)(ctx, S.story ? S.story.bs.ph : 1); else if (a.snow) drawSnowman(ctx, a.elite); else drawPerson(ctx, a.shirt || a.color, a.skin || SKINS[1], Math.sin((a.x + a.y)*0.12)*5, a.crown, a.shirt ? {pat:a.pat, shirt2:a.shirt2, hair:a.hair, style:a.hstyle, sleeve:a.sleeve} : null);
     ctx.restore();
     // healing progress ring
     if (a.heal > 0){
@@ -3267,6 +3363,7 @@ function draw(){
     // bars
     if (a.crown) drawCrownIcon(ctx, a.x, a.y-(a === p ? 40 : 50), 0.9);
     const bo = a.r - 15;
+    if (a.slowT > 0){ ctx.strokeStyle = 'rgba(150,215,255,0.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(a.x, a.y, a.r + 5, 0, 7); ctx.stroke(); }
     if (a.boss && a.flash){ ctx.strokeStyle = 'rgba(255,60,60,' + (0.5 + 0.5*Math.sin(performance.now()/50)) + ')'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(a.x, a.y, a.r + 10, 0, 7); ctx.stroke(); }
     if (!a.boss){
     ctx.fillStyle='#0008'; ctx.fillRect(a.x-18,a.y-30,36,6);
@@ -3378,6 +3475,7 @@ function draw(){
     const gx = Math.floor((p.x+Math.cos(p.angle)*62)/G), gy = Math.floor((p.y+Math.sin(p.angle)*62)/G);
     ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.setLineDash([5,5]); ctx.lineWidth=2; ctx.strokeRect(gx*G,gy*G,G,G); ctx.setLineDash([]);
   }
+  if (S.story && STORY.theme === 'cold') drawSnowfall(cam, vw, vh);
   if (S.map === 'swamp'){      // night: a dark blue wash with a pool of dim light around you, and fireflies
     const lx = p.x, ly = p.y, gr = ctx.createRadialGradient(lx, ly, 70, lx, ly, Math.max(vw, vh)*0.62);
     gr.addColorStop(0, 'rgba(4,10,34,0.3)'); gr.addColorStop(0.5, 'rgba(3,8,30,0.52)'); gr.addColorStop(1, 'rgba(2,5,22,0.66)');
@@ -3416,9 +3514,9 @@ function drawHUD(){
   ctx.textAlign = 'left';
   if (S.story && S.story.boss && S.story.boss.alive && S.story.bs.awake){      // boss health bar
     const bb = S.story.boss, bw = Math.min(440, vw-40), bx = (vw-bw)/2, by = 48;
-    ctx.fillStyle='#000a'; ctx.fillRect(bx-3, by-3, bw+6, 26); ctx.fillStyle='#2e1d0e'; ctx.fillRect(bx, by, bw, 20);
-    ctx.fillStyle = S.story.bs.ph === 3 ? '#b5481f' : S.story.bs.ph === 2 ? '#8e5a2a' : '#b8844a'; ctx.fillRect(bx, by, bw*Math.max(0, bb.hp)/bb.hpMax, 20);
-    ctx.fillStyle='#fff'; ctx.font='bold 13px sans-serif'; ctx.textAlign='center'; ctx.fillText('SWAMP WARDEN', vw/2, by+15); ctx.textAlign='left';
+    ctx.fillStyle='#000a'; ctx.fillRect(bx-3, by-3, bw+6, 26); ctx.fillStyle=STORY.bossBack; ctx.fillRect(bx, by, bw, 20);
+    ctx.fillStyle = STORY.bossBar[S.story.bs.ph === 3 ? 2 : S.story.bs.ph === 2 ? 1 : 0]; ctx.fillRect(bx, by, bw*Math.max(0, bb.hp)/bb.hpMax, 20);
+    ctx.fillStyle = STORY.theme === 'cold' ? '#10283a' : '#fff'; ctx.font='bold 13px sans-serif'; ctx.textAlign='center'; ctx.fillText(STORY.bossName, vw/2, by+15); ctx.textAlign='left';
   }
 
   // while spectating, the health, shield and loadout shown are the ones of the player we are watching
@@ -3522,7 +3620,7 @@ function drawHUD(){
   ctx.shadowBlur = 0;
   ctx.fillStyle=mapOf().mini; ctx.fillRect(mx,my,ms,ms);
   if (S.story && S.story.segs){
-    ctx.fillStyle = '#06100b'; ctx.fillRect(mx, my, ms, ms);
+    ctx.fillStyle = STORY.mmDark; ctx.fillRect(mx, my, ms, ms);
     ctx.strokeStyle = mapOf().mini; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, STORY.HW*2*k); ctx.beginPath();
     STORY.nodes.forEach((n, i) => { if (i) ctx.lineTo(mx + n[0]*k, my + n[1]*k); else ctx.moveTo(mx + n[0]*k, my + n[1]*k); }); ctx.stroke();
     ctx.fillStyle = mapOf().mini; for (const c of S.story.circs){ ctx.beginPath(); ctx.arc(mx + c[0]*k, my + c[1]*k, c[2]*k, 0, 7); ctx.fill(); }
@@ -3531,7 +3629,7 @@ function drawHUD(){
   if (S.koth && S.hill){ ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.arc(mx+S.hill.x*k, my+S.hill.y*k, Math.max(3, S.hill.r*k), 0, 7); ctx.fill(); }
   if (S.story){
     ctx.fillStyle='#fff'; for (const c of S.story.cps) ctx.fillRect(mx+c.x*k-2, my+c.y*k-2, 4, 4);
-    const bb = S.story.boss; if (bb.alive){ ctx.fillStyle='#b8844a'; ctx.beginPath(); ctx.arc(mx+bb.x*k, my+bb.y*k, 5, 0, 7); ctx.fill(); }
+    const bb = S.story.boss; if (bb.alive){ ctx.fillStyle=STORY.bossDot; ctx.beginPath(); ctx.arc(mx+bb.x*k, my+bb.y*k, 5, 0, 7); ctx.fill(); }
   } else {
   ctx.strokeStyle='#c6f'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(mx+st.cx*k,my+st.cy*k,st.r*k,0,7); ctx.stroke();
   }
@@ -3647,7 +3745,7 @@ function drawHUD(){
     ctx.fillStyle='#000c'; ctx.fillRect(0,0,vw,vh);
     ctx.textAlign='center'; ctx.fillStyle='#f55'; ctx.font='bold '+Math.min(64, vw/9)+'px sans-serif'; ctx.fillText('GAME OVER', vw/2, vh/2-34);
     ctx.fillStyle='#fff'; ctx.font=Math.min(22, vw/24)+'px sans-serif';
-    ctx.fillText('You used all '+STORY.LIVES+' lives · '+p.kills+' kills · Swamp Warden still stands', vw/2, vh/2+8);
+    ctx.fillText('You used all '+STORY.LIVES+' lives · '+p.kills+' kills · the '+STORY.bossTitle+' still stands', vw/2, vh/2+8);
     ctx.fillText((tm ? 'Tap' : 'Press R')+' to return to the main menu', vw/2, vh/2+42);
   } else if (S.over && S.story){
     ctx.fillStyle='#000a'; ctx.fillRect(0,0,vw,vh);
@@ -3655,8 +3753,9 @@ function drawHUD(){
     ctx.fillText('LEVEL COMPLETE', vw/2, vh/2-40);
     ctx.fillStyle='#fff'; ctx.font=Math.min(24, vw/22)+'px sans-serif';
     const tt = S.story.t|0;
-    ctx.fillText('The Swamp Warden is defeated · '+p.kills+' kills · '+S.story.lives+(S.story.lives === 1 ? ' life left' : ' lives left')+' · '+((tt/60)|0)+':'+('0'+tt%60).slice(-2), vw/2, vh/2+6);
+    ctx.fillText('The '+STORY.bossTitle+' is defeated · '+p.kills+' kills · '+S.story.lives+(S.story.lives === 1 ? ' life left' : ' lives left')+' · '+((tt/60)|0)+':'+('0'+tt%60).slice(-2), vw/2, vh/2+6);
     ctx.fillText((tm ? 'Tap' : 'Press R')+' to play the level again, or use the Main menu button', vw/2, vh/2+40);
+    if (S.story.unlockedNow){ ctx.fillStyle = '#9fe8ff'; ctx.font = 'bold ' + Math.min(24, vw/22) + 'px sans-serif'; ctx.fillText('NEW LEVEL UNLOCKED: Bitter Cold', vw/2, vh/2+112); ctx.fillStyle = '#fff'; ctx.font = Math.min(24, vw/22) + 'px sans-serif'; }
     drawXPLine(vw/2, vh/2+78, Math.min(22, vw/24));
   } else if (S.over){
     const win = S.winTeam !== null && S.winTeam === p.team;   // a co-op team win counts for both players
@@ -3694,12 +3793,15 @@ function toast(t, ms){
   const el = $('toast'); el.textContent = t; el.style.display = 'block';
   clearTimeout(toastT); toastT = setTimeout(() => el.style.display = 'none', ms || 3500);
 }
-const SCREENS = ['s-main','s-avatar','s-join','s-lobby'];
+const SCREENS = ['s-main','s-avatar','s-join','s-lobby','s-adv'];
 function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); menuMsg(''); }
 function menuMsg(t){ $('msg').textContent = t || ''; }
 function hideMenu(){ $('menu').classList.add('hide'); $('exit').style.display = 'block'; }
 
 let soloMode = 'classic'; try { { const sm = localStorage.getItem('sr-smode'); soloMode = sm === 'koth' || sm === 'story' ? sm : 'classic'; } } catch(_){}
+let soloLevel = 'marsh'; try { soloLevel = localStorage.getItem('sr-level') === 'cold' ? 'cold' : 'marsh'; } catch(_){}
+try { if (/[?&]unlock=1/.test(location.search)) localStorage.setItem('sr-unlock-cold', '1'); } catch(_){}
+const coldUnlocked = () => { try { return localStorage.getItem('sr-unlock-cold') === '1' || (parseInt(localStorage.getItem('sr-wins-story'), 10) || 0) > 0; } catch(_){ return false; } };
 // ---------- Experience and levels (kept on this device) ----------
 // Each finished game earns XP from your finishing place, your kills and a bonus for winning. Early levels come quickly; each later level needs more.
 const xpNeed = L => 100 + 40*(L-1) + 8*(L-1)*(L-1);                       // XP needed to go from level L to L+1: 100, 148, 212, 292, 388 ... 1108 at level 10
@@ -3738,7 +3840,7 @@ function maybeAwardXP(force){
     win = S.winTeam !== null && S.winTeam === p.team; place = win ? 1 : (p.place || S.actors.length);
   } else { if (force) S.xpDone = true; return; }
   S.xpDone = true;
-  const gain = S.story ? 100 + 8 * Math.min(60, p.kills | 0) : xpForGame(place, p.kills | 0, win, S.actors.length), before = getXP(), l0 = xpInfo(before).lvl;
+  const gain = S.story ? STORY.xp[0] + STORY.xp[1] * Math.min(60, p.kills | 0) : xpForGame(place, p.kills | 0, win, S.actors.length), before = getXP(), l0 = xpInfo(before).lvl;
   try { localStorage.setItem('sr-xp', String(before + gain)); const mk = modeOfGame(); localStorage.setItem('sr-kills-' + mk, String(getKills(mk) + Math.max(0, p.kills | 0))); } catch(_){}
   showKills();
   S.xpGain = {gain, lvl:xpInfo(before + gain).lvl, up:xpInfo(before + gain).lvl > l0};
@@ -3921,7 +4023,27 @@ function joinRoom(code){
   peer.on('open', () => { guestAttach(peer.connect('stormroyale-'+code, {reliable:true}), myName()); });
 }
 
-$('b-solo').onclick = () => { if (!nameAllowed()) return; NET.role = 'solo'; if (soloMode === 'story') initStory(); else init(null, false, soloMap, soloMode === 'koth'); phase = 'play'; hideMenu(); };
+// ---------- Adventure picker: one adventure per Battle Royale map ----------
+const ADVENTURES = [{lvl:'marsh'}, {lvl:'cold'}, {map:'grass'}, {map:'desert'}, {map:'city'}, {map:'ocean'}];
+const advDone = id => { try { return localStorage.getItem('sr-done-' + id) === '1' || (id === 'marsh' && coldUnlocked()); } catch(_){ return false; } };
+function renderAdv(){
+  const g = $('advgrid'); g.textContent = '';
+  for (const a of ADVENTURES){
+    const b = document.createElement('button'); b.className = 'advcard';
+    const L = a.lvl ? STORY_LEVELS[a.lvl] : null, lock = a.lvl === 'cold' && !coldUnlocked();
+    const mk = (cls, txt) => { const d = document.createElement('div'); d.className = cls; d.textContent = txt; b.appendChild(d); };
+    if (L){
+      mk('at', (lock ? '🔒 ' : '') + L.name); mk('as', MAPS[L.map].name + ' · Boss: ' + L.bossTitle);
+      if (lock){ b.classList.add('locked'); mk('ast', 'Defeat the Swamp Warden to unlock'); }
+      else if (advDone(L.id)){ b.classList.add('done'); mk('ast', '✓ Completed'); }
+      else mk('ast', 'Ready');
+      if (L.id === soloLevel) b.classList.add('last');
+      b.onclick = () => { if (lock){ menuMsg('Defeat the Swamp Warden to unlock Bitter Cold'); return; } soloLevel = L.id; try { localStorage.setItem('sr-level', L.id); } catch(_){} NET.role = 'solo'; initStory(L.id); phase = 'play'; hideMenu(); };
+    } else { b.classList.add('soon'); mk('at', MAPS[a.map].name + ' adventure'); mk('as', 'Boss: ???'); mk('ast', 'Coming soon'); b.onclick = () => menuMsg('Coming soon'); }
+    g.appendChild(b);
+  }
+}
+$('b-solo').onclick = () => { if (!nameAllowed()) return; if (soloMode === 'story'){ renderAdv(); showScreen('s-adv'); return; } NET.role = 'solo'; init(null, false, soloMap, soloMode === 'koth'); phase = 'play'; hideMenu(); };
 $('b-host').onclick = () => { if (!nameAllowed()) return; menuMsg('Connecting…'); loadPeer(() => createRoom(), menuMsg); };
 $('b-join').onclick = () => { if (!nameAllowed()) return; showScreen('s-join'); $('code').focus(); };
 $('b-go').onclick = () => {
@@ -3934,7 +4056,7 @@ $('b-go').onclick = () => {
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('b-go').click(); });
 $('b-start').onclick = hostBeginMatch;
 document.querySelectorAll('#modebox .mini').forEach(bt => bt.onclick = () => { if (NET.role !== 'host' || phase !== 'lobby') return; NET.mode = bt.dataset.mode; if (NET.mode === 'koth'){ NET.lobby.forEach(q => { q.tm = null; q.bm = 0; }); NET.invites = []; } lobbyBroadcast(); });
-const markSoloMode = () => { document.querySelectorAll('#modebox-main .mini').forEach(bt => bt.classList.toggle('sel', bt.dataset.smode === soloMode)); try { showWins(); showKills(); } catch(_){} const st = soloMode === 'story'; $('storyhint').style.display = st ? 'block' : 'none'; $('mapbox-main').style.display = st ? 'none' : ''; const lb = $('mapbox-main').previousElementSibling; if (lb) lb.style.display = st ? 'none' : ''; };
+const markSoloMode = () => { document.querySelectorAll('#modebox-main .mini').forEach(bt => bt.classList.toggle('sel', bt.dataset.smode === soloMode)); try { showWins(); showKills(); } catch(_){} const st = soloMode === 'story'; if (soloLevel === 'cold' && !coldUnlocked()) soloLevel = 'marsh'; $('storyhint').style.display = st ? 'block' : 'none'; $('mapbox-main').style.display = st ? 'none' : ''; const lb = $('mapbox-main').previousElementSibling; if (lb) lb.style.display = st ? 'none' : ''; };
 document.querySelectorAll('#modebox-main .mini').forEach(bt => bt.onclick = () => { soloMode = bt.dataset.smode; try { localStorage.setItem('sr-smode', soloMode); } catch(_){} markSoloMode(); });
 markSoloMode();
 let soloMap = 'random'; try { soloMap = okMap(localStorage.getItem('sr-map')); } catch(_){}
@@ -3971,7 +4093,11 @@ function loop(now){
   if (phase === 'play' && S.over && !S.sfxDone){
     S.sfxDone = true;
     if (NET.role === 'host') creditWins(); else if (NET.role === 'solo') soloCrown = S.winTeam !== null && S.winTeam === S.player.team;
-    if (S.winTeam !== null && S.winTeam === S.player.team && (S.story || S.koth || S.hasBots)) addWin(modeOfGame());       // Royale: solo and bot matches only (humans-only don't count). King of the Hill: finishing first. Adventure: beating the Warden
+    if (S.winTeam !== null && S.winTeam === S.player.team && (S.story || S.koth || S.hasBots)){
+      if (S.story && S.story.levelId === 'marsh' && !coldUnlocked()){ try { localStorage.setItem('sr-unlock-cold', '1'); } catch(_){} S.story.unlockedNow = true; toast('Bitter Cold unlocked! Pick it from the Adventure menu', 5000); }
+      if (S.story){ try { localStorage.setItem('sr-done-' + S.story.levelId, '1'); } catch(_){} }
+      addWin(modeOfGame());
+    }       // Royale: solo and bot matches only (humans-only don't count). King of the Hill: finishing first. Adventure: beating the Warden
     if (!(S.winTeam !== null && S.winTeam === S.player.team)) playSnd('lose');     // winners hear the victory fanfare (music) instead
   }
   { const pl = (phase === 'play' && S && S.player) ? S.player : null, want = pl && pl.alive && pl.inv[pl.cur] === 'sniper' ? SN_ZOOM : 1;
