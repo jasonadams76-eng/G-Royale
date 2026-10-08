@@ -162,7 +162,7 @@
       <div class="look"><canvas id="lookprev" width="112" height="112"></canvas><button class="btn" id="b-avatar">🎨 Design Your Avatar</button></div>
       <label class="chk" id="chk-auto"><input type="checkbox" id="autofire"> <span><b>Autofire</b> (touch controls): the gun fires by itself while you aim at an enemy you can see. Off: fire when you let go of the aim stick.</span></label>
       </div><div class="colR">
-      <div class="lbl">Mode</div><div class="mapbox" id="modebox-main"><button class="mini" data-smode="classic">Battle Royale</button><button class="mini" data-smode="koth">King of the Hill</button></div>
+      <div class="lbl">Mode</div><div class="mapbox" id="modebox-main"><button class="mini" data-smode="classic">Battle Royale</button><button class="mini" data-smode="koth">King of the Hill</button><button class="mini" data-smode="story">Adventure</button></div><div id="storyhint" style="display:none;font-size:13px;opacity:.85;margin:4px 0 8px">Adventure (solo): fight through The Sunken Marsh, past the enemy camps, and defeat the Swamp Warden to finish the level.</div>
       <div class="lbl">Map</div><div class="mapbox" id="mapbox-main"></div>
       </div></div>
       <div class="menubtns">
@@ -229,7 +229,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 34;
+const VERSION = 35;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -438,7 +438,7 @@ const dropBtn = () => ({x:Math.round(SW/2-138-6-22), y:SH-28, r:22});          /
 const canDropNow = () => { const p = S && S.player; return !!(p && p.alive && p.cur > 0 && p.inv[p.cur]); };
 function doHeal(){ if (NET.role === 'guest') netSend({t:'heal'}); else startHeal(S.player); }
 function tryRestart(){
-  if (!S.over && NET.role === 'solo' && !S.player.alive && !S.koth){ hostRestart(); return; }      // eliminated in a solo game: R starts a new one right away
+  if (!S.over && NET.role === 'solo' && !S.player.alive && !S.koth && !S.story){ hostRestart(); return; }      // eliminated in a solo game: R starts a new one right away
   if (!S.over || performance.now() - S.overAt < 700) return;
   if (NET.role === 'guest') netSend({t:'restart'}); else hostRestart();
 }
@@ -824,6 +824,134 @@ function init(humans, humansOnly, mapId, koth){
   setupStorm(humansOnly);
   placeSpawns();
 }
+// ---------- Adventure mode: a single player fights through a big map to a Level Boss ----------
+// One hand-placed level on the Swamp map. Enemy camps guard the route from the bottom-left to the boss arena in the top-right.
+// Dying sends you back to the last checkpoint (enemies you already beat stay beaten); the level ends when the boss falls.
+const STORY = {name:'The Sunken Marsh', start:{x:450, y:5500}, boss:{x:5200, y:700, R:600},
+  camps:[{x:1500,y:4800,n:3,el:0}, {x:2900,y:5100,n:4,el:1}, {x:4300,y:4200,n:4,el:1}, {x:3600,y:3000,n:5,el:2}, {x:4400,y:1900,n:5,el:2}, {x:3300,y:900,n:6,el:3}],
+  cps:[{x:3500,y:4700}, {x:4000,y:2500}, {x:4300,y:800}]};
+const BOSS_HP = 1800;
+function mkEnemy(x, y, kind, camp){
+  const a = newActor('bot', ++S.story.n), elite = kind === 'elite', gun = elite ? 'ar' : kind === 'shot' ? 'shotgun' : 'pistol';
+  a.x = a.tx = x; a.y = a.ty = y; a.team = 'E'; a.enemy = true; a.noDown = true; a.camp = camp; a.home = {x, y}; a.alert = camp < 0; a.rt = 0.5;
+  a.name = elite ? 'Marsh Brute' : 'Marsh Raider'; a.hp = a.hpMax = elite ? 110 : 60; a.dmgMul = elite ? 0.55 : 0.4; a.spd = elite ? 165 : 145; a.aggro = elite ? 560 : 440;
+  a.inv = ['pickaxe', gun, null, null, null, null]; a.cur = 1; a.ammo[gun] = 14; a.started[gun] = true; a.gr[gun] = elite ? 1 : 0; a.wood = 0;
+  a.color = elite ? 'hsl(0,70%,32%)' : 'hsl(18,55%,38%)'; a.pref = gun === 'shotgun' ? 120 : gun === 'ar' ? 300 : 260;
+  if (Math.random() < 0.4){ a.inv[2] = 'bandage'; a.band = 1; }
+  S.actors.push(a); return a;
+}
+function initStory(){
+  let ok = false;
+  for (let t = 0; t < 14 && !ok; t++){
+    init(null, false, 'swamp', false);
+    ok = !nearLake(STORY.start.x, STORY.start.y, 220) && !nearLake(STORY.boss.x, STORY.boss.y, STORY.boss.R);
+  }
+  const st = S.storm; st.r = st.nr = st.rTo = 99999; st.state = 'final'; st.t = 99999; S.ammoChk = 1e12;      // no storm in Adventure
+  S.actors = S.actors.filter(a => a.isPlayer); S.players = S.actors.slice(); S.loot = [];
+  const p = S.player = S.players[0];
+  S.story = {n:0, cp:-1, deaths:0, deadT:0, t:0, boss:null, bs:{awake:false, ph:1, tShot:1.5, tBurst:3, tCharge:5, wind:0, charge:0, hitCd:0}, total:0};
+  const clear = (x, y, r) => { S.trees = S.trees.filter(t => Math.hypot(t.x-x, t.y-y) > r + t.r); S.bog = S.bog.filter(c => Math.hypot(c[0]-x, c[1]-y) > c[2] + r); S.chests = S.chests.filter(c => c.island || Math.hypot(c.x-x, c.y-y) > r); };
+  const fit = (pt, m) => { for (let k = 0; k < 60 && nearLake(pt.x, pt.y, m); k++){ pt.x = Math.max(300, Math.min(W-300, pt.x + rnd(-260, 260))); pt.y = Math.max(300, Math.min(W-300, pt.y + rnd(-260, 260))); } return pt; };
+  const camps = STORY.camps.map(c => fit({...c}, 150)), cps = STORY.cps.map(c => fit({...c}, 100));
+  S.story.cps = cps; S.story.camps = camps;
+  clear(STORY.start.x, STORY.start.y, 300); clear(STORY.boss.x, STORY.boss.y, STORY.boss.R - 30);
+  for (const c of camps) clear(c.x, c.y, 260);
+  for (const c of cps) clear(c.x, c.y, 130);
+  p.x = p.tx = STORY.start.x; p.y = p.ty = STORY.start.y; p.angle = -0.8; p.invT = 2;
+  p.inv = ['pickaxe', 'pistol', null, null, null, null]; p.cur = 1; p.ammo.pistol = 90; p.started.pistol = true; p.gr.pistol = 0; p.hp = 100; p.sh = 0;
+  S.chests.push({x:STORY.start.x + 170, y:STORY.start.y - 90, open:false});
+  camps.forEach((c, ci) => {
+    S.chests.push({x:c.x + rnd(-60, 60), y:c.y + rnd(-60, 60), open:false});
+    if (ci % 2) S.chests.push({x:c.x + rnd(-120, 120), y:c.y + rnd(80, 140), open:false});
+    for (let k = 0; k < c.n; k++){
+      const ang = k/c.n*Math.PI*2 + rnd(-0.3, 0.3), d = rnd(60, 150), el = k < c.el;
+      mkEnemy(Math.round(c.x + Math.cos(ang)*d), Math.round(c.y + Math.sin(ang)*d), el ? 'elite' : k % 3 === 2 ? 'shot' : 'grunt', ci);
+    }
+  });
+  for (const c of cps) S.chests.push({x:c.x + 90, y:c.y + 60, open:false});
+  const bo = STORY.boss, b = newActor('bot', 99);
+  b.x = b.tx = bo.x; b.y = b.ty = bo.y; b.r = 44; b.scale = 2.9; b.team = 'E'; b.enemy = true; b.boss = true; b.noDown = true; b.name = 'SWAMP WARDEN'; b.hp = b.hpMax = BOSS_HP;
+  b.color = 'hsl(280,55%,30%)'; b.home = {x:bo.x, y:bo.y}; b.inv = ['pickaxe', null, null, null, null, null]; b.wood = 0;
+  S.actors.push(b); S.story.boss = b;
+  S.story.total = S.actors.filter(a => a.enemy && !a.boss).length;
+  S.actors.forEach(a => { a.invT = a === p ? 2 : 0; });
+  toast('Chapter 1 · ' + STORY.name + ' — fight your way to the Swamp Warden', 5000);
+}
+function alertCamp(b){ for (const o of S.actors) if (o.enemy && o.alive && !o.boss && (o === b || (b.camp >= 0 && o.camp === b.camp) || Math.hypot(o.x-b.x, o.y-b.y) < 320)){ if (!o.alert) o.rt = 0.45 + Math.random()*0.35; o.alert = true; } }
+function enemyThink(b, dt){
+  if (S.over) return [0,0];
+  const p = S.player, gun = b.inv[1]; if (gun && b.ammo[gun] < 14) b.ammo[gun] = 14;
+  b.cur = 1;
+  const d = p.alive ? Math.hypot(p.x-b.x, p.y-b.y) : 1e9, hurt = performance.now() - (b.lastHit || -1e9) < 2500;
+  if (!b.alert && p.alive && (d < b.aggro || hurt)) alertCamp(b);
+  if (b.alert && (!p.alive || (d > b.aggro*2.4 && Math.hypot(b.x-b.home.x, b.y-b.home.y) > 500))) b.alert = false;
+  let mx = 0, my = 0, speed = b.spd;
+  if (b.alert && p.alive){
+    const a = Math.atan2(p.y-b.y, p.x-b.x), diff = Math.atan2(Math.sin(a-b.angle), Math.cos(a-b.angle));
+    b.angle += diff * Math.min(1, dt*6);
+    b.strafeT -= dt; if (b.strafeT <= 0){ b.strafe *= -1; b.strafeT = rnd(0.8, 2.2); }
+    const fwd = d > b.pref + 70 ? 1 : d < b.pref - 70 ? -1 : 0;
+    mx = Math.cos(a)*fwd + Math.cos(a+Math.PI/2)*b.strafe*0.6; my = Math.sin(a)*fwd + Math.sin(a+Math.PI/2)*b.strafe*0.6;
+    b.rt -= dt;
+    b.fg = (b.fg || 0) - dt;
+    if (b.rt <= 0 && b.fg <= 0 && Math.abs(diff) < 0.3 && d < 640){ const sv = b.angle; b.angle += rnd(-0.07, 0.07); fire(b); b.angle = sv; if (gun !== 'ar') b.fg = gun === 'shotgun' ? rnd(1.3, 1.9) : rnd(0.7, 1.1); }
+    if (b.hp < 30 && b.band > 0 && Math.random() < dt*0.5){ b.hp = Math.min(b.hpMax, b.hp + 30); b.band--; if (!b.band) b.inv[2] = null; }
+  } else {
+    b.wpT -= dt;
+    if (!b.wp || b.wpT <= 0){ b.wp = Math.random() < 0.35 ? null : {x:b.home.x + rnd(-110, 110), y:b.home.y + rnd(-110, 110)}; b.wpT = rnd(2.5, 5); }
+    if (b.wp && Math.hypot(b.wp.x-b.x, b.wp.y-b.y) > 12){ const a = Math.atan2(b.wp.y-b.y, b.wp.x-b.x); mx = Math.cos(a); my = Math.sin(a); speed = b.spd*0.4; b.angle = a; }
+  }
+  if (mx || my){                  // stuck on a tree or stump? sidestep for a moment
+    b.stT = (b.stT || 0) + dt;
+    if (b.stT >= 0.6){ if (Math.hypot(b.x-(b.stx ?? b.x), b.y-(b.sty ?? b.y)) < 14){ b.avT = 0.8 + Math.random()*0.7; b.avA = (Math.random() < 0.5 ? 1 : -1) * (1.2 + Math.random()*0.9); b.wp = null; } b.stx = b.x; b.sty = b.y; b.stT = 0; }
+    if (b.avT > 0){ b.avT -= dt; const c = Math.cos(b.avA), sn = Math.sin(b.avA), nx = mx*c - my*sn, ny = mx*sn + my*c; mx = nx; my = ny; }
+  }
+  const m = Math.hypot(mx, my) || 1; if (m > 1){ mx /= m; my /= m; }
+  return [mx*speed, my*speed];
+}
+function bossShot(b, ang, n, spread, dmg, spd){
+  for (let i = 0; i < n; i++){ const an = ang + (i - (n-1)/2)*spread; S.bullets.push({x:b.x + Math.cos(an)*50, y:b.y + Math.sin(an)*50, vx:Math.cos(an)*spd, vy:Math.sin(an)*spd, life:1.8, dmg, owner:b, wpn:'boss', color:'#e6f'}); }
+  sfx('sh', b.x, b.y);
+}
+function bossThink(b, dt){
+  const p = S.player, bs = S.story.bs;
+  if (S.over) return [0,0];
+  const d = p.alive ? Math.hypot(p.x-b.x, p.y-b.y) : 1e9, dh = Math.hypot(b.x-b.home.x, b.y-b.home.y);
+  if (!bs.awake){ if (d < 640){ bs.awake = true; toast('The Swamp Warden awakens!', 2800); } else return [0,0]; }
+  if (d > 1150 || !p.alive){ b.flash = false; bs.wind = bs.charge = 0; if (dh < 20) return [0,0]; const a = Math.atan2(b.home.y-b.y, b.home.x-b.x); return [Math.cos(a)*140, Math.sin(a)*140]; }      // the player left: walk back home
+  const f = b.hp / b.hpMax, ph = f > 0.6 ? 1 : f > 0.25 ? 2 : 3, a = Math.atan2(p.y-b.y, p.x-b.x);
+  if (ph > bs.ph){
+    bs.ph = ph;
+    if (ph === 2){ toast('The Warden calls for help!', 2800); const sp = [0, 1.57, 3.14, 4.71]; sp.forEach(q => mkEnemy(Math.round(b.x + Math.cos(q)*190), Math.round(b.y + Math.sin(q)*190), 'grunt', -1)); }
+    else toast('The Warden is ENRAGED!', 2800);
+  }
+  const diff = Math.atan2(Math.sin(a-b.angle), Math.cos(a-b.angle)); b.angle += diff * Math.min(1, dt*(bs.wind > 0 ? 1 : 5));
+  bs.tShot -= dt; bs.tBurst -= dt; bs.tCharge -= dt; bs.hitCd -= dt;
+  if (bs.charge > 0){ bs.charge -= dt; b.flash = false; return [Math.cos(bs.cdir)*560, Math.sin(bs.cdir)*560]; }
+  if (bs.wind > 0){ bs.wind -= dt; b.flash = true; if (bs.wind <= 0){ b.flash = false; bs.charge = 0.55; bs.cdir = Math.atan2(p.y-b.y, p.x-b.x); } return [0,0]; }
+  if (d < 900 && bs.tShot <= 0){ bs.tShot = ph === 3 ? 0.9 : 1.4; bossShot(b, a, ph === 3 ? 7 : 5, 0.13, 9, 520); }
+  if (ph >= 2 && d < 900 && bs.tBurst <= 0){ bs.tBurst = ph === 3 ? 2.6 : 4; const n = ph === 3 ? 22 : 16, off = rnd(0, 6.28); for (let i = 0; i < n; i++) bossShot(b, off + i/n*Math.PI*2, 1, 0, 8, 380); }
+  if (ph === 3 && bs.tCharge <= 0 && d > 160 && d < 800){ bs.tCharge = 6; bs.wind = 0.7; }
+  const sp = ph === 3 ? 175 : ph === 2 ? 135 : 112, fwd = d > 340 ? 1 : d < 230 ? -0.6 : 0, st = Math.sin(performance.now()/900)*0.5;
+  return [(Math.cos(a)*fwd + Math.cos(a+1.57)*st)*sp, (Math.sin(a)*fwd + Math.sin(a+1.57)*st)*sp];
+}
+function storyTick(dt){
+  const sy = S.story, p = S.player; sy.t += dt;
+  if (S.over) return;
+  const bo = sy.boss;
+  if (bo && !bo.alive){ S.over = true; S.winTeam = p.team; S.overAt = performance.now(); sy.done = true; sy.left = S.actors.filter(a => a.enemy && !a.boss && a.alive).length; return; }
+  if (!p.alive){
+    sy.deadT += dt;
+    if (sy.deadT > 2.6){
+      const at = sy.cp >= 0 ? sy.cps[sy.cp] : STORY.start;
+      p.alive = true; p.hp = 100; p.down = 0; p.x = p.tx = at.x; p.y = p.ty = at.y; p.invT = 3; p.heal = 0; p.boat = null; p.killedBy = null;
+      toast(sy.cp >= 0 ? 'Back at checkpoint ' + (sy.cp + 1) : 'Back at the start', 2200);
+    }
+    return;
+  }
+  sy.cps.forEach((c, i) => { if (i > sy.cp && Math.hypot(p.x-c.x, p.y-c.y) < 150){ sy.cp = i; p.hp = Math.min(100, p.hp + 40); toast('Checkpoint ' + (i + 1) + ' reached', 2200); sfx('hl', p.x, p.y); } });
+}
+
 // Every team (a solo player, a co-op duo, a bot duo) gets its own starting spot. The spots are spread evenly over the board
 // (a sunflower spiral gives equal spacing in every direction), handed out in random order, and partners always start together.
 // The safe circle no longer always closes on the middle: every circle sits inside the one before it, and the last (smallest) one can be anywhere on the board.
@@ -1166,6 +1294,8 @@ function feedText(q){
 }
 function damage(a, dmg, owner, wpn){
   if (a.invT > 0 || (S.koth && S.over)) return;       // respawn protection
+  if (S.story && S.over && a === S.player) return;      // level complete: nothing can hurt you any more
+  if (owner && owner.dmgMul) dmg *= owner.dmgMul;      // Adventure enemies hit softer than a human player would
   if (a.inv.includes('shieldgen')) dmg *= 0.5;      // shield generator: half damage from everything, no need to equip it
   a.heal = 0;   // taking damage interrupts healing
   if (a.sh > 0){ const s = Math.min(a.sh, dmg); a.sh -= s; dmg -= s; }
@@ -1173,6 +1303,9 @@ function damage(a, dmg, owner, wpn){
   if (dmg > 0 && a.alive) sfx('hit', a.x, a.y);
   if (a === S.player && touchMode && NET.role !== 'guest' && navigator.vibrate && a.lastHit - (a.lastVib||0) > 150){
     a.lastVib = a.lastHit; navigator.vibrate(a.hp <= 0 ? 200 : 20);
+  }
+  if (S.story && a === S.player && a.hp <= 0 && a.alive){      // Adventure: no elimination, just back to the last checkpoint after a moment (inventory is kept)
+    a.alive = false; a.hp = 0; a.sh = 0; a.heal = 0; a.gh = null; a.mgLeft = 0; sfx('ko', a.x, a.y); S.story.deaths++; S.story.deadT = 0; return;
   }
   if (a.hp <= 0 && a.alive && canGoDown(a)){          // knocked down, not out: a teammate can still pick you up
     a.hp = 1; a.sh = 0; a.down = DOWN_TIME; a.rv = 0; a.rvT = 0; a.heal = 0; a.flt = 0; sfx('ko', a.x, a.y);
@@ -1866,7 +1999,7 @@ function update(dt){
       // remote human: they move themselves, we trust their position and just apply their aim/fire
       const g = a.in;
       if (g){ if (!(a.tpHold > 0)){ a.tx = g.x; a.ty = g.y; } a.angle = g.a; if (g.r && reviveTarget(a)) a.rvT = 0.2; else if (g.f) fire(a); }
-    } else [vx,vy] = botThink(a, dt);
+    } else [vx,vy] = a.boss ? bossThink(a, dt) : a.enemy ? enemyThink(a, dt) : botThink(a, dt);
 
     if (a.isPlayer && a.pid > 0){
       const k = Math.min(1, dt*20);
@@ -1926,10 +2059,11 @@ function update(dt){
     if (dead) S.bullets.splice(i,1);
   }
   stepParticles(dt);
+  if (S.story) storyTick(dt);
 
   // end conditions: the match ends when the humans are all down, or only one team is left standing
   if (S.koth){ if (!S.over && st.state === 'final') kothEnd(); }
-  else if (!S.over){
+  else if (!S.over && !S.story){
     const humansAlive = S.players.filter(p => p.alive).length;
     const teams = new Set(); for (const a of S.actors) if (a.alive) teams.add(a.team);
     if (humansAlive === 0 && S.players.length > 1){ S.over = true; S.winTeam = null; S.overAt = performance.now(); }
@@ -2011,6 +2145,7 @@ function showLobbyScreen(){
 }
 function hostRestart(){
   if (NET.role === 'host') hostToLobby();
+  else if (soloMode === 'story') initStory();
   else init(null, false, soloMap, soloMode === 'koth');
 }
 function onHostData(pid, m){
@@ -2339,7 +2474,7 @@ function specRects(){
   const w = Math.min(360, SW - 16), x0 = SW/2 - w/2, y0 = touchMode ? SH - 112 : SH - 130;
   return {newGame:{x:SW/2 - 90, y:y0 - 46, w:180, h:36}, bar:{x:x0, y:y0, w, h:46}, prev:{x:x0, y:y0, w:56, h:46}, next:{x:x0 + w - 56, y:y0, w:56, h:46}};
 }
-const canNewGame = () => NET.role === 'solo' && !S.player.alive && !S.koth && !S.over;      // eliminated in a solo game: you may skip the rest and start over
+const canNewGame = () => NET.role === 'solo' && !S.player.alive && !S.koth && !S.over && !S.story;      // eliminated in a solo game: you may skip the rest and start over
 function specClick(x, y){
   if (S.player.alive || S.koth || S.over) return false;
   const r = specRects();
@@ -2956,10 +3091,11 @@ function draw(){
         ctx.fillStyle = 'rgba(255,235,140,0.9)'; ctx.beginPath(); ctx.arc(fx + bx*fl*0.2, fy + by*fl*0.2, 2.6, 0, 7); ctx.fill(); }
     }
     if (a.inv.includes('boots')){ ctx.fillStyle = 'rgba(255,230,60,0.28)'; ctx.beginPath(); ctx.arc(a.x,a.y,a.r+6+Math.sin(performance.now()/120)*1.5,0,7); ctx.fill(); }   // speed-boot glow
-    ctx.save(); ctx.translate(a.x,a.y); ctx.rotate(a.angle);
+    ctx.save(); ctx.translate(a.x,a.y); ctx.rotate(a.angle); if (a.scale) ctx.scale(a.scale, a.scale);
     const w = WEAP[a.inv[a.cur]] || WEAP.pickaxe;
     ctx.fillStyle = w.color; ctx.strokeStyle='#000'; ctx.lineWidth=2;
-    if (w.melee){ const sw = a.swing > 0 ? 0.8 : 0; ctx.save(); ctx.rotate(-0.4+sw); ctx.translate(26,0); ctx.rotate(Math.PI/2); drawItem(ctx, 'pickaxe', 1); ctx.restore(); }
+    if (a.boss){}
+    else if (w.melee){ const sw = a.swing > 0 ? 0.8 : 0; ctx.save(); ctx.rotate(-0.4+sw); ctx.translate(26,0); ctx.rotate(Math.PI/2); drawItem(ctx, 'pickaxe', 1); ctx.restore(); }
     else if (w.heal){ ctx.fillRect(14,-5,12,10); ctx.strokeRect(14,-5,12,10); }
     else if (w.passive){}
     else if (w.flame){ ctx.save(); ctx.translate(14,0); ctx.scale(Math.cos(a.angle) < 0 ? 1 : 1, 1); drawItem(ctx, 'flame', 0.95); ctx.restore(); }
@@ -2980,10 +3116,14 @@ function draw(){
     }
     // bars
     if (a.crown) drawCrownIcon(ctx, a.x, a.y-(a === p ? 40 : 50), 0.9);
+    const bo = a.r - 15;
+    if (a.boss && a.flash){ ctx.strokeStyle = 'rgba(255,60,60,' + (0.5 + 0.5*Math.sin(performance.now()/50)) + ')'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(a.x, a.y, a.r + 10, 0, 7); ctx.stroke(); }
+    if (!a.boss){
     ctx.fillStyle='#0008'; ctx.fillRect(a.x-18,a.y-30,36,6);
-    ctx.fillStyle='#4d4'; ctx.fillRect(a.x-18,a.y-30,36*a.hp/100,3);
+    ctx.fillStyle='#4d4'; ctx.fillRect(a.x-18,a.y-30,36*a.hp/(a.hpMax || 100),3);
     ctx.fillStyle='#4af'; ctx.fillRect(a.x-18,a.y-27,36*a.sh/100,3);
-    if (a !== p){ ctx.fillStyle = a.team === p.team ? '#8f8' : '#fff'; ctx.font=Math.round(11/ZOOM)+'px sans-serif'; ctx.textAlign='center'; ctx.fillText(a.name,a.x,a.y-36); }
+    if (a !== p && !a.enemy){ ctx.fillStyle = a.team === p.team ? '#8f8' : '#fff'; ctx.font=Math.round(11/ZOOM)+'px sans-serif'; ctx.textAlign='center'; ctx.fillText(a.name,a.x,a.y-36); }
+    }
   }
   for (const a of S.actors){          // knocked-down players: a red pulse, the bleed-out timer and the revive progress
     if (!a.alive || !(a.down > 0) || !vis(a.x, a.y)) continue;
@@ -3102,6 +3242,10 @@ function draw(){
     }
     ctx.globalAlpha = 1;
   }
+  if (S.story){                       // checkpoint flags
+    const tf = performance.now()/1000;
+    S.story.cps.forEach((c, i) => { const got = i <= S.story.cp; ctx.strokeStyle = '#eee'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(c.x, c.y + 22); ctx.lineTo(c.x, c.y - 34); ctx.stroke(); ctx.fillStyle = got ? '#5f8' : '#fc4'; ctx.beginPath(); ctx.moveTo(c.x, c.y - 34); ctx.lineTo(c.x + 30 + Math.sin(tf*3 + i)*3, c.y - 25); ctx.lineTo(c.x, c.y - 16); ctx.fill(); ctx.globalAlpha = 0.25; ctx.beginPath(); ctx.arc(c.x, c.y, 150, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; });
+  } else {
   // storm overlay (hole in the middle)
   ctx.fillStyle = 'rgba(110,40,170,0.42)';
   ctx.beginPath(); ctx.rect(cam.x-10,cam.y-10,vw+20,vh+20);
@@ -3109,6 +3253,7 @@ function draw(){
   ctx.strokeStyle='#c6f'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(S.storm.cx,S.storm.cy,Math.max(1,S.storm.r),0,7); ctx.stroke();
   if (S.storm.state !== 'final' && S.storm.nr < S.storm.r - 1){          // where the next safe circle will be
     ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 3; ctx.setLineDash([22,16]); ctx.beginPath(); ctx.arc(S.storm.nx, S.storm.ny, S.storm.nr, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+  }
   }
   ctx.restore();
   drawHUD();
@@ -3119,6 +3264,12 @@ function drawHUD(){
   const p = S.player, vw = SW, vh = SH, tm = touchMode;
   const alive = S.actors.filter(a=>a.alive).length, st = S.storm;
   ctx.textAlign = 'left';
+  if (S.story && S.story.boss && S.story.boss.alive && S.story.bs.awake){      // boss health bar
+    const bb = S.story.boss, bw = Math.min(440, vw-40), bx = (vw-bw)/2, by = 48;
+    ctx.fillStyle='#000a'; ctx.fillRect(bx-3, by-3, bw+6, 26); ctx.fillStyle='#512'; ctx.fillRect(bx, by, bw, 20);
+    ctx.fillStyle = S.story.bs.ph === 3 ? '#f33' : S.story.bs.ph === 2 ? '#d5c' : '#a4e'; ctx.fillRect(bx, by, bw*Math.max(0, bb.hp)/bb.hpMax, 20);
+    ctx.fillStyle='#fff'; ctx.font='bold 13px sans-serif'; ctx.textAlign='center'; ctx.fillText('SWAMP WARDEN', vw/2, by+15); ctx.textAlign='left';
+  }
 
   // while spectating, the health, shield and loadout shown are the ones of the player we are watching
   const v = (!p.alive && !S.koth && !S.over && specT && specT.alive) ? specT : p;
@@ -3202,15 +3353,26 @@ function drawHUD(){
   const fs = tm ? 12 : 18, lh = tm ? 16 : 24, tx = vw-(tm?10:20), ty = tm ? my+ms+16 : 30;
   if (S.map === 'snow'){ ctx.shadowColor = '#000'; ctx.shadowBlur = 5; }       // keep the white text readable on snow
   ctx.textAlign='right'; ctx.fillStyle='#fff'; ctx.font='bold '+fs+'px sans-serif';
+  if (S.story){
+    const left = S.actors.filter(a => a.enemy && !a.boss && a.alive).length;
+    ctx.fillText('Enemies: '+left, tx, ty); ctx.fillText('Kills: '+p.kills, tx, ty+lh);
+    ctx.fillStyle='#d9f'; ctx.fillText('Checkpoint: '+(S.story.cp+1)+'/'+S.story.cps.length, tx, ty+lh*2);
+  } else {
   ctx.fillText('Alive: '+alive, tx, ty); ctx.fillText('Kills: '+p.kills, tx, ty+lh);
   ctx.fillStyle='#d9f';
   ctx.fillText((st.state==='wait'?'Storm shrinks in ':'Storm closing ')+Math.max(0,st.t|0)+'s', tx, ty+lh*2);
+  }
   ctx.shadowBlur = 0;
   ctx.fillStyle=mapOf().mini; ctx.fillRect(mx,my,ms,ms);
   for (const l of S.lakes){ ctx.fillStyle = S.map === 'swamp' ? '#1a4a48' : '#3b8ee0'; ctx.beginPath(); for (let q = 0; q < 36; q++){ const t = q/36*Math.PI*2, e = l.E[q*2]; const X = mx+(l.x+Math.cos(t)*e)*k, Y = my+(l.y+Math.sin(t)*e)*k; q ? ctx.lineTo(X,Y) : ctx.moveTo(X,Y); } ctx.closePath(); ctx.fill(); ctx.fillStyle = '#6fbf5a'; ctx.beginPath(); ctx.arc(mx+l.ix*k, my+l.iy*k, Math.max(1.5, l.i*k), 0, 7); ctx.fill(); }
   if (S.koth && S.hill){ ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.arc(mx+S.hill.x*k, my+S.hill.y*k, Math.max(3, S.hill.r*k), 0, 7); ctx.fill(); }
+  if (S.story){
+    ctx.fillStyle='#fff'; for (const c of S.story.cps) ctx.fillRect(mx+c.x*k-2, my+c.y*k-2, 4, 4);
+    const bb = S.story.boss; if (bb.alive){ ctx.fillStyle='#c4f'; ctx.beginPath(); ctx.arc(mx+bb.x*k, my+bb.y*k, 5, 0, 7); ctx.fill(); }
+  } else {
   ctx.strokeStyle='#c6f'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(mx+st.cx*k,my+st.cy*k,st.r*k,0,7); ctx.stroke();
-  if (st.state !== 'final' && st.nr < st.r - 1){ ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(mx+st.nx*k,my+st.ny*k,st.nr*k,0,7); ctx.stroke(); }
+  }
+  if (!S.story && st.state !== 'final' && st.nr < st.r - 1){ ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(mx+st.nx*k,my+st.ny*k,st.nr*k,0,7); ctx.stroke(); }
   ctx.fillStyle='#fc4';
   for (const c of S.chests){ if (c.open || Math.hypot(c.x-p.x,c.y-p.y) > 900) continue; ctx.fillRect(mx+c.x*k-2, my+c.y*k-2, 4, 4); }
   for (const a of S.actors){
@@ -3318,6 +3480,15 @@ function drawHUD(){
     });
     ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = Math.min(18, vw/26) + 'px sans-serif';
     ctx.fillText((tm ? 'Tap' : 'Press R') + (NET.role === 'solo' ? ' to play again' : ' to return to the lobby'), vw/2, Math.min(vh - 20, y + 40));
+  } else if (S.over && S.story){
+    ctx.fillStyle='#000a'; ctx.fillRect(0,0,vw,vh);
+    ctx.textAlign='center'; ctx.fillStyle='#fc4'; ctx.font='bold '+Math.min(60, vw/10)+'px sans-serif';
+    ctx.fillText('LEVEL COMPLETE', vw/2, vh/2-40);
+    ctx.fillStyle='#fff'; ctx.font=Math.min(24, vw/22)+'px sans-serif';
+    const tt = S.story.t|0;
+    ctx.fillText('The Swamp Warden is defeated · '+p.kills+' kills · '+S.story.deaths+(S.story.deaths === 1 ? ' defeat' : ' defeats')+' · '+((tt/60)|0)+':'+('0'+tt%60).slice(-2), vw/2, vh/2+6);
+    ctx.fillText((tm ? 'Tap' : 'Press R')+' to play the level again', vw/2, vh/2+40);
+    drawXPLine(vw/2, vh/2+78, Math.min(22, vw/24));
   } else if (S.over){
     const win = S.winTeam !== null && S.winTeam === p.team;   // a co-op team win counts for both players
     ctx.fillStyle='#000a'; ctx.fillRect(0,0,vw,vh);
@@ -3327,6 +3498,11 @@ function drawHUD(){
     ctx.fillText((win ? '#1' : '#'+p.place)+' · '+p.kills+' kills · '+(tm ? 'Tap' : 'Press R')+(NET.role === 'solo' ? ' to play again' : ' to return to the lobby'), vw/2, vh/2+30);
     if (!win && p.killedBy){ ctx.fillStyle = '#ffd34d'; ctx.font = 'bold ' + Math.min(26, vw/20) + 'px sans-serif'; ctx.fillText(killLine(p), vw/2, vh/2+68); }
     drawXPLine(vw/2, vh/2 + (!win && p.killedBy ? 104 : 74), Math.min(22, vw/24));
+  } else if (!p.alive && S.story){
+    ctx.fillStyle='#000a'; ctx.fillRect(0,0,vw,vh); ctx.textAlign='center'; ctx.fillStyle='#f66'; ctx.font='bold '+Math.min(48, vw/12)+'px sans-serif';
+    ctx.fillText('YOU FELL', vw/2, vh/2-10); ctx.fillStyle='#fff'; ctx.font=Math.min(20, vw/24)+'px sans-serif';
+    ctx.fillText('Returning to '+(S.story.cp >= 0 ? 'checkpoint '+(S.story.cp+1) : 'the start')+'…', vw/2, vh/2+28);
+    if (p.killedBy){ ctx.fillStyle = '#ffd34d'; ctx.fillText(killLine(p), vw/2, vh/2+58); }
   } else if (!p.alive && S.koth){
     ctx.fillStyle='#000a'; ctx.fillRect(vw/2-190, 90, 380, 62); ctx.textAlign='center'; ctx.fillStyle='#f66'; ctx.font='bold 18px sans-serif';
     ctx.fillText('KNOCKED OUT' + (p.respawnT > 0 ? ' · respawning in ' + Math.ceil(p.respawnT) : ' · respawning…'), vw/2, 114);
@@ -3371,7 +3547,10 @@ function xpForGame(place, kills, win, field){
 function maybeAwardXP(force){
   if (!S || !S.player || S.xpDone) return;
   const p = S.player; let place, win = false;
-  if (S.koth){
+  if (S.story){
+    if (!S.over){ if (force) S.xpDone = true; return; }
+    win = true; place = 1;
+  } else if (S.koth){
     if (!S.over) return;
     const rows = S.board || [], i = rows.findIndex(r => r[0] === p.name); place = i < 0 ? S.actors.length : i + 1; win = S.winTeam !== null && S.winTeam === p.team;
   } else if (!p.alive){
@@ -3381,7 +3560,7 @@ function maybeAwardXP(force){
     win = S.winTeam !== null && S.winTeam === p.team; place = win ? 1 : (p.place || S.actors.length);
   } else { if (force) S.xpDone = true; return; }
   S.xpDone = true;
-  const gain = xpForGame(place, p.kills | 0, win, S.actors.length), before = getXP(), l0 = xpInfo(before).lvl;
+  const gain = S.story ? 100 + 8 * Math.min(60, p.kills | 0) : xpForGame(place, p.kills | 0, win, S.actors.length), before = getXP(), l0 = xpInfo(before).lvl;
   try { localStorage.setItem('sr-xp', String(before + gain)); localStorage.setItem('sr-kills', String(getKills() + Math.max(0, p.kills | 0))); } catch(_){}
   showKills();
   S.xpGain = {gain, lvl:xpInfo(before + gain).lvl, up:xpInfo(before + gain).lvl > l0};
@@ -3563,7 +3742,7 @@ function joinRoom(code){
   peer.on('open', () => { guestAttach(peer.connect('stormroyale-'+code, {reliable:true}), myName()); });
 }
 
-$('b-solo').onclick = () => { if (!nameAllowed()) return; NET.role = 'solo'; init(null, false, soloMap, soloMode === 'koth'); phase = 'play'; hideMenu(); };
+$('b-solo').onclick = () => { if (!nameAllowed()) return; NET.role = 'solo'; if (soloMode === 'story') initStory(); else init(null, false, soloMap, soloMode === 'koth'); phase = 'play'; hideMenu(); };
 $('b-host').onclick = () => { if (!nameAllowed()) return; menuMsg('Connecting…'); loadPeer(() => createRoom(), menuMsg); };
 $('b-join').onclick = () => { if (!nameAllowed()) return; showScreen('s-join'); $('code').focus(); };
 $('b-go').onclick = () => {
@@ -3576,8 +3755,8 @@ $('b-go').onclick = () => {
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('b-go').click(); });
 $('b-start').onclick = hostBeginMatch;
 document.querySelectorAll('#modebox .mini').forEach(bt => bt.onclick = () => { if (NET.role !== 'host' || phase !== 'lobby') return; NET.mode = bt.dataset.mode; if (NET.mode === 'koth'){ NET.lobby.forEach(q => { q.tm = null; q.bm = 0; }); NET.invites = []; } lobbyBroadcast(); });
-let soloMode = 'classic'; try { soloMode = localStorage.getItem('sr-smode') === 'koth' ? 'koth' : 'classic'; } catch(_){}
-const markSoloMode = () => document.querySelectorAll('#modebox-main .mini').forEach(bt => bt.classList.toggle('sel', bt.dataset.smode === soloMode));
+let soloMode = 'classic'; try { { const sm = localStorage.getItem('sr-smode'); soloMode = sm === 'koth' || sm === 'story' ? sm : 'classic'; } } catch(_){}
+const markSoloMode = () => { document.querySelectorAll('#modebox-main .mini').forEach(bt => bt.classList.toggle('sel', bt.dataset.smode === soloMode)); const st = soloMode === 'story'; $('storyhint').style.display = st ? 'block' : 'none'; $('mapbox-main').style.display = st ? 'none' : ''; const lb = $('mapbox-main').previousElementSibling; if (lb) lb.style.display = st ? 'none' : ''; };
 document.querySelectorAll('#modebox-main .mini').forEach(bt => bt.onclick = () => { soloMode = bt.dataset.smode; try { localStorage.setItem('sr-smode', soloMode); } catch(_){} markSoloMode(); });
 markSoloMode();
 let soloMap = 'random'; try { soloMap = okMap(localStorage.getItem('sr-map')); } catch(_){}
