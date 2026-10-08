@@ -49,6 +49,7 @@
   .card [hidden]{display:none}
   .btn{display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:12px;font-size:17px;font-weight:700;
     color:#102010;background:#fc4;border:0;border-radius:10px;cursor:pointer;touch-action:manipulation}
+  .padfocus{outline:3px solid #7dff7d !important;outline-offset:2px}
   .btn.ghost{background:#2a3b30;color:#cde;font-weight:600}
   .btn.sel{outline:3px solid #fff}
   .row{display:flex;gap:8px}.row .btn{margin:8px 0}
@@ -227,7 +228,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 31;
+const VERSION = 32;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -443,6 +444,7 @@ function tryRestart(){
 
 addEventListener('keydown', e => {
   if (phase !== 'play' || (e.target && e.target.tagName === 'INPUT')) return;
+  padActive = false;
   const k = e.key.toLowerCase();
   keys[k] = true;
   if (e.key >= '1' && e.key <= '6') selectSlot(e.key-1);
@@ -453,6 +455,80 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 addEventListener('contextmenu', e => e.preventDefault());
+
+// ---------- Game controller (PS5 DualSense, Xbox and other "standard" pads), laid out like Fortnite's combat controls ----------
+// Left stick move · right stick aim · R2 fire · L1/R1 or D-pad left/right previous/next weapon · Triangle next weapon (hold: pickaxe) · Circle build
+// Square hold: revive a teammate · D-pad down: drop item · Options: menu · X: new game when eliminated. In the menus: D-pad or left stick to move, X to press, Circle to go back.
+let padActive = false, padConnected = false, padPrev = [], padMove = {x:0, y:0}, padAimOn = false, padR2 = false, padRev = false, padNavT = 0, padTri = {t:0, held:false, done:false}, padFocus = null;
+const padDead = (x, y) => { const m = Math.hypot(x, y); if (m < 0.22) return [0, 0, 0]; const k = Math.min(1, (m - 0.22) / 0.78); return [x/m*k, y/m*k, k]; };
+function padNextWeapon(d){
+  const me = S && S.player; if (!me || !me.alive) return;
+  for (let n = 1; n <= 6; n++){ const i = ((me.cur + d*n) % 6 + 6) % 6; if (me.inv[i]){ selectSlot(i); return; } }
+}
+function padMenuNav(dx, dy){
+  const els = [...document.querySelectorAll('#menu button, #menu input')].filter(el => !el.disabled && el.offsetParent !== null && !el.closest('[hidden]') && el.type !== 'hidden');
+  if (!els.length) return;
+  const cur = els.includes(padFocus) ? padFocus : null;
+  if (!cur){ padSetFocus($('b-solo') && els.includes($('b-solo')) ? $('b-solo') : els[0]); return; }
+  const r0 = cur.getBoundingClientRect(), cx = r0.left + r0.width/2, cy = r0.top + r0.height/2;
+  let best = null, bs = 1e9;
+  for (const el of els){ if (el === cur) continue; const r = el.getBoundingClientRect(), x = r.left + r.width/2 - cx, y = r.top + r.height/2 - cy, along = x*dx + y*dy;
+    if (along <= 4) continue; const across = Math.abs(-x*dy + y*dx); if (across > along*1.6 + 30) continue; const sc = along + across*2.2; if (sc < bs){ bs = sc; best = el; } }
+  if (best) padSetFocus(best);
+}
+function padSetFocus(el){
+  if (padFocus) padFocus.classList.remove('padfocus');
+  padFocus = el; if (el){ el.classList.add('padfocus'); try { el.scrollIntoView({block:'nearest'}); } catch(_){} }
+}
+function pollPad(dt){
+  if (!navigator.getGamepads) return;
+  const gp = [...navigator.getGamepads()].find(g => g && g.connected && g.buttons && g.buttons.length >= 10);
+  if (!gp){ padActive = false; padMove.x = padMove.y = 0; padAimOn = false; padR2 = false; padRev = false; return; }
+  const B = i => !!(gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5)), pv = padPrev;
+  const hit = i => B(i) && !pv[i];
+  const L = padDead(gp.axes[0] || 0, gp.axes[1] || 0), R = padDead(gp.axes[2] || 0, gp.axes[3] || 0);
+  const any = L[2] > 0 || R[2] > 0 || gp.buttons.some(b => b && (b.pressed || b.value > 0.5));
+  if (any) padActive = true;
+  padMove.x = L[0]; padMove.y = L[1];
+  const inGame = phase === 'play' && S && S.player;
+  if (inGame){
+    const me = S.player, ang = Math.atan2(R[1], R[0]);
+    padAimOn = R[2] > 0.1; if (padAimOn){ padAim.a = ang; }
+    padR2 = (gp.buttons[7] && gp.buttons[7].value > 0.35) || B(7);
+    padRev = B(2);
+    if (!padActive){}
+    else if (me.alive){
+      if (hit(7) && holdingGrenade()){ const a = padAimOn ? padAim.a : me.angle; throwGrenade(me, me.x + Math.cos(a)*360, me.y + Math.sin(a)*360); }   // grenades: R2 throws where you aim
+      if (hit(4) || hit(14)) padNextWeapon(-1);
+      if (hit(5) || hit(15)) padNextWeapon(1);
+      if (hit(3)){ padTri.t = performance.now(); padTri.done = false; }
+      if (B(3) && !padTri.done && performance.now() - padTri.t > 400){ padTri.done = true; selectSlot(0); }       // hold Triangle: back to the pickaxe
+      if (!B(3) && pv[3] && !padTri.done){ padNextWeapon(1); }
+      if (hit(1)) doBuild();
+      if (hit(13)) doDrop();
+      if (hit(9)){ const ex = $('exit'); if (ex) ex.click(); }
+    } else if (!S.koth && !S.over){
+      if (hit(4) || hit(14)) specStep(-1);
+      if (hit(5) || hit(15)) specStep(1);
+    }
+    if (padActive && !me.alive && !S.koth && hit(0)) tryRestart();
+    if (padActive && S.over && hit(0)) tryRestart();
+    if (hit(9) && !me.alive){ const ex = $('exit'); if (ex) ex.click(); }
+  } else if (padActive){
+    // menus: move a highlight with the D-pad or left stick, X presses it, Circle goes back
+    padNavT -= dt;
+    let dx = 0, dy = 0;
+    if (hit(12)) dy = -1; else if (hit(13)) dy = 1; else if (hit(14)) dx = -1; else if (hit(15)) dx = 1;
+    else if (L[2] > 0.6 && padNavT <= 0){ if (Math.abs(L[0]) > Math.abs(L[1])) dx = Math.sign(L[0]); else dy = Math.sign(L[1]); padNavT = 0.22; }
+    if (dx || dy) padMenuNav(dx, dy);
+    if (hit(0)){ const el = padFocus; if (el && el.offsetParent !== null){ if (el.tagName === 'INPUT' && el.type === 'text') el.focus(); else el.click(); } else padMenuNav(0, 1); }
+    if (hit(1)){ const bk = [...document.querySelectorAll('#menu [data-back], #b-avdone, #b-leave')].find(el => el.offsetParent !== null); if (bk) bk.click(); }
+  }
+  padPrev = gp.buttons.map(b => !!(b && (b.pressed || b.value > 0.5)));
+}
+const padAim = {a:0};
+addEventListener('gamepadconnected', e => { padConnected = true; try { toast('🎮 Controller connected. Left stick move · right stick aim · R2 fire · L1/R1 switch weapon · Circle build · Square revive', 5000); } catch(_){} });
+addEventListener('gamepaddisconnected', () => { padConnected = false; padActive = false; });
 
 // UI hit areas (shared by drawing and touch handling)
 function slotRect(i){
@@ -526,7 +602,7 @@ addEventListener('pointerdown', e => {
 });
 addEventListener('pointermove', e => {
   if (phase !== 'play') return;
-  if (e.pointerType === 'mouse'){ touchMode = false; mouse.x = e.clientX; mouse.y = e.clientY; return; }
+  if (e.pointerType === 'mouse'){ touchMode = false; padActive = false; mouse.x = e.clientX; mouse.y = e.clientY; return; }
   for (const k of ['move','aim']){
     const s = touch[k];
     if (s && s.id === e.pointerId){
@@ -587,7 +663,7 @@ const DOWN_TIME = 30, REVIVE_TIME = 4, REVIVE_HP = 30, REVIVE_RANGE = 70;
 let revHold = false, revPtr = null;                   // touch: the REVIVE button is held
 let autoFire = false; try { autoFire = localStorage.getItem('sr-autofire') === '1'; } catch(_){}      // touch aiming: fire by itself when an enemy is in the aim line
 let touchFireUntil = 0;      // touch: the aim stick was just released, so the trigger is held for a moment
-const wantRevive = () => !!(keys['e'] || revHold);
+const wantRevive = () => !!(keys['e'] || revHold || (padActive && padRev));
 const canGoDown = a => !S.koth && !a.noDown && !(a.down > 0) && S.actors.some(o => o !== a && o.alive && o.team === a.team && !(o.down > 0));
 function reviveTarget(a, range = REVIVE_RANGE){
   let best = null, bd = range;
@@ -1632,7 +1708,11 @@ function localInput(a, dt){
   if (keys['w']||keys['arrowup']) vy -= 1; if (keys['s']||keys['arrowdown']) vy += 1;
   if (keys['a']||keys['arrowleft']) vx -= 1; if (keys['d']||keys['arrowright']) vx += 1;
   const l = Math.hypot(vx,vy) || 1; vx = vx/l*230; vy = vy/l*230;
-  if (!touchMode){
+  if (padActive && !touchMode){
+    if (padMove.x || padMove.y){ vx = padMove.x*230; vy = padMove.y*230; }       // controller: left stick moves (analogue speed), right stick aims, R2 fires
+    if (padAimOn) a.angle = padAim.a;
+    if (padR2 && !holdingGrenade()) fireNow = true;
+  } else if (!touchMode){
     a.angle = Math.atan2(mouse.y/ZOOM + cam.y - a.y, mouse.x/ZOOM + cam.x - a.x);
     if (mouse.down) fireNow = true;
   } else {
@@ -3508,6 +3588,7 @@ $('exit').onclick = () => { if (exitBig || confirm('Leave the match and return t
 // ---------- Loop ----------
 function loop(now){
   const dt = Math.min(0.05, (now-last)/1000); last = now;
+  try { pollPad(dt); } catch(_){}
   if (phase === 'play'){
     if (NET.role === 'guest') updateGuest(dt);
     else {
