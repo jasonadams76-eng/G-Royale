@@ -228,7 +228,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 32;
+const VERSION = 33;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -459,6 +459,7 @@ addEventListener('contextmenu', e => e.preventDefault());
 // ---------- Game controller (PS5 DualSense, Xbox and other "standard" pads), laid out like Fortnite's combat controls ----------
 // Left stick move · right stick aim · R2 fire · L1/R1 or D-pad left/right previous/next weapon · Triangle next weapon (hold: pickaxe) · Circle build
 // Square hold: revive a teammate · D-pad down: drop item · Options: menu · X: new game when eliminated. In the menus: D-pad or left stick to move, X to press, Circle to go back.
+let padGren = null;      // controller: where the held grenade will land, as an offset from the player (the right stick moves it)
 let padActive = false, padConnected = false, padPrev = [], padMove = {x:0, y:0}, padAimOn = false, padR2 = false, padRev = false, padNavT = 0, padTri = {t:0, held:false, done:false}, padFocus = null;
 const padDead = (x, y) => { const m = Math.hypot(x, y); if (m < 0.22) return [0, 0, 0]; const k = Math.min(1, (m - 0.22) / 0.78); return [x/m*k, y/m*k, k]; };
 function padNextWeapon(d){
@@ -494,11 +495,17 @@ function pollPad(dt){
   if (inGame){
     const me = S.player, ang = Math.atan2(R[1], R[0]);
     padAimOn = R[2] > 0.1; if (padAimOn){ padAim.a = ang; }
+    if (me.alive && padActive && holdingGrenade()){        // holding a grenade: the right stick slides the red landing area instead of turning you
+      if (!padGren) padGren = {x:Math.cos(me.angle)*300, y:Math.sin(me.angle)*300};
+      padGren.x += R[0]*640*dt; padGren.y += R[1]*640*dt;
+      const m = Math.hypot(padGren.x, padGren.y); if (m > GR_RANGE){ padGren.x *= GR_RANGE/m; padGren.y *= GR_RANGE/m; }
+      me.angle = Math.atan2(padGren.y, padGren.x); padAimOn = false;
+    } else padGren = null;
     padR2 = (gp.buttons[7] && gp.buttons[7].value > 0.35) || B(7);
     padRev = B(2);
     if (!padActive){}
     else if (me.alive){
-      if (hit(7) && holdingGrenade()){ const a = padAimOn ? padAim.a : me.angle; throwGrenade(me, me.x + Math.cos(a)*360, me.y + Math.sin(a)*360); }   // grenades: R2 throws where you aim
+      if (hit(7) && holdingGrenade() && padGren){ throwGrenade(me, me.x + padGren.x, me.y + padGren.y); padGren = null; }       // grenades: R2 throws it onto the red area
       if (hit(4) || hit(14)) padNextWeapon(-1);
       if (hit(5) || hit(15)) padNextWeapon(1);
       if (hit(3)){ padTri.t = performance.now(); padTri.done = false; }
@@ -3054,7 +3061,7 @@ function draw(){
     ctx.save(); ctx.setLineDash([10,8]); ctx.strokeStyle = 'rgba(255,214,77,0.85)'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.arc(p.x, p.y, GR_RANGE, 0, 7); ctx.stroke();
     if (!touchMode){
-      let mx = mouse.x/ZOOM + cam.x, my = mouse.y/ZOOM + cam.y; const d = Math.hypot(mx-p.x, my-p.y);
+      let mx = mouse.x/ZOOM + cam.x, my = mouse.y/ZOOM + cam.y; if (padActive && padGren){ mx = p.x + padGren.x; my = p.y + padGren.y; } const d = Math.hypot(mx-p.x, my-p.y);
       if (d > GR_RANGE){ mx = p.x + (mx-p.x)/d*GR_RANGE; my = p.y + (my-p.y)/d*GR_RANGE; }
       ctx.strokeStyle = 'rgba(255,70,40,0.8)'; ctx.fillStyle = 'rgba(255,70,40,0.12)';
       ctx.beginPath(); ctx.arc(mx, my, GR_RADIUS, 0, 7); ctx.fill(); ctx.stroke();
