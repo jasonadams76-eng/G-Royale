@@ -33,6 +33,8 @@
     .cols{display:grid;grid-template-columns:1fr 1fr;gap:0 32px;align-items:start;text-align:left}
     .colL,.colR{min-width:0}
     #s-main .hint{text-align:center}
+    #chk-auto{display:none}                                  /* Autofire is a touch-screen option: not shown on PC */
+    .menubtns{width:min(420px,100%);margin:6px auto 12px}
     #s-avatar .cols{grid-template-columns:240px 1fr}
     #s-avatar #avprev{width:200px;height:200px;top:12px}
     #s-avatar > p{font-size:18px}
@@ -160,10 +162,12 @@
       </div><div class="colR">
       <div class="lbl">Mode</div><div class="mapbox" id="modebox-main"><button class="mini" data-smode="classic">Battle Royale</button><button class="mini" data-smode="koth">King of the Hill</button></div>
       <div class="lbl">Map</div><div class="mapbox" id="mapbox-main"></div>
+      </div></div>
+      <div class="menubtns">
       <button class="btn" id="b-solo">Play Solo</button>
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
-      </div></div>
+      </div>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
       <div class="ver" id="ver">G Royale</div>
     </div>
@@ -223,7 +227,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 30;
+const VERSION = 31;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
