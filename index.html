@@ -24,6 +24,25 @@
   .logo{display:block;width:min(300px,100%);height:auto;margin:0 auto 8px}
   @media (max-height:520px){.logo{width:190px}}
   .card p{margin:8px 0;font-size:14px;color:#cde}
+  /* PC browsers: a wider menu, with the main screen in two columns */
+  .cols{display:block}
+  .pconly{display:none}
+  @media (pointer:fine) and (min-width:820px){
+    .card{width:min(820px,calc(100% - 40px));padding:20px 28px 14px}
+    .logo{width:min(340px,100%)}
+    .cols{display:grid;grid-template-columns:1fr 1fr;gap:0 32px;align-items:start;text-align:left}
+    .colL,.colR{min-width:0}
+    #s-main .hint{text-align:center}
+    #s-avatar .cols{grid-template-columns:240px 1fr}
+    #s-avatar #avprev{width:200px;height:200px;top:12px}
+    #s-avatar > p{font-size:18px}
+    #s-avatar #b-avdone,#s-join .colR .btn{max-width:100%}
+    #s-avatar #b-avdone{width:min(420px,100%);margin:10px auto 4px}
+    #s-join .colL{text-align:center}
+    #s-join .pconly{display:block;font-size:13px}
+    #s-lobby #roomcode{text-align:center}
+    #s-lobby .small{text-align:center}
+  }
   .card .hint{font-size:12px;color:#9ab;min-height:30px}
   .card [hidden]{display:none}
   .btn{display:block;width:100%;box-sizing:border-box;margin:8px 0;padding:12px;font-size:17px;font-weight:700;
@@ -132,23 +151,28 @@
 
     <div id="s-main">
       <div id="winsbox" title="Royale wins in solo and bot matches">🏆 Royale wins: <b id="wincount">0</b></div>
+      <div class="cols"><div class="colL">
       <label class="lbl" for="pname">Your name</label>
       <input id="pname" class="txt name" maxlength="12" placeholder="Enter a name" autocomplete="off" spellcheck="false">
       <div id="xpbox" title="Earn XP at the end of every game: finishing place, kills and a bonus for winning"><div class="xprow"><b id="lvltxt">Level 1</b><span id="xptxt">0 / 100 XP</span></div><div id="xpbar"><i id="xpfill"></i></div></div>
       <div class="look"><canvas id="lookprev" width="112" height="112"></canvas><button class="btn" id="b-avatar">🎨 Design Your Avatar</button></div>
+      <label class="chk" id="chk-auto"><input type="checkbox" id="autofire"> <span><b>Autofire</b> (touch controls): the gun fires by itself while you aim at an enemy you can see. Off: fire when you let go of the aim stick.</span></label>
+      </div><div class="colR">
       <div class="lbl">Mode</div><div class="mapbox" id="modebox-main"><button class="mini" data-smode="classic">Battle Royale</button><button class="mini" data-smode="koth">King of the Hill</button></div>
       <div class="lbl">Map</div><div class="mapbox" id="mapbox-main"></div>
-      <label class="chk" id="chk-auto"><input type="checkbox" id="autofire"> <span><b>Autofire</b> (touch controls): the gun fires by itself while you aim at an enemy you can see. Off: fire when you let go of the aim stick.</span></label>
       <button class="btn" id="b-solo">Play Solo</button>
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
+      </div></div>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
       <div class="ver" id="ver">G Royale</div>
     </div>
 
     <div id="s-avatar" hidden>
       <p><b>Design Your Avatar</b></p>
+      <div class="cols"><div class="colL">
       <canvas id="avprev" width="150" height="150"></canvas>
+      </div><div class="colR">
       <div class="lbl">Skin tone</div><div class="sws big" id="av-skins"></div>
       <div class="lbl">Hair style</div><div class="mapbox" id="av-styles"></div>
       <div class="lbl">Hair colour</div><div class="sws big" id="av-hairs"></div>
@@ -156,21 +180,28 @@
       <div class="lbl">Shirt pattern</div><div class="mapbox" id="av-pats"></div>
       <div class="lbl">Shirt colour</div><div class="sws big" id="av-shirts"></div>
       <div id="av-c2"><div class="lbl">Second colour</div><div class="sws big" id="av-shirts2"></div></div>
+      </div></div>
       <button class="btn" id="b-avdone">Save &amp; Back to Main Menu</button>
     </div>
 
     <div id="s-join" hidden>
+      <div class="cols"><div class="colL">
       <p>Enter the room code</p>
       <input id="code" class="txt" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false">
       <button class="btn" id="b-go">Join</button>
+      </div><div class="colR">
+      <p class="hint pconly">Ask the host for the 5-letter room code. It is shown big at the top of their lobby. Once you are in, you can team up with other players before the host starts the match.</p>
       <button class="btn ghost" data-back>Back</button>
+      </div></div>
     </div>
 
     <div id="s-lobby" hidden>
+      <div class="cols"><div class="colL">
       <p class="small">Room code</p>
       <div id="roomcode">-----</div>
       <div id="plist"></div>
       <div id="invites"></div>
+      </div><div class="colR">
       <div id="modebox"><button class="mini" data-mode="bots">With bots</button><button class="mini" data-mode="humans">Humans only</button><button class="mini" data-mode="koth">King of the Hill</button></div>
       <div class="mapbox" id="mapbox-lobby"></div>
       <p class="hint" id="lobby-info"></p>
@@ -178,6 +209,7 @@
       <button class="btn" id="b-start" hidden>Start Match</button>
       <p class="hint" id="wait-host" hidden>Waiting for the host to start the match…</p>
       <button class="btn ghost" id="b-leave">Leave Room</button>
+      </div></div>
     </div>
 
     <div id="msg"></div>
@@ -191,7 +223,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 28;
+const VERSION = 30;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -3279,9 +3311,9 @@ try { $('pname').value = localStorage.getItem('sr-name') || ''; } catch(_){}
 $('pname').addEventListener('input', () => { try { localStorage.setItem('sr-name', cleanName($('pname').value)); } catch(_){} });
 const myName = () => cleanName($('pname').value);
 function drawLookPreview(){
-  for (const [id, sc] of [['lookprev', 2.3], ['avprev', 4.2]]){
+  for (const [id, sc] of [['lookprev', 2.3], ['avprev', 3.4]]){
     const cv2 = $(id), c = cv2.getContext('2d'), w = cv2.width; c.clearRect(0, 0, w, w);
-    c.save(); c.translate(w/2, w*0.52); c.rotate(-Math.PI/2); c.scale(sc, sc); c.lineWidth = 2; c.strokeStyle = '#000'; c.lineJoin = 'round';
+    c.save(); c.translate(w/2, w*(id === 'avprev' ? 0.6 : 0.52)); c.rotate(-Math.PI/2); c.scale(sc, sc); c.lineWidth = 2; c.strokeStyle = '#000'; c.lineJoin = 'round';
     const L = id === 'avprev' ? look : curLook();      // (the designer screen always previews the avatar being designed)
     drawPerson(c, SHIRTS[L.shirt], SKINS[L.skin], 0, false, {pat:L.pat, shirt2:SHIRTS[L.shirt2], hair:HAIRS[L.hair], style:L.style, sleeve:L.sleeve}); c.restore();
   }
