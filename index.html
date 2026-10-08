@@ -154,7 +154,7 @@
     </svg>
 
     <div id="s-main">
-      <div id="winsbox" title="Royale wins in solo and bot matches">🏆 Royale wins: <b id="wincount">0</b> <span class="sep">·</span> ⚔️ Career kills: <b id="killcount">0</b></div>
+      <div id="winsbox" title="Royale wins in solo and bot matches">🏆 <span id="winlbl">Royale wins</span>: <b id="wincount">0</b> <span class="sep">·</span> ⚔️ <span id="killlbl">Career kills</span>: <b id="killcount">0</b></div>
       <div class="cols"><div class="colL">
       <label class="lbl" for="pname">Your name</label>
       <input id="pname" class="txt name" maxlength="12" placeholder="Enter a name" autocomplete="off" spellcheck="false">
@@ -229,7 +229,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 37;
+const VERSION = 39;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -946,11 +946,22 @@ function storyReset(){
   }
   S.bullets = []; S.grenades = [];
 }
-// heal items an enemy may drop when it falls
+// what a fallen enemy leaves behind: its gun (random rarity, better later in the level), some ammo for it, and sometimes a bandage or shield potion
+const STORY_ODDS = [[70,24,6,0,0.3],[60,26,10,3,0.5],[48,28,16,6,1],[38,28,22,10,2],[28,28,26,15,3],[20,25,30,20,5]];
+function storyRarity(camp, min){
+  const o = STORY_ODDS[Math.max(0, Math.min(STORY_ODDS.length-1, camp < 0 ? 5 : camp))]; let r = Math.random()*o.reduce((t, x) => t + x, 0);
+  for (let i = 0; i < o.length; i++){ r -= o[i]; if (r < 0) return Math.max(min, i); }
+  return min;
+}
 function storyDrop(a){
-  const el = a.inv[1] === 'ar', r = Math.random();
-  if (r < (el ? 0.45 : 0.30)) S.loot.push({x:a.x + rnd(-14, 14), y:a.y + rnd(-14, 14), type:'bandage', rar:0});
-  else if (r < (el ? 0.70 : 0.45)) S.loot.push({x:a.x + rnd(-14, 14), y:a.y + rnd(-14, 14), type:'shield', rar:0});
+  const gun = a.inv[1], el = gun === 'ar', now = performance.now(), j = () => rnd(-16, 16);
+  if (gun && GUN_W[gun]){
+    S.loot.push({x:a.x + j(), y:a.y + j(), type:gun, rar:storyRarity(a.camp, el ? 1 : 0), exp:now + 20000});      // grab it quickly: it fades away after 20 seconds
+    S.loot.push({x:a.x + j(), y:a.y + j(), type:'ammo_'+gun, n:Math.max(1, Math.round(AMMO['ammo_'+gun].box*0.4)), exp:now + 30000});
+  }
+  const r = Math.random();
+  if (r < (el ? 0.45 : 0.30)) S.loot.push({x:a.x + j(), y:a.y + j(), type:'bandage', rar:0});
+  else if (r < (el ? 0.70 : 0.45)) S.loot.push({x:a.x + j(), y:a.y + j(), type:'shield', rar:0});
 }
 // The Swamp Warden, seen from above and facing right (x+): a hooded root-golem with a green hood, brown clothes and green leaf armour
 function drawWarden(c, ph){
@@ -1045,6 +1056,7 @@ function storyTick(dt){
   const sy = S.story, p = S.player; sy.t += dt;
   if (sy.lost){ if (performance.now() - S.overAt > 6000) location.reload(); return; }
   if (S.over) return;
+  { const nw = performance.now(); for (let i = S.loot.length - 1; i >= 0; i--) if (S.loot[i].exp && nw > S.loot[i].exp) S.loot.splice(i, 1); }      // enemy drops nobody picked up fade away
   const bo = sy.boss;
   if (bo && !bo.alive){ S.over = true; S.winTeam = p.team; S.overAt = performance.now(); sy.done = true; return; }
   for (const c of sy.camps){                        // a camp's chest appears once everyone in it is down
@@ -3687,13 +3699,21 @@ function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); menu
 function menuMsg(t){ $('msg').textContent = t || ''; }
 function hideMenu(){ $('menu').classList.add('hide'); $('exit').style.display = 'block'; }
 
+let soloMode = 'classic'; try { { const sm = localStorage.getItem('sr-smode'); soloMode = sm === 'koth' || sm === 'story' ? sm : 'classic'; } } catch(_){}
 // ---------- Experience and levels (kept on this device) ----------
 // Each finished game earns XP from your finishing place, your kills and a bonus for winning. Early levels come quickly; each later level needs more.
 const xpNeed = L => 100 + 40*(L-1) + 8*(L-1)*(L-1);                       // XP needed to go from level L to L+1: 100, 148, 212, 292, 388 ... 1108 at level 10
 function getXP(){ try { return Math.max(0, parseInt(localStorage.getItem('sr-xp'), 10) || 0); } catch(_){ return 0; } }
 function xpInfo(total){ let L = 1, left = total; while (left >= xpNeed(L)){ left -= xpNeed(L); L++; } return {lvl:L, into:left, need:xpNeed(L)}; }
-function getKills(){ try { return Math.max(0, parseInt(localStorage.getItem('sr-kills'), 10) || 0); } catch(_){ return 0; } }
-function showKills(){ const e = $('killcount'); if (e) e.textContent = getKills(); }
+// wins and kills are kept separately for each mode: classic (Battle Royale), koth (King of the Hill) and story (Adventure)
+const modeOfGame = () => S && S.story ? 'story' : S && S.koth ? 'koth' : 'classic';
+try { if (!localStorage.getItem('sr-mig39')){      // one-time move of the old combined totals into Battle Royale
+  if (localStorage.getItem('sr-wins-classic') === null && localStorage.getItem('sr-wins') !== null) localStorage.setItem('sr-wins-classic', localStorage.getItem('sr-wins'));
+  if (localStorage.getItem('sr-kills-classic') === null && localStorage.getItem('sr-kills') !== null) localStorage.setItem('sr-kills-classic', localStorage.getItem('sr-kills'));
+  localStorage.setItem('sr-mig39', '1');
+} } catch(_){}
+function getKills(m){ try { return Math.max(0, parseInt(localStorage.getItem('sr-kills-' + (m || soloMode)), 10) || 0); } catch(_){ return 0; } }
+function showKills(){ const e = $('killcount'); if (e) e.textContent = getKills(); const l = $('killlbl'); if (l) l.textContent = 'Kills'; }
 function showXP(){
   const i = xpInfo(getXP()), a = $('lvltxt'), b = $('xptxt'), f = $('xpfill');
   if (a) a.textContent = 'Level ' + i.lvl; if (b) b.textContent = i.into + ' / ' + i.need + ' XP'; if (f) f.style.width = Math.round(i.into / i.need * 100) + '%';
@@ -3719,7 +3739,7 @@ function maybeAwardXP(force){
   } else { if (force) S.xpDone = true; return; }
   S.xpDone = true;
   const gain = S.story ? 100 + 8 * Math.min(60, p.kills | 0) : xpForGame(place, p.kills | 0, win, S.actors.length), before = getXP(), l0 = xpInfo(before).lvl;
-  try { localStorage.setItem('sr-xp', String(before + gain)); localStorage.setItem('sr-kills', String(getKills() + Math.max(0, p.kills | 0))); } catch(_){}
+  try { localStorage.setItem('sr-xp', String(before + gain)); const mk = modeOfGame(); localStorage.setItem('sr-kills-' + mk, String(getKills(mk) + Math.max(0, p.kills | 0))); } catch(_){}
   showKills();
   S.xpGain = {gain, lvl:xpInfo(before + gain).lvl, up:xpInfo(before + gain).lvl > l0};
   showXP();
@@ -3734,9 +3754,10 @@ function drawXPLine(x, y, size){
 showXP(); showKills();
 
 // total Royale wins in solo and bot matches (kept on this device)
-function getWins(){ try { return Math.max(0, parseInt(localStorage.getItem('sr-wins'), 10) || 0); } catch(_){ return 0; } }
-function showWins(){ const e = $('wincount'); if (e) e.textContent = getWins(); }
-function addRoyaleWin(){ try { localStorage.setItem('sr-wins', String(getWins() + 1)); } catch(_){} showWins(); }
+function getWins(m){ try { return Math.max(0, parseInt(localStorage.getItem('sr-wins-' + (m || soloMode)), 10) || 0); } catch(_){ return 0; } }
+const WIN_LBL = {classic:'Royale wins', koth:'Hill wins', story:'Levels beaten'};
+function showWins(){ const e = $('wincount'); if (e) e.textContent = getWins(); const l = $('winlbl'); if (l) l.textContent = WIN_LBL[soloMode] || WIN_LBL.classic; }
+function addWin(m){ try { localStorage.setItem('sr-wins-' + m, String(getWins(m) + 1)); } catch(_){} showWins(); }
 showWins();
 // the player's chosen name (remembered on this device)
 try { $('pname').value = localStorage.getItem('sr-name') || ''; } catch(_){}
@@ -3913,8 +3934,7 @@ $('b-go').onclick = () => {
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('b-go').click(); });
 $('b-start').onclick = hostBeginMatch;
 document.querySelectorAll('#modebox .mini').forEach(bt => bt.onclick = () => { if (NET.role !== 'host' || phase !== 'lobby') return; NET.mode = bt.dataset.mode; if (NET.mode === 'koth'){ NET.lobby.forEach(q => { q.tm = null; q.bm = 0; }); NET.invites = []; } lobbyBroadcast(); });
-let soloMode = 'classic'; try { { const sm = localStorage.getItem('sr-smode'); soloMode = sm === 'koth' || sm === 'story' ? sm : 'classic'; } } catch(_){}
-const markSoloMode = () => { document.querySelectorAll('#modebox-main .mini').forEach(bt => bt.classList.toggle('sel', bt.dataset.smode === soloMode)); const st = soloMode === 'story'; $('storyhint').style.display = st ? 'block' : 'none'; $('mapbox-main').style.display = st ? 'none' : ''; const lb = $('mapbox-main').previousElementSibling; if (lb) lb.style.display = st ? 'none' : ''; };
+const markSoloMode = () => { document.querySelectorAll('#modebox-main .mini').forEach(bt => bt.classList.toggle('sel', bt.dataset.smode === soloMode)); try { showWins(); showKills(); } catch(_){} const st = soloMode === 'story'; $('storyhint').style.display = st ? 'block' : 'none'; $('mapbox-main').style.display = st ? 'none' : ''; const lb = $('mapbox-main').previousElementSibling; if (lb) lb.style.display = st ? 'none' : ''; };
 document.querySelectorAll('#modebox-main .mini').forEach(bt => bt.onclick = () => { soloMode = bt.dataset.smode; try { localStorage.setItem('sr-smode', soloMode); } catch(_){} markSoloMode(); });
 markSoloMode();
 let soloMap = 'random'; try { soloMap = okMap(localStorage.getItem('sr-map')); } catch(_){}
@@ -3951,7 +3971,7 @@ function loop(now){
   if (phase === 'play' && S.over && !S.sfxDone){
     S.sfxDone = true;
     if (NET.role === 'host') creditWins(); else if (NET.role === 'solo') soloCrown = S.winTeam !== null && S.winTeam === S.player.team;
-    if (S.hasBots && !S.koth && S.winTeam !== null && S.winTeam === S.player.team) addRoyaleWin();       // solo and bot matches count toward your total (humans-only matches don't)
+    if (S.winTeam !== null && S.winTeam === S.player.team && (S.story || S.koth || S.hasBots)) addWin(modeOfGame());       // Royale: solo and bot matches only (humans-only don't count). King of the Hill: finishing first. Adventure: beating the Warden
     if (!(S.winTeam !== null && S.winTeam === S.player.team)) playSnd('lose');     // winners hear the victory fanfare (music) instead
   }
   { const pl = (phase === 'play' && S && S.player) ? S.player : null, want = pl && pl.alive && pl.inv[pl.cur] === 'sniper' ? SN_ZOOM : 1;
