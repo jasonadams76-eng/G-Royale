@@ -168,6 +168,7 @@
       <div class="look"><canvas id="lookprev" width="112" height="112"></canvas><button class="btn" id="b-avatar">🎨 Design Your Avatar</button></div>
       <label class="chk" id="chk-auto"><input type="checkbox" id="autofire"> <span><b>Autofire</b> (touch controls): the gun fires by itself while you aim at an enemy you can see. Off: fire when you let go of the aim stick.</span></label>
       <button class="mini" id="cs-set" title="Story Mode cut scenes: play them the first time only, every time, or never">🎬 Cut scenes: First time only</button>
+      <button class="mini" id="sv-open" title="Move your progress to another device">💾 Save transfer</button>
       </div><div class="colR">
       <div class="lbl">Mode</div><div class="mapbox" id="modebox-main"><button class="mini" data-smode="classic">Battle Royale</button><button class="mini" data-smode="koth">King of the Hill</button><button class="mini" data-smode="story">Story Mode</button></div><div id="storyhint" style="display:none;font-size:13px;opacity:.85;margin:4px 0 8px">Story Mode (solo): follow the hero’s journey through levels full of enemy camps and defeat each boss, with cut scenes between chapters. Press Play Solo to choose your chapter.</div>
       <div class="lbl">Map</div><div class="mapbox" id="mapbox-main"></div>
@@ -241,6 +242,16 @@
   </div>
 </div>
 <button id="snd" title="Sound on/off (M)">🔊</button>
+<div id="svbox" style="display:none;position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.82);align-items:center;justify-content:center"><div style="background:#16251a;border:2px solid #4a6;border-radius:12px;padding:16px;width:min(440px,92vw);max-height:92vh;overflow:auto;color:#cfe;font:14px sans-serif">
+  <b style="font-size:17px">💾 Save transfer</b>
+  <p style="margin:8px 0 4px"><b>Export</b>: copy this code (or download it) and import it on your other device.</p>
+  <textarea id="sv-out" readonly style="width:100%;height:70px;box-sizing:border-box;background:#0b140d;color:#9f9;border:1px solid #4a6;border-radius:6px;font:11px monospace"></textarea>
+  <div style="margin:6px 0"><button class="mini" id="sv-copy">Copy code</button> <button class="mini" id="sv-dl">Download file</button></div>
+  <p style="margin:10px 0 4px"><b>Import</b>: paste a code or load a file. This replaces the progress on this device.</p>
+  <textarea id="sv-in" placeholder="Paste save code here" style="width:100%;height:70px;box-sizing:border-box;background:#0b140d;color:#fff;border:1px solid #4a6;border-radius:6px;font:11px monospace"></textarea>
+  <div style="margin:6px 0"><button class="mini" id="sv-apply">Import code</button> <button class="mini" id="sv-file">Load file…</button> <input type="file" id="sv-pick" accept=".json,.txt,text/plain,application/json" style="display:none"></div>
+  <div id="sv-msg" style="min-height:18px;color:#fc4"></div>
+  <div style="text-align:right"><button class="mini" id="sv-close">Close</button></div></div></div>
 <button id="mus" title="Music on/off">🎵</button>
 <button id="fs" title="Full screen (F)">⛶</button>
 <button id="exit">Menu</button>
@@ -248,7 +259,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 54;
+const VERSION = 55;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -2315,6 +2326,42 @@ MUSIC.boss_war = {bpm:136, chords:[[40,43,47],[36,40,43],[38,42,45],[35,39,42]],
     if (bar === 3 && i >= 8) m.drum('s', .3 + (i-8)*.07);
     const l = this.lead[bar][i]; if (l){ const d = mlen(this.lead[bar], i, 4)*m.spb; m.tone(mtof(l)*.98, mtof(l), d, 'sawtooth', .08); m.tone(mtof(l), mtof(l), d, 'square', .05); }
   }};
+
+// ---------- Save transfer: export / import all saved progress (every 'sr-' setting) as a text code or file ----------
+{
+  const box = $('svbox'), out = $('sv-out'), inp = $('sv-in'), msg = $('sv-msg');
+  const say = (t, ok) => { msg.style.color = ok ? '#7f7' : '#fc4'; msg.textContent = t; };
+  const pack = () => {
+    const o = {};
+    try { for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if (k && k.indexOf('sr-') === 0) o[k] = localStorage.getItem(k); } } catch(_){}
+    return 'GR1:' + btoa(unescape(encodeURIComponent(JSON.stringify(o))));
+  };
+  const unpack = t => {
+    t = (t || '').trim(); if (t.indexOf('GR1:') !== 0) throw new Error('That is not a G Royale save code.');
+    const o = JSON.parse(decodeURIComponent(escape(atob(t.slice(4).replace(/\s+/g, '')))));
+    if (!o || typeof o !== 'object') throw new Error('Save data is damaged.');
+    return o;
+  };
+  $('sv-open').onclick = () => { out.value = pack(); inp.value = ''; say(''); box.style.display = 'flex'; };
+  $('sv-close').onclick = () => { box.style.display = 'none'; };
+  $('sv-copy').onclick = async () => { out.value = pack(); out.select(); try { await navigator.clipboard.writeText(out.value); say('Code copied.', true); } catch(_){ try { document.execCommand('copy'); say('Code copied.', true); } catch(e){ say('Press and hold the code to copy it.'); } } };
+  $('sv-dl').onclick = () => {
+    try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([pack()], {type:'text/plain'})); a.download = 'g-royale-save.txt'; document.body.appendChild(a); a.click(); a.remove(); say('Save file downloaded.', true); } catch(e){ say('Download failed: use the code instead.'); }
+  };
+  $('sv-file').onclick = () => $('sv-pick').click();
+  $('sv-pick').onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { inp.value = String(r.result || '').trim(); say('File loaded. Press Import code.', true); }; r.readAsText(f); e.target.value = ''; };
+  $('sv-apply').onclick = () => {
+    let o; try { o = unpack(inp.value); } catch(e){ say(e.message.indexOf('G Royale') >= 0 || e.message.indexOf('damaged') >= 0 ? e.message : 'That code could not be read. Copy it again in full.'); return; }
+    if (!confirm('Replace the progress on this device with the imported save?')) return;
+    try {
+      const del = []; for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if (k && k.indexOf('sr-') === 0) del.push(k); }
+      del.forEach(k => localStorage.removeItem(k));
+      for (const k in o) if (k.indexOf('sr-') === 0) localStorage.setItem(k, String(o[k]));
+    } catch(e){ say('Could not write the save on this device.'); return; }
+    say('Imported. Reloading…', true); setTimeout(() => location.reload(), 600);
+  };
+  box.addEventListener('click', e => e.stopPropagation());
+}
 const M = {cur:null, gain:null, timer:0, off:false};
 try { M.off = localStorage.getItem('sr-nomusic') === '1'; } catch(_){}
 $('mus').textContent = M.off ? '🚫' : '🎵';
