@@ -229,7 +229,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 35;
+const VERSION = 37;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -827,55 +827,158 @@ function init(humans, humansOnly, mapId, koth){
 // ---------- Adventure mode: a single player fights through a big map to a Level Boss ----------
 // One hand-placed level on the Swamp map. Enemy camps guard the route from the bottom-left to the boss arena in the top-right.
 // Dying sends you back to the last checkpoint (enemies you already beat stay beaten); the level ends when the boss falls.
-const STORY = {name:'The Sunken Marsh', start:{x:450, y:5500}, boss:{x:5200, y:700, R:600},
-  camps:[{x:1500,y:4800,n:3,el:0}, {x:2900,y:5100,n:4,el:1}, {x:4300,y:4200,n:4,el:1}, {x:3600,y:3000,n:5,el:2}, {x:4400,y:1900,n:5,el:2}, {x:3300,y:900,n:6,el:3}],
-  cps:[{x:3500,y:4700}, {x:4000,y:2500}, {x:4300,y:800}]};
-const BOSS_HP = 1800;
+const STORY = {name:'The Sunken Marsh', HW:160, R:{S:330, C:450, B:620}, LIVES:5,
+  // the route: [x, y, kind] — S start, C camp, B boss, anything else is just a bend in the path
+  nodes:[[500,5500,'S'],[1300,5000],[2000,5300,'C'],[3000,5600],[3900,5300,'C'],[5000,5500],[5300,4600],[5000,4000,'C'],[4300,3300],[2600,3300,'C'],[1200,3400],[800,2400],[1500,1800,'C'],[1900,1100],[2900,900,'C'],[4100,1050],[5200,700,'B']],
+  cpAfter:[2, 4, 6]};      // checkpoints sit in the paths after camps 2, 4 and 6
+const BOSS_HP = 1800, SHAPE_DEF = null;
 function mkEnemy(x, y, kind, camp){
   const a = newActor('bot', ++S.story.n), elite = kind === 'elite', gun = elite ? 'ar' : kind === 'shot' ? 'shotgun' : 'pistol';
   a.x = a.tx = x; a.y = a.ty = y; a.team = 'E'; a.enemy = true; a.noDown = true; a.camp = camp; a.home = {x, y}; a.alert = camp < 0; a.rt = 0.5;
   a.name = elite ? 'Marsh Brute' : 'Marsh Raider'; a.hp = a.hpMax = elite ? 110 : 60; a.dmgMul = elite ? 0.55 : 0.4; a.spd = elite ? 165 : 145; a.aggro = elite ? 560 : 440;
   a.inv = ['pickaxe', gun, null, null, null, null]; a.cur = 1; a.ammo[gun] = 14; a.started[gun] = true; a.gr[gun] = elite ? 1 : 0; a.wood = 0;
   a.color = elite ? 'hsl(0,70%,32%)' : 'hsl(18,55%,38%)'; a.pref = gun === 'shotgun' ? 120 : gun === 'ar' ? 300 : 260;
-  if (Math.random() < 0.4){ a.inv[2] = 'bandage'; a.band = 1; }
   S.actors.push(a); return a;
 }
-function initStory(){
-  let ok = false;
-  for (let t = 0; t < 14 && !ok; t++){
-    init(null, false, 'swamp', false);
-    ok = !nearLake(STORY.start.x, STORY.start.y, 220) && !nearLake(STORY.boss.x, STORY.boss.y, STORY.boss.R);
+// Which ground is open? Paths (capsules) and arenas (circles) are open; everything else is impassable swamp thicket.
+function storyShapes(){
+  const N = STORY.nodes, segs = [], circs = [];
+  for (let i = 0; i < N.length - 1; i++) segs.push([N[i][0], N[i][1], N[i+1][0], N[i+1][1]]);
+  for (const n of N) if (n[2]) circs.push([n[0], n[1], STORY.R[n[2]]]);
+  return {segs, circs};
+}
+// clearance: > 0 inside open ground (distance to the nearest wall), < 0 inside the thicket. Also reports the nearest open shape's closest point.
+function storyClr(x, y, out){
+  const sy = S.story; let best = -1e9, bx = 0, by = 0, bR = 0;
+  const HW = STORY.HW, sg = sy.segs;
+  for (let i = 0; i < sg.length; i++){
+    const q = sg[i], dx = q[2]-q[0], dy = q[3]-q[1], l2 = dx*dx + dy*dy;
+    let t = l2 ? ((x-q[0])*dx + (y-q[1])*dy)/l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const cx = q[0] + dx*t, cy = q[1] + dy*t, v = HW - Math.hypot(x-cx, y-cy);
+    if (v > best){ best = v; bx = cx; by = cy; bR = HW; }
   }
+  const ci = sy.circs;
+  for (let i = 0; i < ci.length; i++){ const c = ci[i], v = c[2] - Math.hypot(x-c[0], y-c[1]); if (v > best){ best = v; bx = c[0]; by = c[1]; bR = c[2]; } }
+  if (out){ out.x = bx; out.y = by; out.R = bR; }
+  return best;
+}
+const _po = {x:0, y:0, R:0};
+function storyPush(a){            // keep an actor inside open ground (slides along the wall)
+  const c = storyClr(a.x, a.y, _po);
+  if (c >= a.r) return;
+  const dx = a.x - _po.x, dy = a.y - _po.y, d = Math.hypot(dx, dy) || 1, k = Math.max(0, _po.R - a.r);
+  a.x = _po.x + dx/d*k; a.y = _po.y + dy/d*k; a.tx = a.x; a.ty = a.y;
+}
+function storyLOS(x1, y1, x2, y2){
+  const d = Math.hypot(x2-x1, y2-y1), n = Math.ceil(d/36);
+  for (let i = 1; i < n; i++){ const t = i/n; if (storyClr(x1 + (x2-x1)*t, y1 + (y2-y1)*t) < 0) return false; }
+  return true;
+}
+function initStory(){
+  init(null, false, 'swamp', false);
   const st = S.storm; st.r = st.nr = st.rTo = 99999; st.state = 'final'; st.t = 99999; S.ammoChk = 1e12;      // no storm in Adventure
-  S.actors = S.actors.filter(a => a.isPlayer); S.players = S.actors.slice(); S.loot = [];
+  S.actors = S.actors.filter(a => a.isPlayer); S.players = S.actors.slice(); S.loot = []; S.lakes = []; S.boats = []; S.trees = []; S.bog = []; S.chests = []; S.walls = new Map();
   const p = S.player = S.players[0];
-  S.story = {n:0, cp:-1, deaths:0, deadT:0, t:0, boss:null, bs:{awake:false, ph:1, tShot:1.5, tBurst:3, tCharge:5, wind:0, charge:0, hitCd:0}, total:0};
-  const clear = (x, y, r) => { S.trees = S.trees.filter(t => Math.hypot(t.x-x, t.y-y) > r + t.r); S.bog = S.bog.filter(c => Math.hypot(c[0]-x, c[1]-y) > c[2] + r); S.chests = S.chests.filter(c => c.island || Math.hypot(c.x-x, c.y-y) > r); };
-  const fit = (pt, m) => { for (let k = 0; k < 60 && nearLake(pt.x, pt.y, m); k++){ pt.x = Math.max(300, Math.min(W-300, pt.x + rnd(-260, 260))); pt.y = Math.max(300, Math.min(W-300, pt.y + rnd(-260, 260))); } return pt; };
-  const camps = STORY.camps.map(c => fit({...c}, 150)), cps = STORY.cps.map(c => fit({...c}, 100));
-  S.story.cps = cps; S.story.camps = camps;
-  clear(STORY.start.x, STORY.start.y, 300); clear(STORY.boss.x, STORY.boss.y, STORY.boss.R - 30);
-  for (const c of camps) clear(c.x, c.y, 260);
-  for (const c of cps) clear(c.x, c.y, 130);
-  p.x = p.tx = STORY.start.x; p.y = p.ty = STORY.start.y; p.angle = -0.8; p.invT = 2;
-  p.inv = ['pickaxe', 'pistol', null, null, null, null]; p.cur = 1; p.ammo.pistol = 90; p.started.pistol = true; p.gr.pistol = 0; p.hp = 100; p.sh = 0;
-  S.chests.push({x:STORY.start.x + 170, y:STORY.start.y - 90, open:false});
-  camps.forEach((c, ci) => {
-    S.chests.push({x:c.x + rnd(-60, 60), y:c.y + rnd(-60, 60), open:false});
-    if (ci % 2) S.chests.push({x:c.x + rnd(-120, 120), y:c.y + rnd(80, 140), open:false});
+  const sh = storyShapes(), N = STORY.nodes;
+  S.story = {n:0, cp:-1, deaths:0, lives:STORY.LIVES, deadT:0, t:0, boss:null, bs:{awake:false, ph:1, tShot:1.5, tBurst:3, tCharge:5, wind:0, charge:0, hitCd:0}, total:0, segs:sh.segs, circs:sh.circs,
+    special: Math.random() < 0.5 ? 'minigun' : 'flame', camps:[], cps:[]};
+  const sy = S.story;
+  // camps, in route order
+  N.forEach((n, i) => { if (n[2] === 'C') sy.camps.push({x:n[0], y:n[1], idx:i, n:3 + Math.min(3, sy.camps.length), el:[0,1,1,2,2,3][sy.camps.length], cleared:false}); });
+  const bo = N.find(n => n[2] === 'B'), st0 = N[0];
+  // scenery: solid thicket trees line the outside of every path and arena
+  let tid = 1000;
+  const addTree = (x, y) => { const stump = (tid % 3) === 0; S.trees.push(stump ? {id:tid++, x:Math.round(x), y:Math.round(y), r:20, wood:100, solid:true} : {id:tid++, x:Math.round(x), y:Math.round(y), r:23, wood:1e6}); };
+  for (const q of sh.segs){
+    const L = Math.hypot(q[2]-q[0], q[3]-q[1]), ux = (q[2]-q[0])/L, uy = (q[3]-q[1])/L;
+    for (const sd of [-1, 1]) for (let d = 0; d <= L; d += 62){ const ox = q[0] + ux*d - uy*sd*(STORY.HW+30), oy = q[1] + uy*d + ux*sd*(STORY.HW+30); if (storyClr(ox, oy) < -14) addTree(ox + rnd(-6, 6), oy + rnd(-6, 6)); }
+  }
+  for (const c of sh.circs){ const rr = c[2] + 30, steps = Math.ceil(2*Math.PI*rr/62); for (let k = 0; k < steps; k++){ const an = k/steps*Math.PI*2, ox = c[0] + Math.cos(an)*rr, oy = c[1] + Math.sin(an)*rr; if (storyClr(ox, oy) < -14) addTree(ox + rnd(-6, 6), oy + rnd(-6, 6)); } }
+  // cover inside the arenas
+  const cover = (cx, cy, n, r0, r1) => { for (let k = 0; k < n; k++){ const an = k/n*Math.PI*2 + rnd(-0.3, 0.3), rr = rnd(r0, r1); addTree(cx + Math.cos(an)*rr, cy + Math.sin(an)*rr); } };
+  cover(st0[0], st0[1], 3, 200, 270); sy.camps.forEach(c => cover(c.x, c.y, 7, 230, 380)); cover(bo[0], bo[1], 9, 220, 520);
+  p.x = p.tx = st0[0]; p.y = p.ty = st0[1]; p.angle = -0.8; p.invT = 2; p.hp = 100; p.sh = 0;
+  p.inv = ['pickaxe', null, null, null, null, null]; p.cur = 0; p.ammo = newAmmo(); p.gr = newGr(); p.started = {};
+  // chests: the start chest (a gun) and one per camp, which only appears once the camp is cleared
+  const ammo = (g, n) => Array.from({length:n}, () => ({type:'ammo_'+g, n:AMMO['ammo_'+g].box})), heal = (k, n) => Array.from({length:n}, () => ({type:k}));
+  S.chests.push({x:st0[0] + 170, y:st0[1] - 90, open:false, loot:[{type:'pistol', rar:0}, ...ammo('pistol', 3)]});
+  const L = [
+    [{type:'shotgun', rar:0}, ...ammo('shotgun', 3), ...ammo('pistol', 2), ...heal('bandage', 2)],
+    [{type:'pistol', rar:1}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 1), ...heal('bandage', 2)],
+    [{type:'shotgun', rar:2}, ...ammo('shotgun', 3), ...ammo('pistol', 2), ...heal('shield', 1), ...heal('bandage', 2)],
+    [{type:'pistol', rar:3}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 2), ...heal('bandage', 2)],
+    [{type:'shotgun', rar:3}, ...ammo('shotgun', 3), ...ammo('pistol', 3), ...heal('shield', 2), ...heal('bandage', 3)],
+    [{type:sy.special, rar:4}, {type:'pistol', rar:4}, ...ammo('pistol', 3), ...ammo('shotgun', 3), ...heal('shield', 3), ...heal('bandage', 3)]];
+  sy.camps.forEach((c, ci) => { c.chest = {x:c.x, y:c.y, open:false, hidden:true, loot:L[ci] || L[L.length-1]}; S.chests.push(c.chest); });
+  sy.camps.forEach((c, ci) => {
     for (let k = 0; k < c.n; k++){
-      const ang = k/c.n*Math.PI*2 + rnd(-0.3, 0.3), d = rnd(60, 150), el = k < c.el;
+      const ang = k/c.n*Math.PI*2 + rnd(-0.3, 0.3), d = rnd(70, 150), el = k < c.el;
       mkEnemy(Math.round(c.x + Math.cos(ang)*d), Math.round(c.y + Math.sin(ang)*d), el ? 'elite' : k % 3 === 2 ? 'shot' : 'grunt', ci);
     }
   });
-  for (const c of cps) S.chests.push({x:c.x + 90, y:c.y + 60, open:false});
-  const bo = STORY.boss, b = newActor('bot', 99);
-  b.x = b.tx = bo.x; b.y = b.ty = bo.y; b.r = 44; b.scale = 2.9; b.team = 'E'; b.enemy = true; b.boss = true; b.noDown = true; b.name = 'SWAMP WARDEN'; b.hp = b.hpMax = BOSS_HP;
-  b.color = 'hsl(280,55%,30%)'; b.home = {x:bo.x, y:bo.y}; b.inv = ['pickaxe', null, null, null, null, null]; b.wood = 0;
-  S.actors.push(b); S.story.boss = b;
-  S.story.total = S.actors.filter(a => a.enemy && !a.boss).length;
+  const b = newActor('bot', 99);
+  b.x = b.tx = bo[0]; b.y = b.ty = bo[1]; b.r = 44; b.scale = 2.9; b.team = 'E'; b.enemy = true; b.boss = true; b.noDown = true; b.name = 'SWAMP WARDEN'; b.hp = b.hpMax = BOSS_HP;
+  b.color = 'hsl(280,55%,30%)'; b.home = {x:bo[0], y:bo[1]}; b.inv = ['pickaxe', null, null, null, null, null]; b.wood = 0;
+  S.actors.push(b); sy.boss = b;
+  // checkpoints: in the path after camps 2, 4 and 6, at the spot that is farthest from every camp and from the boss
+  const route = [];                       // the route sampled every 25 units: [x, y, node index of the segment start]
+  for (let i = 0; i < N.length - 1; i++){ const L = Math.hypot(N[i+1][0]-N[i][0], N[i+1][1]-N[i][1]), k = Math.max(1, Math.round(L/25)); for (let q = 0; q < k; q++) route.push([N[i][0] + (N[i+1][0]-N[i][0])*q/k, N[i][1] + (N[i+1][1]-N[i][1])*q/k, i]); }
+  const dAway = (x, y) => Math.min(...S.actors.filter(e => e.enemy && !e.boss).map(e => Math.hypot(x-e.home.x, y-e.home.y)), Math.hypot(x-bo[0], y-bo[1])/1.2);
+  for (const after of STORY.cpAfter){
+    const from = sy.camps[after-1].idx, to = after < sy.camps.length ? sy.camps[after].idx : N.indexOf(bo);
+    let best = null, bs = -1;
+    for (const r of route) if (r[2] >= from && r[2] < to){ const sc = dAway(r[0], r[1]); if (sc > bs){ bs = sc; best = r; } }
+    sy.cps.push({x:Math.round(best[0]), y:Math.round(best[1]), away:Math.round(bs)});
+  }
+  sy.total = S.actors.filter(a => a.enemy && !a.boss).length;
+  // a few bog patches in the paths (half speed): never on a checkpoint
+  [[1,2],[3,4],[8,9],[10,11],[13,14]].forEach(([a, b]) => { const x = (N[a][0] + N[b][0])/2, y = (N[a][1] + N[b][1])/2; if (sy.cps.every(c => Math.hypot(c.x-x, c.y-y) > 300)) S.bog.push([Math.round(x), Math.round(y), 95]); });
   S.actors.forEach(a => { a.invT = a === p ? 2 : 0; });
-  toast('Chapter 1 · ' + STORY.name + ' — fight your way to the Swamp Warden', 5000);
+  toast('Chapter 1 · ' + STORY.name + ' — find the chest near the start, then fight your way to the Swamp Warden', 5500);
+}
+// You died: everything that is still alive goes back to where it started (the Warden keeps his health)
+function storyReset(){
+  S.actors = S.actors.filter(a => !(a.enemy && a.alive && a.camp === -1));      // the Warden's summoned raiders vanish
+  for (const a of S.actors){
+    if (!a.enemy || !a.alive) continue;
+    a.x = a.tx = a.home.x; a.y = a.ty = a.home.y; a.alert = false; a.wp = null; a.avT = 0; a.lastHit = 0; a.rt = 0.5; a.fg = 0; a.cd = 0;
+    if (!a.boss) a.hp = a.hpMax; else { const bs = S.story.bs; bs.awake = false; bs.wind = bs.charge = 0; bs.tShot = 1.5; bs.tBurst = 3; bs.tCharge = 5; a.flash = false; }
+  }
+  S.bullets = []; S.grenades = [];
+}
+// heal items an enemy may drop when it falls
+function storyDrop(a){
+  const el = a.inv[1] === 'ar', r = Math.random();
+  if (r < (el ? 0.45 : 0.30)) S.loot.push({x:a.x + rnd(-14, 14), y:a.y + rnd(-14, 14), type:'bandage', rar:0});
+  else if (r < (el ? 0.70 : 0.45)) S.loot.push({x:a.x + rnd(-14, 14), y:a.y + rnd(-14, 14), type:'shield', rar:0});
+}
+// The Swamp Warden, seen from above and facing right (x+): a hooded root-golem with a green hood, brown clothes and green leaf armour
+function drawWarden(c, ph){
+  const rim = '#1c2a14', t = performance.now()/1000;
+  c.lineWidth = 0.9; c.lineJoin = 'round'; c.strokeStyle = rim;
+  c.fillStyle = '#4a3019';                                    // roots creeping out around the feet
+  for (let i = 0; i < 9; i++){ const an = i/9*Math.PI*2 + 0.3, l = 17 + (i % 3)*2; c.beginPath(); c.moveTo(Math.cos(an)*8, Math.sin(an)*8); c.quadraticCurveTo(Math.cos(an+0.35)*l*0.7, Math.sin(an+0.35)*l*0.7, Math.cos(an)*l, Math.sin(an)*l); c.lineWidth = 2.2; c.strokeStyle = '#4a3019'; c.stroke(); }
+  c.lineWidth = 0.9; c.strokeStyle = rim;
+  for (const sd of [-1, 1]){                                  // arms: brown sleeves with a mossy green cuff, big hands
+    c.fillStyle = '#6a4727'; c.beginPath(); c.ellipse(9, sd*11.5, 8.5, 4.6, sd*0.18, 0, 7); c.fill(); c.stroke();
+    c.fillStyle = '#3f8a35'; c.beginPath(); c.ellipse(14, sd*11.8, 2.6, 4.4, 0, 0, 7); c.fill(); c.stroke();
+    c.fillStyle = '#8a6540'; c.beginPath(); c.arc(18.5, sd*11, 3.6, 0, 7); c.fill(); c.stroke();
+  }
+  c.fillStyle = '#5a3b20'; c.beginPath(); c.ellipse(-1, 0, 12, 10.5, 0, 0, 7); c.fill(); c.stroke();      // brown robe
+  c.strokeStyle = '#4fa03d'; c.lineWidth = 1.6; c.beginPath(); c.arc(-1, 0, 8.5, -1.2, 1.2); c.stroke();    // vine belt
+  c.lineWidth = 0.9; c.strokeStyle = rim;
+  for (const sd of [-1, 1]){                                  // leaf pauldrons
+    c.fillStyle = '#3d7f2e'; c.beginPath(); c.moveTo(-6, sd*6); c.quadraticCurveTo(2, sd*16, 10, sd*12.5); c.quadraticCurveTo(7, sd*6, -6, sd*6); c.fill(); c.stroke();
+    c.beginPath(); c.moveTo(-3, sd*8); c.lineTo(8, sd*12.5); c.strokeStyle = '#8bd36a'; c.stroke(); c.strokeStyle = rim;
+  }
+  c.fillStyle = '#2f6f27'; for (let i = -2; i <= 2; i++){ c.beginPath(); c.moveTo(-9, i*3.2 - 1.6); c.lineTo(-16, i*4.2); c.lineTo(-9, i*3.2 + 1.6); c.fill(); c.stroke(); }     // leaf spikes down the back of the hood
+  c.fillStyle = '#3f8f35'; c.beginPath(); c.arc(0, 0, 8.6, 0, 7); c.fill(); c.stroke();                      // the green hood
+  c.beginPath(); c.moveTo(7, -5.5); c.quadraticCurveTo(15, 0, 7, 5.5); c.fillStyle = '#3f8f35'; c.fill(); c.stroke();      // pointed peak over the face
+  c.fillStyle = '#0a140a'; c.beginPath(); c.ellipse(7.2, 0, 3.4, 3.6, 0, 0, 7); c.fill();                    // dark hollow under the hood
+  c.fillStyle = ph === 3 ? '#ff4a3a' : '#d8ff8a'; c.shadowColor = c.fillStyle; c.shadowBlur = 4;
+  for (const sd of [-1, 1]){ c.beginPath(); c.arc(8.3, sd*1.5, 0.95, 0, 7); c.fill(); }
+  c.shadowBlur = 0;
+  c.strokeStyle = '#8bd36a'; c.lineWidth = 0.7; c.beginPath(); c.moveTo(-4, -3); c.quadraticCurveTo(2, -6, 8, -2.5); c.moveTo(-4, 3); c.quadraticCurveTo(2, 6, 8, 2.5); c.stroke();      // veins on the hood
 }
 function alertCamp(b){ for (const o of S.actors) if (o.enemy && o.alive && !o.boss && (o === b || (b.camp >= 0 && o.camp === b.camp) || Math.hypot(o.x-b.x, o.y-b.y) < 320)){ if (!o.alert) o.rt = 0.45 + Math.random()*0.35; o.alert = true; } }
 function enemyThink(b, dt){
@@ -883,8 +986,10 @@ function enemyThink(b, dt){
   const p = S.player, gun = b.inv[1]; if (gun && b.ammo[gun] < 14) b.ammo[gun] = 14;
   b.cur = 1;
   const d = p.alive ? Math.hypot(p.x-b.x, p.y-b.y) : 1e9, hurt = performance.now() - (b.lastHit || -1e9) < 2500;
-  if (!b.alert && p.alive && (d < b.aggro || hurt)) alertCamp(b);
-  if (b.alert && (!p.alive || (d > b.aggro*2.4 && Math.hypot(b.x-b.home.x, b.y-b.home.y) > 500))) b.alert = false;
+  const dh = Math.hypot(b.x-b.home.x, b.y-b.home.y);
+  b.losT = (b.losT || 0) - dt; if (b.losT <= 0){ b.losT = 0.25; b.los = p.alive && d < 700 && storyLOS(b.x, b.y, p.x, p.y); }
+  if (!b.alert && p.alive && ((d < b.aggro && b.los) || hurt)) alertCamp(b);
+  if (b.alert && (!p.alive || (b.camp >= 0 && dh > 620) || (b.camp >= 0 && !b.los && dh > 300 && d > 250))) b.alert = false;      // gave up the chase: walk home
   let mx = 0, my = 0, speed = b.spd;
   if (b.alert && p.alive){
     const a = Math.atan2(p.y-b.y, p.x-b.x), diff = Math.atan2(Math.sin(a-b.angle), Math.cos(a-b.angle));
@@ -894,12 +999,13 @@ function enemyThink(b, dt){
     mx = Math.cos(a)*fwd + Math.cos(a+Math.PI/2)*b.strafe*0.6; my = Math.sin(a)*fwd + Math.sin(a+Math.PI/2)*b.strafe*0.6;
     b.rt -= dt;
     b.fg = (b.fg || 0) - dt;
-    if (b.rt <= 0 && b.fg <= 0 && Math.abs(diff) < 0.3 && d < 640){ const sv = b.angle; b.angle += rnd(-0.07, 0.07); fire(b); b.angle = sv; if (gun !== 'ar') b.fg = gun === 'shotgun' ? rnd(1.3, 1.9) : rnd(0.7, 1.1); }
-    if (b.hp < 30 && b.band > 0 && Math.random() < dt*0.5){ b.hp = Math.min(b.hpMax, b.hp + 30); b.band--; if (!b.band) b.inv[2] = null; }
+    if (b.rt <= 0 && b.fg <= 0 && Math.abs(diff) < 0.3 && d < 640 && b.los){ const sv = b.angle; b.angle += rnd(-0.07, 0.07); fire(b); b.angle = sv; if (gun !== 'ar') b.fg = gun === 'shotgun' ? rnd(1.3, 1.9) : rnd(0.7, 1.1); }
+    
   } else {
     b.wpT -= dt;
-    if (!b.wp || b.wpT <= 0){ b.wp = Math.random() < 0.35 ? null : {x:b.home.x + rnd(-110, 110), y:b.home.y + rnd(-110, 110)}; b.wpT = rnd(2.5, 5); }
-    if (b.wp && Math.hypot(b.wp.x-b.x, b.wp.y-b.y) > 12){ const a = Math.atan2(b.wp.y-b.y, b.wp.x-b.x); mx = Math.cos(a); my = Math.sin(a); speed = b.spd*0.4; b.angle = a; }
+    if (dh > 170){ b.wp = {x:b.home.x, y:b.home.y}; b.wpT = 1; }
+    else if (!b.wp || b.wpT <= 0){ b.wp = Math.random() < 0.35 ? null : {x:b.home.x + rnd(-110, 110), y:b.home.y + rnd(-110, 110)}; b.wpT = rnd(2.5, 5); }
+    if (b.wp && Math.hypot(b.wp.x-b.x, b.wp.y-b.y) > 12){ const a = Math.atan2(b.wp.y-b.y, b.wp.x-b.x); mx = Math.cos(a); my = Math.sin(a); speed = dh > 170 ? b.spd*0.9 : b.spd*0.4; b.angle = a; }
   }
   if (mx || my){                  // stuck on a tree or stump? sidestep for a moment
     b.stT = (b.stT || 0) + dt;
@@ -910,7 +1016,7 @@ function enemyThink(b, dt){
   return [mx*speed, my*speed];
 }
 function bossShot(b, ang, n, spread, dmg, spd){
-  for (let i = 0; i < n; i++){ const an = ang + (i - (n-1)/2)*spread; S.bullets.push({x:b.x + Math.cos(an)*50, y:b.y + Math.sin(an)*50, vx:Math.cos(an)*spd, vy:Math.sin(an)*spd, life:1.8, dmg, owner:b, wpn:'boss', color:'#e6f'}); }
+  for (let i = 0; i < n; i++){ const an = ang + (i - (n-1)/2)*spread; S.bullets.push({x:b.x + Math.cos(an)*50, y:b.y + Math.sin(an)*50, vx:Math.cos(an)*spd, vy:Math.sin(an)*spd, life:1.8, dmg, owner:b, wpn:'boss', color:'#7be04a'}); }
   sfx('sh', b.x, b.y);
 }
 function bossThink(b, dt){
@@ -937,15 +1043,22 @@ function bossThink(b, dt){
 }
 function storyTick(dt){
   const sy = S.story, p = S.player; sy.t += dt;
+  if (sy.lost){ if (performance.now() - S.overAt > 6000) location.reload(); return; }
   if (S.over) return;
   const bo = sy.boss;
-  if (bo && !bo.alive){ S.over = true; S.winTeam = p.team; S.overAt = performance.now(); sy.done = true; sy.left = S.actors.filter(a => a.enemy && !a.boss && a.alive).length; return; }
+  if (bo && !bo.alive){ S.over = true; S.winTeam = p.team; S.overAt = performance.now(); sy.done = true; return; }
+  for (const c of sy.camps){                        // a camp's chest appears once everyone in it is down
+    if (c.cleared) continue;
+    if (!S.actors.some(a => a.enemy && !a.boss && a.camp === sy.camps.indexOf(c) && a.alive)){ c.cleared = true; c.chest.hidden = false; toast('Camp cleared! A supply chest appeared', 3000); sfx('cs', c.x, c.y); burst(c.x, c.y, '#fc4', 16); }
+  }
   if (!p.alive){
     sy.deadT += dt;
     if (sy.deadT > 2.6){
-      const at = sy.cp >= 0 ? sy.cps[sy.cp] : STORY.start;
-      p.alive = true; p.hp = 100; p.down = 0; p.x = p.tx = at.x; p.y = p.ty = at.y; p.invT = 3; p.heal = 0; p.boat = null; p.killedBy = null;
-      toast(sy.cp >= 0 ? 'Back at checkpoint ' + (sy.cp + 1) : 'Back at the start', 2200);
+      const at = sy.cp >= 0 ? sy.cps[sy.cp] : STORY.nodes[0];
+      const px = at[0] !== undefined ? at[0] : at.x, py = at[0] !== undefined ? at[1] : at.y;
+      p.alive = true; p.hp = 100; p.down = 0; p.x = p.tx = px; p.y = p.ty = py; p.invT = 3; p.heal = 0; p.boat = null; p.killedBy = null;
+      storyReset();
+      toast(sy.cp >= 0 ? 'Back at checkpoint ' + (sy.cp + 1) + ' · ' + sy.lives + (sy.lives === 1 ? ' life left' : ' lives left') : 'Back at the start · ' + sy.lives + (sy.lives === 1 ? ' life left' : ' lives left'), 2800);
     }
     return;
   }
@@ -1272,7 +1385,7 @@ document.addEventListener('visibilitychange', () => {
 // ---------- Helpers ----------
 const wallKey = (gx,gy) => gx+','+gy;
 function build(a){
-  if (!a.alive || a.down > 0) return;
+  if (!a.alive || a.down > 0 || S.story) return;
   if (!mapOf().build){ if (a === S.player) toast('No building on this map', 1500); return; }
   if (a.wood < 10) return;
   const gx = Math.floor((a.x + Math.cos(a.angle)*62)/G), gy = Math.floor((a.y + Math.sin(a.angle)*62)/G);
@@ -1305,7 +1418,9 @@ function damage(a, dmg, owner, wpn){
     a.lastVib = a.lastHit; navigator.vibrate(a.hp <= 0 ? 200 : 20);
   }
   if (S.story && a === S.player && a.hp <= 0 && a.alive){      // Adventure: no elimination, just back to the last checkpoint after a moment (inventory is kept)
-    a.alive = false; a.hp = 0; a.sh = 0; a.heal = 0; a.gh = null; a.mgLeft = 0; sfx('ko', a.x, a.y); S.story.deaths++; S.story.deadT = 0; return;
+    a.alive = false; a.hp = 0; a.sh = 0; a.heal = 0; a.gh = null; a.mgLeft = 0; sfx('ko', a.x, a.y); S.story.deaths++; S.story.lives--; S.story.deadT = 0;
+    if (S.story.lives <= 0){ S.story.lost = true; S.over = true; S.winTeam = null; S.overAt = performance.now(); }
+    return;
   }
   if (a.hp <= 0 && a.alive && canGoDown(a)){          // knocked down, not out: a teammate can still pick you up
     a.hp = 1; a.sh = 0; a.down = DOWN_TIME; a.rv = 0; a.rvT = 0; a.heal = 0; a.flt = 0; sfx('ko', a.x, a.y);
@@ -1321,6 +1436,7 @@ function damage(a, dmg, owner, wpn){
     if (owner && owner !== a) owner.kills++;
     a.place = S.actors.filter(x => x.alive).length + 1;
     if (S.koth){ a.deaths = (a.deaths || 0) + 1; a.respawnT = KOTH_RESPAWN; }
+    if (a.enemy){ if (!a.boss) storyDrop(a); a.wood = 0; a.ammo = {}; a.inv = ['pickaxe', null, null, null, null, null]; }      // Adventure enemies only ever drop a bandage or shield potion
     // drop the whole inventory: all wood in one pile, plus every weapon and bandage
     if (a.wood > 0) S.loot.push({x:a.x, y:a.y, type:'wood', n:a.wood});
     for (const g of ['pistol','shotgun','ar']) if (a.ammo[g] > 0) S.loot.push({x:a.x+rnd(-24,24), y:a.y+rnd(-24,24), type:'ammo_'+g, n:a.ammo[g]});   // their bullets drop too
@@ -1444,7 +1560,7 @@ function fire(a){
       const d = Math.hypot(t.x-a.x, t.y-a.y);
       if (d < w.range + t.r){
         const diff = Math.abs(Math.atan2(Math.sin(Math.atan2(t.y-a.y,t.x-a.x)-a.angle), Math.cos(Math.atan2(t.y-a.y,t.x-a.x)-a.angle)));
-        if (diff < 0.9 && t.wood > 0 && !t.solid){ t.wood -= 10; a.wood = Math.min(999, a.wood+10); burst(t.x,t.y,'#7a5',4); sfx('ch', t.x, t.y); }
+        if (diff < 0.9 && t.wood > 0 && !t.solid && !S.story){ t.wood -= 10; a.wood = Math.min(999, a.wood+10); burst(t.x,t.y,'#7a5',4); sfx('ch', t.x, t.y); }
       }
     }
     S.trees = S.trees.filter(t => t.wood > 0 || t.solid);
@@ -1672,6 +1788,10 @@ function bestSlot(a){
 
 function openChest(c){
   c.open = true;
+  if (c.loot){      // Adventure chests hold a fixed, hand-picked set of items
+    c.loot.forEach((dr, i) => { const ang = i*Math.PI*2/c.loot.length + 0.4, d = 44 + (i % 2)*10; S.loot.push({x:c.x + Math.cos(ang)*d, y:c.y + Math.sin(ang)*d, type:dr.type, rar:dr.rar || 0, n:dr.n}); });
+    burst(c.x, c.y, '#fc4', 14); sfx('cs', c.x, c.y); return;
+  }
   const pick = () => CHEST_WEAPONS[Math.random()*CHEST_WEAPONS.length|0];
   const gun = () => ({type:pick(), rar:rollRarity()});
   const drops = [gun()];                                    // always one weapon (rarity rolled: mostly white, gold is about 1 in 100)
@@ -1728,6 +1848,7 @@ function collide(a){
     }
   }
   if (!a.boat) pushOutOfWater(a);
+  if (S.story && S.story.segs) storyPush(a);
   a.x = Math.max(a.r, Math.min(W-a.r, a.x)); a.y = Math.max(a.r, Math.min(W-a.r, a.y));
 }
 
@@ -2017,7 +2138,7 @@ function update(dt){
       if (a.stormAcc >= 0.25){ a.stormAcc -= 0.25; damage(a, stormDps*0.25, null, 'storm'); }   // ticks 4 times a second
     }
     // walk into a chest to open it
-    if (!(a.down > 0)) for (const c of S.chests) if (!c.open && Math.hypot(c.x-a.x, c.y-a.y) < 34) openChest(c);
+    if (!(a.down > 0)) for (const c of S.chests) if (!c.open && !c.hidden && Math.hypot(c.x-a.x, c.y-a.y) < 34) openChest(c);
     // pickups
     for (let i=S.loot.length-1;i>=0;i--){
       const l = S.loot[i];
@@ -2046,6 +2167,7 @@ function update(dt){
     b.x += b.vx*dt; b.y += b.vy*dt; b.life -= dt;
     let dead = b.life <= 0;
     if (b.fly === undefined) b.fly = !!(b.owner && b.owner.inv && b.owner.inv.includes('jetpack'));      // fired from a jet pack: shooting down from above, so nothing on the ground blocks the shot
+    if (!dead && S.story && S.story.segs && storyClr(b.x, b.y) < 0) dead = true;
     if (!dead && !b.fly){
       const k = wallKey(Math.floor(b.x/G), Math.floor(b.y/G));
       const w = S.walls.get(k);
@@ -2145,6 +2267,7 @@ function showLobbyScreen(){
 }
 function hostRestart(){
   if (NET.role === 'host') hostToLobby();
+  else if (S.story && S.story.lost) location.reload();
   else if (soloMode === 'story') initStory();
   else init(null, false, soloMap, soloMode === 'koth');
 }
@@ -2911,6 +3034,20 @@ function syncExitBtn(){
   const big = !!(S && S.player && ((!S.player.alive && !S.koth) || S.over));
   if (big !== exitBig){ exitBig = big; $('exit').classList.toggle('big', big); $('exit').textContent = big ? '⬅ Main menu' : 'Menu'; }
 }
+function drawThicket(cam, vw, vh){          // the impassable swamp outside the paths and arenas: dark undergrowth with leafy blobs
+  const CS = 20, x0 = Math.floor(cam.x/CS) - 1, x1 = Math.ceil((cam.x+vw)/CS) + 1, y0 = Math.floor(cam.y/CS) - 1, y1 = Math.ceil((cam.y+vh)/CS) + 1;
+  const cells = [];
+  for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) if (storyClr(cx*CS + CS/2, cy*CS + CS/2) < 0) cells.push(cx, cy);
+  ctx.fillStyle = '#08130d'; ctx.beginPath(); for (let i = 0; i < cells.length; i += 2) ctx.rect(cells[i]*CS - 1, cells[i+1]*CS - 1, CS + 2, CS + 2); ctx.fill();
+  const cols = ['#0f2a1b', '#143522', '#0b2016', '#1a3d27'], paths = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+  for (let i = 0; i < cells.length; i += 2){
+    const cx = cells[i], cy = cells[i+1]; let h = (cx*73856093 ^ cy*19349663) >>> 0; h = (h ^ (h>>>13)) * 1274126177 >>> 0;
+    if ((h & 7) === 7) continue;
+    const px = cx*CS + 2 + (h >>> 3 & 15), py = cy*CS + 2 + (h >>> 9 & 15), r = 11 + (h >>> 15 & 9), P = paths[h >>> 20 & 3];
+    P.moveTo(px + r, py); P.arc(px, py, r, 0, 6.2832);
+  }
+  for (let k = 0; k < 4; k++){ ctx.fillStyle = cols[k]; ctx.fill(paths[k]); }
+}
 function draw(){
   syncExitBtn();
   const cam = camera(), p = S.player, vw = VW, vh = VH;
@@ -2965,6 +3102,7 @@ function draw(){
     for (const c of near) for (let q = 0; q < Math.floor(c[2]/9); q++){ const a = q*2.39996 + c[1], rr = ((q*61) % 100)/100*c[2]*0.95, x = c[0]+Math.cos(a)*rr, y = c[1]+Math.sin(a)*rr; ctx.moveTo(x-3, y+5); ctx.lineTo(x-5, y-6); ctx.moveTo(x, y+5); ctx.lineTo(x, y-9); ctx.moveTo(x+3, y+5); ctx.lineTo(x+5, y-6); }
     ctx.stroke();
   }
+  if (S.story && S.story.segs) drawThicket(cam, vw, vh);
   if (S.map === 'ocean'){     // drifting swells
     const CS = 110, tw = performance.now()/1000; ctx.lineCap = 'round'; ctx.lineWidth = 3;
     for (let cx = Math.floor(cam.x/CS)-1; cx < (cam.x+vw)/CS+1; cx++) for (let cy = Math.floor(cam.y/CS)-1; cy < (cam.y+vh)/CS+1; cy++){
@@ -3022,7 +3160,7 @@ function draw(){
   }
   for (const b of S.boats){ const r = b.rider; drawBoat(ctx, r ? r.x : b.x, r ? r.y : b.y, b.ang || 0, !!r, tt); }
   // chests
-  for (const c of S.chests){ if (!vis(c.x,c.y)) continue;
+  for (const c of S.chests){ if (c.hidden || !vis(c.x,c.y)) continue;
     ctx.save(); ctx.translate(c.x,c.y); ctx.lineWidth=2; ctx.strokeStyle='#000';
     if (S.map === 'ocean'){ const bt = performance.now()/1000 + c.x; ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.ellipse(0, 4, 26 + Math.sin(bt*2)*2, 17 + Math.sin(bt*2)*1.5, 0, 0, 7); ctx.stroke(); ctx.strokeStyle='#000'; ctx.translate(0, Math.sin(bt*1.7)*3); }      // bobbing on the waves
     if (!c.open){
@@ -3107,7 +3245,7 @@ function draw(){
       ctx.save(); if (Math.cos(a.angle) < 0) ctx.scale(1,-1);      // keep the gun the right way up when aiming left
       ctx.translate(a.inv[a.cur] === 'pistol' ? 10 : 18, 0); drawGun(ctx, a.inv[a.cur], a.inv[a.cur] === 'pistol' ? 1 : 0.78, RARITY[a.gr[a.inv[a.cur]] || 0].col); ctx.restore();
     }
-    drawPerson(ctx, a.shirt || a.color, a.skin || SKINS[1], Math.sin((a.x + a.y)*0.12)*5, a.crown, a.shirt ? {pat:a.pat, shirt2:a.shirt2, hair:a.hair, style:a.hstyle, sleeve:a.sleeve} : null);
+    if (a.boss) drawWarden(ctx, S.story ? S.story.bs.ph : 1); else drawPerson(ctx, a.shirt || a.color, a.skin || SKINS[1], Math.sin((a.x + a.y)*0.12)*5, a.crown, a.shirt ? {pat:a.pat, shirt2:a.shirt2, hair:a.hair, style:a.hstyle, sleeve:a.sleeve} : null);
     ctx.restore();
     // healing progress ring
     if (a.heal > 0){
@@ -3266,8 +3404,8 @@ function drawHUD(){
   ctx.textAlign = 'left';
   if (S.story && S.story.boss && S.story.boss.alive && S.story.bs.awake){      // boss health bar
     const bb = S.story.boss, bw = Math.min(440, vw-40), bx = (vw-bw)/2, by = 48;
-    ctx.fillStyle='#000a'; ctx.fillRect(bx-3, by-3, bw+6, 26); ctx.fillStyle='#512'; ctx.fillRect(bx, by, bw, 20);
-    ctx.fillStyle = S.story.bs.ph === 3 ? '#f33' : S.story.bs.ph === 2 ? '#d5c' : '#a4e'; ctx.fillRect(bx, by, bw*Math.max(0, bb.hp)/bb.hpMax, 20);
+    ctx.fillStyle='#000a'; ctx.fillRect(bx-3, by-3, bw+6, 26); ctx.fillStyle='#2e1d0e'; ctx.fillRect(bx, by, bw, 20);
+    ctx.fillStyle = S.story.bs.ph === 3 ? '#b5481f' : S.story.bs.ph === 2 ? '#8e5a2a' : '#b8844a'; ctx.fillRect(bx, by, bw*Math.max(0, bb.hp)/bb.hpMax, 20);
     ctx.fillStyle='#fff'; ctx.font='bold 13px sans-serif'; ctx.textAlign='center'; ctx.fillText('SWAMP WARDEN', vw/2, by+15); ctx.textAlign='left';
   }
 
@@ -3288,6 +3426,12 @@ function drawHUD(){
     ctx.fillStyle='#fff'; ctx.font='bold 12px sans-serif';
     ctx.fillText('SHIELD '+(v.sh|0), 32, vh-52); ctx.fillText('HEALTH '+(v.hp|0), 32, vh-30);
     ctx.fillStyle='#fc4'; ctx.font='bold 16px sans-serif'; if (S.map === 'snow'){ ctx.shadowColor = '#000'; ctx.shadowBlur = 4; } if (mapOf().build) ctx.fillText((mapOf().res || 'Wood')+': '+v.wood, 20, vh-80); ctx.shadowBlur = 0;
+  }
+
+  if (S.story && !S.over){      // lives
+    ctx.textAlign = 'left'; ctx.font = 'bold ' + (tm ? 14 : 18) + 'px sans-serif'; ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.lineJoin = 'round';
+    const lt = 'LIVES  ' + '♥'.repeat(Math.max(0, S.story.lives)), lx = tm ? 12 : 22, ly = tm ? 62 : vh - 112;
+    ctx.strokeText(lt, lx, ly); ctx.fillStyle = S.story.lives <= 1 ? '#ff6a5a' : '#ff9aa8'; ctx.fillText(lt, lx, ly);
   }
 
   // weapon slots (tappable on touch)
@@ -3357,6 +3501,7 @@ function drawHUD(){
     const left = S.actors.filter(a => a.enemy && !a.boss && a.alive).length;
     ctx.fillText('Enemies: '+left, tx, ty); ctx.fillText('Kills: '+p.kills, tx, ty+lh);
     ctx.fillStyle='#d9f'; ctx.fillText('Checkpoint: '+(S.story.cp+1)+'/'+S.story.cps.length, tx, ty+lh*2);
+
   } else {
   ctx.fillText('Alive: '+alive, tx, ty); ctx.fillText('Kills: '+p.kills, tx, ty+lh);
   ctx.fillStyle='#d9f';
@@ -3364,17 +3509,23 @@ function drawHUD(){
   }
   ctx.shadowBlur = 0;
   ctx.fillStyle=mapOf().mini; ctx.fillRect(mx,my,ms,ms);
+  if (S.story && S.story.segs){
+    ctx.fillStyle = '#06100b'; ctx.fillRect(mx, my, ms, ms);
+    ctx.strokeStyle = mapOf().mini; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, STORY.HW*2*k); ctx.beginPath();
+    STORY.nodes.forEach((n, i) => { if (i) ctx.lineTo(mx + n[0]*k, my + n[1]*k); else ctx.moveTo(mx + n[0]*k, my + n[1]*k); }); ctx.stroke();
+    ctx.fillStyle = mapOf().mini; for (const c of S.story.circs){ ctx.beginPath(); ctx.arc(mx + c[0]*k, my + c[1]*k, c[2]*k, 0, 7); ctx.fill(); }
+  }
   for (const l of S.lakes){ ctx.fillStyle = S.map === 'swamp' ? '#1a4a48' : '#3b8ee0'; ctx.beginPath(); for (let q = 0; q < 36; q++){ const t = q/36*Math.PI*2, e = l.E[q*2]; const X = mx+(l.x+Math.cos(t)*e)*k, Y = my+(l.y+Math.sin(t)*e)*k; q ? ctx.lineTo(X,Y) : ctx.moveTo(X,Y); } ctx.closePath(); ctx.fill(); ctx.fillStyle = '#6fbf5a'; ctx.beginPath(); ctx.arc(mx+l.ix*k, my+l.iy*k, Math.max(1.5, l.i*k), 0, 7); ctx.fill(); }
   if (S.koth && S.hill){ ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.arc(mx+S.hill.x*k, my+S.hill.y*k, Math.max(3, S.hill.r*k), 0, 7); ctx.fill(); }
   if (S.story){
     ctx.fillStyle='#fff'; for (const c of S.story.cps) ctx.fillRect(mx+c.x*k-2, my+c.y*k-2, 4, 4);
-    const bb = S.story.boss; if (bb.alive){ ctx.fillStyle='#c4f'; ctx.beginPath(); ctx.arc(mx+bb.x*k, my+bb.y*k, 5, 0, 7); ctx.fill(); }
+    const bb = S.story.boss; if (bb.alive){ ctx.fillStyle='#b8844a'; ctx.beginPath(); ctx.arc(mx+bb.x*k, my+bb.y*k, 5, 0, 7); ctx.fill(); }
   } else {
   ctx.strokeStyle='#c6f'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(mx+st.cx*k,my+st.cy*k,st.r*k,0,7); ctx.stroke();
   }
   if (!S.story && st.state !== 'final' && st.nr < st.r - 1){ ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(mx+st.nx*k,my+st.ny*k,st.nr*k,0,7); ctx.stroke(); }
   ctx.fillStyle='#fc4';
-  for (const c of S.chests){ if (c.open || Math.hypot(c.x-p.x,c.y-p.y) > 900) continue; ctx.fillRect(mx+c.x*k-2, my+c.y*k-2, 4, 4); }
+  for (const c of S.chests){ if (c.open || c.hidden || Math.hypot(c.x-p.x,c.y-p.y) > 900) continue; ctx.fillRect(mx+c.x*k-2, my+c.y*k-2, 4, 4); }
   for (const a of S.actors){
     if (!a.alive) continue;
     const mine = a === p, mate = !mine && a.team === p.team;
@@ -3480,14 +3631,20 @@ function drawHUD(){
     });
     ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = Math.min(18, vw/26) + 'px sans-serif';
     ctx.fillText((tm ? 'Tap' : 'Press R') + (NET.role === 'solo' ? ' to play again' : ' to return to the lobby'), vw/2, Math.min(vh - 20, y + 40));
+  } else if (S.over && S.story && S.story.lost){
+    ctx.fillStyle='#000c'; ctx.fillRect(0,0,vw,vh);
+    ctx.textAlign='center'; ctx.fillStyle='#f55'; ctx.font='bold '+Math.min(64, vw/9)+'px sans-serif'; ctx.fillText('GAME OVER', vw/2, vh/2-34);
+    ctx.fillStyle='#fff'; ctx.font=Math.min(22, vw/24)+'px sans-serif';
+    ctx.fillText('You used all '+STORY.LIVES+' lives · '+p.kills+' kills · Swamp Warden still stands', vw/2, vh/2+8);
+    ctx.fillText((tm ? 'Tap' : 'Press R')+' to return to the main menu', vw/2, vh/2+42);
   } else if (S.over && S.story){
     ctx.fillStyle='#000a'; ctx.fillRect(0,0,vw,vh);
     ctx.textAlign='center'; ctx.fillStyle='#fc4'; ctx.font='bold '+Math.min(60, vw/10)+'px sans-serif';
     ctx.fillText('LEVEL COMPLETE', vw/2, vh/2-40);
     ctx.fillStyle='#fff'; ctx.font=Math.min(24, vw/22)+'px sans-serif';
     const tt = S.story.t|0;
-    ctx.fillText('The Swamp Warden is defeated · '+p.kills+' kills · '+S.story.deaths+(S.story.deaths === 1 ? ' defeat' : ' defeats')+' · '+((tt/60)|0)+':'+('0'+tt%60).slice(-2), vw/2, vh/2+6);
-    ctx.fillText((tm ? 'Tap' : 'Press R')+' to play the level again', vw/2, vh/2+40);
+    ctx.fillText('The Swamp Warden is defeated · '+p.kills+' kills · '+S.story.lives+(S.story.lives === 1 ? ' life left' : ' lives left')+' · '+((tt/60)|0)+':'+('0'+tt%60).slice(-2), vw/2, vh/2+6);
+    ctx.fillText((tm ? 'Tap' : 'Press R')+' to play the level again, or use the Main menu button', vw/2, vh/2+40);
     drawXPLine(vw/2, vh/2+78, Math.min(22, vw/24));
   } else if (S.over){
     const win = S.winTeam !== null && S.winTeam === p.team;   // a co-op team win counts for both players
@@ -3501,6 +3658,7 @@ function drawHUD(){
   } else if (!p.alive && S.story){
     ctx.fillStyle='#000a'; ctx.fillRect(0,0,vw,vh); ctx.textAlign='center'; ctx.fillStyle='#f66'; ctx.font='bold '+Math.min(48, vw/12)+'px sans-serif';
     ctx.fillText('YOU FELL', vw/2, vh/2-10); ctx.fillStyle='#fff'; ctx.font=Math.min(20, vw/24)+'px sans-serif';
+    ctx.fillText(S.story.lives+(S.story.lives === 1 ? ' life left' : ' lives left'), vw/2, vh/2+84);
     ctx.fillText('Returning to '+(S.story.cp >= 0 ? 'checkpoint '+(S.story.cp+1) : 'the start')+'…', vw/2, vh/2+28);
     if (p.killedBy){ ctx.fillStyle = '#ffd34d'; ctx.fillText(killLine(p), vw/2, vh/2+58); }
   } else if (!p.alive && S.koth){
@@ -3548,7 +3706,7 @@ function maybeAwardXP(force){
   if (!S || !S.player || S.xpDone) return;
   const p = S.player; let place, win = false;
   if (S.story){
-    if (!S.over){ if (force) S.xpDone = true; return; }
+    if (!S.over || S.story.lost){ if (force || S.story.lost) S.xpDone = true; return; }
     win = true; place = 1;
   } else if (S.koth){
     if (!S.over) return;
