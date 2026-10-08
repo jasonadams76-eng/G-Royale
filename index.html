@@ -69,6 +69,7 @@
   .sw{width:21px;height:21px;border-radius:50%;border:2px solid #000a;padding:0;cursor:pointer;touch-action:manipulation}
   .sw.on{border-color:#fff;box-shadow:0 0 0 2px #fc4}
   .txt.name{font-size:20px;letter-spacing:1px;text-transform:none;padding:9px;margin-bottom:6px}
+  #winsbox .sep{color:#8a7a3a;margin:0 4px}
   #winsbox{text-align:center;font-weight:700;color:#ffd34d;font-size:15px;margin:0 0 8px;letter-spacing:.5px}
   .ver{font-size:10px;color:#6a7;margin:2px 0 4px;opacity:.8}
   .lbl{display:block;text-align:left;font-size:12px;color:#9ab;margin:0 0 3px 2px}
@@ -153,7 +154,7 @@
     </svg>
 
     <div id="s-main">
-      <div id="winsbox" title="Royale wins in solo and bot matches">🏆 Royale wins: <b id="wincount">0</b></div>
+      <div id="winsbox" title="Royale wins in solo and bot matches">🏆 Royale wins: <b id="wincount">0</b> <span class="sep">·</span> ⚔️ Career kills: <b id="killcount">0</b></div>
       <div class="cols"><div class="colL">
       <label class="lbl" for="pname">Your name</label>
       <input id="pname" class="txt name" maxlength="12" placeholder="Enter a name" autocomplete="off" spellcheck="false">
@@ -228,7 +229,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 33;
+const VERSION = 34;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -3357,6 +3358,8 @@ function hideMenu(){ $('menu').classList.add('hide'); $('exit').style.display = 
 const xpNeed = L => 100 + 40*(L-1) + 8*(L-1)*(L-1);                       // XP needed to go from level L to L+1: 100, 148, 212, 292, 388 ... 1108 at level 10
 function getXP(){ try { return Math.max(0, parseInt(localStorage.getItem('sr-xp'), 10) || 0); } catch(_){ return 0; } }
 function xpInfo(total){ let L = 1, left = total; while (left >= xpNeed(L)){ left -= xpNeed(L); L++; } return {lvl:L, into:left, need:xpNeed(L)}; }
+function getKills(){ try { return Math.max(0, parseInt(localStorage.getItem('sr-kills'), 10) || 0); } catch(_){ return 0; } }
+function showKills(){ const e = $('killcount'); if (e) e.textContent = getKills(); }
 function showXP(){
   const i = xpInfo(getXP()), a = $('lvltxt'), b = $('xptxt'), f = $('xpfill');
   if (a) a.textContent = 'Level ' + i.lvl; if (b) b.textContent = i.into + ' / ' + i.need + ' XP'; if (f) f.style.width = Math.round(i.into / i.need * 100) + '%';
@@ -3379,7 +3382,8 @@ function maybeAwardXP(force){
   } else { if (force) S.xpDone = true; return; }
   S.xpDone = true;
   const gain = xpForGame(place, p.kills | 0, win, S.actors.length), before = getXP(), l0 = xpInfo(before).lvl;
-  try { localStorage.setItem('sr-xp', String(before + gain)); } catch(_){}
+  try { localStorage.setItem('sr-xp', String(before + gain)); localStorage.setItem('sr-kills', String(getKills() + Math.max(0, p.kills | 0))); } catch(_){}
+  showKills();
   S.xpGain = {gain, lvl:xpInfo(before + gain).lvl, up:xpInfo(before + gain).lvl > l0};
   showXP();
   if (l0 < AVATAR_UNLOCK && S.xpGain.lvl >= AVATAR_UNLOCK){ S.xpGain.unlock = true; toast('Level ' + AVATAR_UNLOCK + '! You can now design your own avatar from the main menu', 5000); try { refreshAvatarLock(); } catch(_){} }
@@ -3390,7 +3394,7 @@ function drawXPLine(x, y, size){
   const t = '+' + g.gain + ' XP' + (g.up ? '  ·  LEVEL UP! You are level ' + g.lvl : '  ·  Level ' + g.lvl);
   ctx.strokeText(t, x, y); ctx.fillStyle = g.up ? '#7dff7d' : '#ffd34d'; ctx.fillText(t, x, y);
 }
-showXP();
+showXP(); showKills();
 
 // total Royale wins in solo and bot matches (kept on this device)
 function getWins(){ try { return Math.max(0, parseInt(localStorage.getItem('sr-wins'), 10) || 0); } catch(_){ return 0; } }
