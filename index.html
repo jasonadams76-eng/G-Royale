@@ -248,7 +248,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 52;
+const VERSION = 53;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -2233,6 +2233,88 @@ MUSIC.cineHope = {bpm:72, chords:[[50,54,57],[45,49,52],[47,50,54],[43,47,50]], 
     if (l){ let len = 1; while (i+len < 16 && !this.lead[bar][i+len] && len < 8) len++; const d = len*m.spb*.95;
       m.tone(mtof(l), mtof(l), d, 'sawtooth', .06); m.tone(mtof(l), mtof(l), d, 'sine', .08); }
   }};
+
+// ---- boss fight music: one unique theme per map, starts when the boss wakes ----
+const mrow = o => { const r = new Array(16).fill(0); for (const k in o) r[k] = o[k]; return r; };
+const mlen = (row, i, max) => { let n = 1; while (i+n < 16 && !row[i+n] && n < (max || 8)) n++; return n; };
+// Sunken Marsh: slow, thick and sickly: sludgy sub-bass, croaking low line, bubbling noise, creeping chromatic chords (C Phrygian)
+MUSIC.boss_marsh = {bpm:80, chords:[[48,51,55],[49,53,56],[48,51,55],[47,50,53]], roots:[24,25,24,23],
+  lead:[mrow({0:60,3:61,6:60,8:63,11:61}), mrow({0:61,3:60,6:61,8:65,11:63}), mrow({0:60,3:63,6:60,8:67,11:65,14:63}), mrow({0:59,3:60,6:59,8:62,12:60})],
+  step(m, st, bar, i){
+    const ch = this.chords[bar], r = this.roots[bar];
+    if (i === 0){ ch.forEach(n => m.tone(mtof(n-12), mtof(n-12)*.985, 16*m.spb, 'sawtooth', .045)); m.tone(mtof(r), mtof(r), 16*m.spb, 'sine', .45); }
+    if (i === 0 || i === 10) m.drum('t', i ? .6 : .95);
+    if (i === 8) m.drum('k', .5);
+    if (i % 3 === 1) m.drum('h', .35);
+    if (i === 12 && bar % 2) m.drum('s', .3);
+    const l = this.lead[bar][i]; if (l){ const d = mlen(this.lead[bar], i, 3)*m.spb; m.tone(mtof(l), mtof(l)*.97, d, 'square', .09); m.tone(mtof(l+12), mtof(l+12), d*.6, 'sine', .04); }
+  }};
+// Bitter Cold: crushing and glassy: icy bell arpeggios over heavy slow drums and a choir of saws (E minor)
+MUSIC.boss_cold = {bpm:96, chords:[[52,55,59],[48,52,55],[50,54,57],[47,51,54]], roots:[28,24,26,23],
+  lead:[mrow({0:88,6:86,8:83,12:86}), mrow({0:88,6:84,8:83,12:79}), mrow({0:86,6:90,8:88,12:86}), mrow({0:83,4:86,8:90,12:95})],
+  step(m, st, bar, i){
+    const ch = this.chords[bar], r = this.roots[bar];
+    if (i === 0){ ch.forEach(n => { m.tone(mtof(n), mtof(n), 16*m.spb, 'sawtooth', .04); m.tone(mtof(n+12), mtof(n+12)*1.004, 16*m.spb, 'sawtooth', .025); }); m.tone(mtof(r), mtof(r), 16*m.spb, 'sine', .4); }
+    if (i % 2 === 0){ const n = ch[(i/2) % 3] + 24; m.tone(mtof(n), mtof(n), .35, 'sine', .07); }
+    if (i === 0 || i === 8) m.drum('t', i ? .7 : 1);
+    if (i === 12) m.drum('s', .5);
+    if (i === 6 || i === 14) m.drum('k', .5);
+    if (i % 4 === 2) m.drum('h', .3);
+    if (i === 0 && bar === 0) m.drum('c', .5);
+    const l = this.lead[bar][i]; if (l){ const d = mlen(this.lead[bar], i)*m.spb; m.tone(mtof(l), mtof(l), d, 'sine', .11); m.tone(mtof(l+7), mtof(l+7), d, 'triangle', .04); }
+  }};
+// Scorched Dunes: hot and menacing: galloping bass, snaking Phrygian-dominant lead, hand-drum rhythm (D, Eb, F#)
+MUSIC.boss_desert = {bpm:122, chords:[[50,54,57],[51,55,58],[50,54,57],[51,55,58]], roots:[26,27,26,27],
+  lead:[mrow({0:74,2:75,4:78,6:75,8:74,10:75,12:78,14:79}), mrow({0:81,2:79,4:78,6:75,8:74,10:75,12:74,14:0}), mrow({0:74,2:75,4:78,6:79,8:81,10:82,12:81,14:79}), mrow({0:78,2:79,4:78,6:75,8:74,12:70,14:74})],
+  step(m, st, bar, i){
+    const ch = this.chords[bar], r = this.roots[bar];
+    if (i === 0) ch.forEach(n => m.tone(mtof(n-12), mtof(n-12), 16*m.spb, 'sawtooth', .035));
+    if (i % 4 !== 1){ const n = r + 12; m.tone(mtof(n), mtof(n), .13, 'sawtooth', .16); }
+    if (i === 0 || i === 6 || i === 10) m.drum('k', .85);
+    if (i === 4 || i === 12) m.drum('s', .55);
+    if (i === 3 || i === 11 || i === 14) m.drum('t', .5);
+    if (i % 2 === 0) m.drum('h', .22);
+    if (i === 0 && bar === 0) m.drum('c', .5);
+    const l = this.lead[bar][i]; if (l){ m.tone(mtof(l), mtof(l), .2, 'sawtooth', .075); m.tone(mtof(l), mtof(l)*1.01, .2, 'square', .04); }
+  }};
+// The Greenwood: ancient and primal: thundering tribal toms, deep wooden horn calls (A minor)
+MUSIC.boss_forest = {bpm:100, chords:[[45,48,52],[43,47,50],[41,45,48],[40,44,47]], roots:[33,31,29,28],
+  lead:[mrow({0:57,6:60,8:64}), mrow({0:55,6:59,8:62}), mrow({0:53,6:57,8:60,12:64}), mrow({0:52,6:56,8:59,12:64,14:63})],
+  step(m, st, bar, i){
+    const ch = this.chords[bar], r = this.roots[bar];
+    if (i === 0){ ch.forEach(n => m.tone(mtof(n-12), mtof(n-12), 16*m.spb, 'triangle', .07)); m.tone(mtof(r), mtof(r), 16*m.spb, 'sine', .4); }
+    if (i === 0 || i === 3 || i === 6 || i === 8 || i === 11 || i === 14) m.drum('t', i === 0 ? 1 : i === 8 ? .8 : .55);
+    if (i === 4 || i === 12) m.drum('k', .6);
+    if (i % 2 === 1) m.drum('h', .25);
+    if (bar === 3 && i >= 12) m.drum('t', .5 + (i-12)*.15);
+    const l = this.lead[bar][i]; if (l){ const d = mlen(this.lead[bar], i)*m.spb*.95; m.tone(mtof(l), mtof(l), d, 'sawtooth', .1); m.tone(mtof(l+12), mtof(l+12), d, 'triangle', .04); }
+  }};
+// Dreadwater Sea: eerie and surging: rolling swells, howling witch-song with sliding notes, crashing cymbals (G minor)
+MUSIC.boss_sea = {bpm:92, chords:[[43,46,50],[39,43,46],[41,45,48],[38,42,45]], roots:[31,27,29,26],
+  lead:[mrow({0:79,4:82,6:81,8:79,12:74}), mrow({0:77,4:79,6:82,8:86,12:84}), mrow({0:84,4:81,6:84,8:89,12:88}), mrow({0:86,4:85,6:81,8:78,12:74})],
+  step(m, st, bar, i){
+    const ch = this.chords[bar], r = this.roots[bar];
+    if (i === 0){ ch.forEach(n => { m.tone(mtof(n), mtof(n)*1.01, 16*m.spb, 'sawtooth', .04); m.tone(mtof(n-12), mtof(n-12), 16*m.spb, 'triangle', .06); }); m.tone(mtof(r), mtof(r), 16*m.spb, 'sine', .4); }
+    if (i % 6 === 0){ const n = ch[(i/6|0) % 3] + 12; m.tone(mtof(n), mtof(n), .45, 'sine', .08); }
+    if (i === 0 || i === 6 || i === 12) m.drum('t', i ? .55 : .9);
+    if (i === 0 || i === 8) m.drum('c', i ? .3 : .55);
+    if (i === 4 || i === 12) m.drum('s', .35);
+    const l = this.lead[bar][i]; if (l){ const d = mlen(this.lead[bar], i)*m.spb; m.tone(mtof(l-1), mtof(l), d, 'sine', .12); m.tone(mtof(l+12), mtof(l+12)*1.006, d, 'sine', .035); }
+  }};
+// Ravenrock: the War Machine: relentless industrial march, pounding kicks, grinding saws, an air-raid siren (E minor)
+MUSIC.boss_war = {bpm:136, chords:[[40,43,47],[36,40,43],[38,42,45],[35,39,42]], roots:[28,24,26,23],
+  lead:[mrow({0:76,4:76,8:79,12:76,14:75}), mrow({0:76,4:76,8:79,12:83,14:81}), mrow({0:74,4:74,8:78,12:74,14:73}), mrow({0:71,4:75,8:78,12:83,14:86})],
+  step(m, st, bar, i){
+    const ch = this.chords[bar], r = this.roots[bar];
+    if (i === 0) ch.forEach(n => { m.tone(mtof(n), mtof(n), 16*m.spb, 'sawtooth', .05); m.tone(mtof(n+12), mtof(n+12)*1.006, 16*m.spb, 'sawtooth', .03); });
+    if (i % 2 === 0){ m.tone(mtof(r+12), mtof(r+12)*.99, .14, 'sawtooth', .18); m.tone(mtof(r), mtof(r), .14, 'square', .08); }
+    if (i % 4 === 0 || i === 10) m.drum('k', .95);
+    if (i === 4 || i === 12) { m.drum('s', .7); m.drum('t', .5); }
+    if (i % 2 === 1) m.drum('h', .25);
+    if (i === 0 && bar === 0) m.drum('c', .7);
+    if (bar === 3 && i >= 8) m.drum('s', .3 + (i-8)*.07);
+    const l = this.lead[bar][i]; if (l){ const d = mlen(this.lead[bar], i, 4)*m.spb; m.tone(mtof(l)*.98, mtof(l), d, 'sawtooth', .08); m.tone(mtof(l), mtof(l), d, 'square', .05); }
+  }};
 const M = {cur:null, gain:null, timer:0, off:false};
 try { M.off = localStorage.getItem('sr-nomusic') === '1'; } catch(_){}
 $('mus').textContent = M.off ? '🚫' : '🎵';
@@ -2247,6 +2329,7 @@ function musicWanted(){
   if (CS) return CS_MUS[CS.id] || 'cine';
   if (phase === 'play'){
     if (S && S.over) return S.winTeam !== null && S.winTeam === S.player.team ? 'victory' : null;   // winners get the fanfare, others a short jingle over silence
+    if (S && S.story && S.story.boss && S.story.boss.alive && S.story.bs && S.story.bs.awake && STORY && MUSIC['boss_' + STORY.theme]) return 'boss_' + STORY.theme;      // each boss fight has its own theme
     return 'battle';
   }
   return phase === 'lobby' ? 'lobby' : 'menu';
