@@ -248,7 +248,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 53;
+const VERSION = 54;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -4784,6 +4784,19 @@ function drawHUD(){
   if (!S.story && st.state !== 'final' && st.nr < st.r - 1){ ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(mx+st.nx*k,my+st.ny*k,st.nr*k,0,7); ctx.stroke(); }
   ctx.fillStyle='#fc4';
   for (const c of S.chests){ if (c.open || c.hidden || Math.hypot(c.x-p.x,c.y-p.y) > 900) continue; ctx.fillRect(mx+c.x*k-2, my+c.y*k-2, 4, 4); }
+  if (S.story){      // fog of war: the map stays black until you (or your partner) have been near a place
+    const sy = S.story;
+    if (!sy.fog){ const c = document.createElement('canvas'); c.width = c.height = 120; const fx = c.getContext('2d'); fx.fillStyle = '#000'; fx.fillRect(0, 0, 120, 120); sy.fog = c; sy.fogX = fx; sy.fogAt = new Map(); }
+    for (const a of S.actors){
+      if (a.enemy || !a.alive || a.team !== p.team) continue;
+      const q = sy.fogAt.get(a); if (q && Math.hypot(a.x-q[0], a.y-q[1]) < 40) continue;
+      sy.fogAt.set(a, [a.x, a.y]);
+      const fx = sy.fogX, X = a.x/W*120, Y = a.y/W*120, R = 800/W*120, g = fx.createRadialGradient(X, Y, R*0.6, X, Y, R);
+      g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      fx.globalCompositeOperation = 'destination-out'; fx.fillStyle = g; fx.beginPath(); fx.arc(X, Y, R, 0, 7); fx.fill(); fx.globalCompositeOperation = 'source-over';
+    }
+    ctx.imageSmoothingEnabled = true; ctx.drawImage(sy.fog, mx, my, ms, ms);
+  }
   for (const a of S.actors){
     if (!a.alive) continue;
     const mine = a === p, mate = !mine && a.team === p.team;
