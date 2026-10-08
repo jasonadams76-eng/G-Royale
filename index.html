@@ -38,6 +38,7 @@
   .look{display:flex;gap:10px;align-items:center;margin:0 0 8px;text-align:left}
   .look canvas{width:56px;height:56px;flex:none;background:#2e4a33;border-radius:10px;border:1px solid #3a5a40}
   .look .lbl{margin:0 0 2px}
+  #b-avatar.locked{background:#3a463e;color:#aab;font-size:13px}
   .sws{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
   .sws.big{gap:7px;margin-bottom:8px;justify-content:center}.sws.big .sw{width:32px;height:32px}
   #avprev{display:block;position:sticky;top:6px;z-index:3;margin:4px auto 8px;width:130px;height:130px;box-shadow:0 4px 12px #0008;background:#2e4a33;border-radius:14px;border:1px solid #3a5a40}
@@ -69,6 +70,11 @@
   #modebox .mini.sel{background:#fc4;color:#102010;border-color:#fc4}
   .chk{display:flex;align-items:flex-start;gap:8px;text-align:left;font-size:12px;color:#cde;margin:8px 2px;cursor:pointer}
   .chk input{width:20px;height:20px;flex:none;margin:0;accent-color:#fc4}
+  #xpbox{margin:2px 2px 8px;text-align:left}
+  #xpbox .xprow{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:#9ab;margin-bottom:3px}
+  #xpbox .xprow b{font-size:15px;color:#ffd34d;letter-spacing:.5px}
+  #xpbar{height:12px;border-radius:7px;background:#0d1610;border:1px solid #3a5a40;overflow:hidden}
+  #xpbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#4ad06a,#b6f04a);transition:width .4s}
   .mapbox{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:6px 0}
   .mapbox .mini{background:#2a3a2a;color:#cfe;border:2px solid #4a6}
   #modebox-main .mini{background:#2a3a2a;color:#cfe;border:2px solid #4a6}
@@ -128,6 +134,7 @@
       <div id="winsbox" title="Royale wins in solo and bot matches">🏆 Royale wins: <b id="wincount">0</b></div>
       <label class="lbl" for="pname">Your name</label>
       <input id="pname" class="txt name" maxlength="12" placeholder="Enter a name" autocomplete="off" spellcheck="false">
+      <div id="xpbox" title="Earn XP at the end of every game: finishing place, kills and a bonus for winning"><div class="xprow"><b id="lvltxt">Level 1</b><span id="xptxt">0 / 100 XP</span></div><div id="xpbar"><i id="xpfill"></i></div></div>
       <div class="look"><canvas id="lookprev" width="112" height="112"></canvas><button class="btn" id="b-avatar">🎨 Design Your Avatar</button></div>
       <div class="lbl">Mode</div><div class="mapbox" id="modebox-main"><button class="mini" data-smode="classic">Battle Royale</button><button class="mini" data-smode="koth">King of the Hill</button></div>
       <div class="lbl">Map</div><div class="mapbox" id="mapbox-main"></div>
@@ -184,7 +191,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 24;
+const VERSION = 28;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -340,7 +347,11 @@ const HAIRSTYLES = ['Short','Long','Ponytail','Bun','Mohawk','Bald'];
 const SLEEVES = ['Long Sleeve','Short Sleeve'];
 const PATTERNS = ['Solid','Horizontal Stripes','Vertical Stripes','Half & Half'];
 const SKINS = ['#fde0c8','#f1c7a0','#d9a26e','#b9814f','#8a5a35','#5c3a21'];
-const lookMsg = () => ({shirt:look.shirt, skin:look.skin, hair:look.hair, pat:look.pat, shirt2:look.shirt2, style:look.style, sleeve:look.sleeve});      // what other players are told about my avatar
+const AVATAR_UNLOCK = 5;      // you play as the plain starter avatar until this level, then you can design your own
+const NOOB_LOOK = {shirt:26, skin:1, hair:1, pat:0, shirt2:8, style:0, hv:3, sleeve:0};      // grey shirt, short brown hair
+const avatarOpen = () => xpInfo(getXP()).lvl >= AVATAR_UNLOCK;
+const curLook = () => avatarOpen() ? look : NOOB_LOOK;      // the avatar actually used in games
+const lookMsg = () => { const l = curLook(); return {shirt:l.shirt, skin:l.skin, hair:l.hair, pat:l.pat, shirt2:l.shirt2, style:l.style, sleeve:l.sleeve}; };      // what other players are told about my avatar
 const okIdx = (i, n, d) => Number.isInteger(i) && i >= 0 && i < n ? i : d;
 let soloCrown = false;           // solo: did I win my previous game?
 let look = {shirt:5, skin:1, hair:1, pat:0, shirt2:8, style:0, hv:3, sleeve:0};      // my avatar: shirt colour, skin tone, hair colour, shirt pattern and its second colour (indexes into SHIRTS / SKINS / HAIRS / PATTERNS)
@@ -609,6 +620,7 @@ function genCity(){
   }
 }
 function init(humans, humansOnly, mapId, koth){
+  try { maybeAwardXP(true); } catch(_){}
   mapId = okMap(mapId); if (mapId === 'random') mapId = MAP_IDS[Math.random()*MAP_IDS.length|0];
   humans = humans || [{pid:0, name:cleanName($('pname').value) || 'Player 1', tm:null, ...lookMsg(), crown:soloCrown}];
   S = {actors:[], players:[], bullets:[], trees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[], lakes:[], boats:[],
@@ -2035,6 +2047,7 @@ function onLobbyMsg(m){
 
 // ---------- Networking: guest side ----------
 function buildGuestState(m){
+  try { maybeAwardXP(true); } catch(_){}
   S = {actors:[], players:[], bullets:[], trees:[], allTrees:[], loot:[], chests:[], walls:new Map(), particles:[], ev:[], grenades:[], blasts:[], bm:[], lakes:(m.lakes || []).map(a => makeLake(a[0], a[1], a.slice(2,8), a[8], a[9])), boats:(m.boats || []).map(([x,y,ang]) => ({x, y, tx:x, ty:y, ang, rider:null})),
     over:false, winTeam:null, overAt:0, storm:{i:0, state:'wait', t:PHASES[0].wait, r:STORM_R0, cx:CENTER.x, cy:CENTER.y, nx:CENTER.x, ny:CENTER.y, nr:PHASES[0].r, rFrom:STORM_R0, rTo:PHASES[0].r}};
   S.hasBots = !!m.bots; S.map = MAPS[m.map] ? m.map : 'grass'; S.ice = m.ice || []; S.bog = m.bog || []; S.koth = !!m.koth; S.hill = m.hill || null;
@@ -3166,6 +3179,7 @@ function drawHUD(){
     ctx.textAlign = 'center'; ctx.fillStyle = '#ffd24a'; ctx.font = 'bold ' + fsT + 'px sans-serif'; ctx.fillText('KING OF THE HILL', vw/2, 72);
     ctx.fillStyle = win ? '#ffd24a' : '#fff'; ctx.font = 'bold ' + Math.min(22, vw/20) + 'px sans-serif';
     ctx.fillText(rows.length ? (win ? 'You win with ' : rows[0][0] + ' wins with ') + rows[0][1] + ' points!' : '', vw/2, 100);
+    drawXPLine(vw/2, 119, Math.min(15, vw/30));
     let y = 132; ctx.font = 'bold ' + Math.min(15, rh*0.62) + 'px sans-serif'; ctx.fillStyle = '#9ab';
     ctx.textAlign = 'left'; ctx.fillText('#', px0 + 8, y); ctx.fillText('PLAYER', px0 + 44, y); ctx.textAlign = 'right'; ctx.fillText('POINTS', px0 + pw - 140, y); ctx.fillText('KILLS', px0 + pw - 76, y); ctx.fillText('DEATHS', px0 + pw - 10, y);
     y += rh*0.4;
@@ -3188,6 +3202,7 @@ function drawHUD(){
     ctx.fillStyle='#fff'; ctx.font=Math.min(24, vw/22)+'px sans-serif';
     ctx.fillText((win ? '#1' : '#'+p.place)+' · '+p.kills+' kills · '+(tm ? 'Tap' : 'Press R')+(NET.role === 'solo' ? ' to play again' : ' to return to the lobby'), vw/2, vh/2+30);
     if (!win && p.killedBy){ ctx.fillStyle = '#ffd34d'; ctx.font = 'bold ' + Math.min(26, vw/20) + 'px sans-serif'; ctx.fillText(killLine(p), vw/2, vh/2+68); }
+    drawXPLine(vw/2, vh/2 + (!win && p.killedBy ? 104 : 74), Math.min(22, vw/24));
   } else if (!p.alive && S.koth){
     ctx.fillStyle='#000a'; ctx.fillRect(vw/2-190, 90, 380, 62); ctx.textAlign='center'; ctx.fillStyle='#f66'; ctx.font='bold 18px sans-serif';
     ctx.fillText('KNOCKED OUT' + (p.respawnT > 0 ? ' · respawning in ' + Math.ceil(p.respawnT) : ' · respawning…'), vw/2, 114);
@@ -3197,6 +3212,7 @@ function drawHUD(){
     ctx.textAlign='center'; ctx.fillStyle='#f66'; ctx.font='bold 16px sans-serif';
     ctx.fillText('ELIMINATED #'+p.place+' · '+p.kills+' kills', vw/2, 63);
     if (p.killedBy){ ctx.fillStyle = '#ffd34d'; ctx.font = 'bold 15px sans-serif'; ctx.fillText(killLine(p), vw/2, 86); }
+    drawXPLine(vw/2, (p.killedBy ? 44 + 80 : 44 + 46) + 20, 15);
     ctx.fillStyle='#fff'; ctx.font='12px sans-serif';
     ctx.fillText((touchMode ? 'Spectating · tap ◀ ▶ to switch player' : 'Spectating · click ◀ ▶ or use the arrow keys' + (NET.role === 'solo' ? ' · R: new game' : '')), vw/2, p.killedBy ? 106 : 81);
   }
@@ -3213,6 +3229,46 @@ function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); menu
 function menuMsg(t){ $('msg').textContent = t || ''; }
 function hideMenu(){ $('menu').classList.add('hide'); $('exit').style.display = 'block'; }
 
+// ---------- Experience and levels (kept on this device) ----------
+// Each finished game earns XP from your finishing place, your kills and a bonus for winning. Early levels come quickly; each later level needs more.
+const xpNeed = L => 100 + 40*(L-1) + 8*(L-1)*(L-1);                       // XP needed to go from level L to L+1: 100, 148, 212, 292, 388 ... 1108 at level 10
+function getXP(){ try { return Math.max(0, parseInt(localStorage.getItem('sr-xp'), 10) || 0); } catch(_){ return 0; } }
+function xpInfo(total){ let L = 1, left = total; while (left >= xpNeed(L)){ left -= xpNeed(L); L++; } return {lvl:L, into:left, need:xpNeed(L)}; }
+function showXP(){
+  const i = xpInfo(getXP()), a = $('lvltxt'), b = $('xptxt'), f = $('xpfill');
+  if (a) a.textContent = 'Level ' + i.lvl; if (b) b.textContent = i.into + ' / ' + i.need + ' XP'; if (f) f.style.width = Math.round(i.into / i.need * 100) + '%';
+}
+function xpForGame(place, kills, win, field){
+  const N = Math.max(2, field), pl = Math.max(1, Math.min(N, place || N));
+  return 20 + Math.round(80 * (N - pl) / (N - 1)) + 12 * kills + (win ? 100 : 0);       // taking part + placing + kills + win bonus
+}
+function maybeAwardXP(force){
+  if (!S || !S.player || S.xpDone) return;
+  const p = S.player; let place, win = false;
+  if (S.koth){
+    if (!S.over) return;
+    const rows = S.board || [], i = rows.findIndex(r => r[0] === p.name); place = i < 0 ? S.actors.length : i + 1; win = S.winTeam !== null && S.winTeam === p.team;
+  } else if (!p.alive){
+    if (!force && !S.over && S.actors.some(a => a !== p && a.alive && a.team === p.team)) return;      // a teammate is still in it: wait for the result
+    win = S.over && S.winTeam !== null && S.winTeam === p.team; place = win ? 1 : (p.place || S.actors.length);
+  } else if (S.over){
+    win = S.winTeam !== null && S.winTeam === p.team; place = win ? 1 : (p.place || S.actors.length);
+  } else { if (force) S.xpDone = true; return; }
+  S.xpDone = true;
+  const gain = xpForGame(place, p.kills | 0, win, S.actors.length), before = getXP(), l0 = xpInfo(before).lvl;
+  try { localStorage.setItem('sr-xp', String(before + gain)); } catch(_){}
+  S.xpGain = {gain, lvl:xpInfo(before + gain).lvl, up:xpInfo(before + gain).lvl > l0};
+  showXP();
+  if (l0 < AVATAR_UNLOCK && S.xpGain.lvl >= AVATAR_UNLOCK){ S.xpGain.unlock = true; toast('Level ' + AVATAR_UNLOCK + '! You can now design your own avatar from the main menu', 5000); try { refreshAvatarLock(); } catch(_){} }
+}
+function drawXPLine(x, y, size){
+  const g = S && S.xpGain; if (!g) return;
+  ctx.textAlign = 'center'; ctx.font = 'bold ' + size + 'px sans-serif'; ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.lineJoin = 'round';
+  const t = '+' + g.gain + ' XP' + (g.up ? '  ·  LEVEL UP! You are level ' + g.lvl : '  ·  Level ' + g.lvl);
+  ctx.strokeText(t, x, y); ctx.fillStyle = g.up ? '#7dff7d' : '#ffd34d'; ctx.fillText(t, x, y);
+}
+showXP();
+
 // total Royale wins in solo and bot matches (kept on this device)
 function getWins(){ try { return Math.max(0, parseInt(localStorage.getItem('sr-wins'), 10) || 0); } catch(_){ return 0; } }
 function showWins(){ const e = $('wincount'); if (e) e.textContent = getWins(); }
@@ -3226,7 +3282,8 @@ function drawLookPreview(){
   for (const [id, sc] of [['lookprev', 2.3], ['avprev', 4.2]]){
     const cv2 = $(id), c = cv2.getContext('2d'), w = cv2.width; c.clearRect(0, 0, w, w);
     c.save(); c.translate(w/2, w*0.52); c.rotate(-Math.PI/2); c.scale(sc, sc); c.lineWidth = 2; c.strokeStyle = '#000'; c.lineJoin = 'round';
-    drawPerson(c, SHIRTS[look.shirt], SKINS[look.skin], 0, false, {pat:look.pat, shirt2:SHIRTS[look.shirt2], hair:HAIRS[look.hair], style:look.style, sleeve:look.sleeve}); c.restore();
+    const L = id === 'avprev' ? look : curLook();      // (the designer screen always previews the avatar being designed)
+    drawPerson(c, SHIRTS[L.shirt], SKINS[L.skin], 0, false, {pat:L.pat, shirt2:SHIRTS[L.shirt2], hair:HAIRS[L.hair], style:L.style, sleeve:L.sleeve}); c.restore();
   }
 }
 function buildLookPickers(){
@@ -3250,8 +3307,15 @@ function buildLookPickers(){
   drawLookPreview();
 }
 buildLookPickers();
-$('b-avatar').onclick = () => { showScreen('s-avatar'); buildLookPickers(); $('menu').scrollTop = 0; document.querySelectorAll('#menu *').forEach(n => { if (n.scrollTop) n.scrollTop = 0; }); };
-$('b-avdone').onclick = () => showScreen('s-main');
+function refreshAvatarLock(){
+  const open = avatarOpen(), b = $('b-avatar');
+  b.textContent = open ? '🎨 Design Your Avatar' : '🔒 Design Your Avatar · unlocks at Level ' + AVATAR_UNLOCK;
+  b.classList.toggle('locked', !open);
+  try { drawLookPreview(); } catch(_){}
+}
+$('b-avatar').onclick = () => { if (!avatarOpen()){ toast('Reach Level ' + AVATAR_UNLOCK + ' to design your own avatar. Until then you play as the starter avatar.', 3500); return; } showScreen('s-avatar'); buildLookPickers(); $('menu').scrollTop = 0; document.querySelectorAll('#menu *').forEach(n => { if (n.scrollTop) n.scrollTop = 0; }); };
+$('b-avdone').onclick = () => { showScreen('s-main'); refreshAvatarLock(); };
+refreshAvatarLock();
 
 function renderLobby(){
   const kothSolo = NET.viewMode === 'koth';      // King of the Hill: no teams
@@ -3418,6 +3482,7 @@ function loop(now){
       }
     }
   }
+  if (S && S.player) maybeAwardXP(false);
   if (phase === 'play' && S.over && !S.sfxDone){
     S.sfxDone = true;
     if (NET.role === 'host') creditWins(); else if (NET.role === 'solo') soloCrown = S.winTeam !== null && S.winTeam === S.player.team;
