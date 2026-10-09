@@ -264,7 +264,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 69;
+const VERSION = 70;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -5983,8 +5983,10 @@ const SCENES = {
     SC_D('elder', 'Aye, iron-clad scouts, weeks ago, asking about the roads north. They paid in silver and gave no names.'),
     SC_D('elder', 'But if it is trouble you want, friend, we have plenty. Vagar the Swamp Warden rules the deep marsh. His beasts sink our boats, and our children fear the dark.'),
     SC_D('hero', 'Then I will end his rule. Point me to the heart of the marsh.'),
-    SC_N('Deep in the fog, two yellow eyes opened.', 'marsh:mist'),
-    SC_D('vagar', 'Another little wanderer wades into my marsh... The water has swallowed braver than you. Come, little one, and sink.'),
+    SC_D('elder', 'You will not reach him easily. His raiders and brutes hold camp after camp along the water, and only past the last of them does the Warden himself wait.'),
+    SC_D('hero', 'Then I will fight my way through them, one camp at a time.'),
+    SC_N('Far off in the fog, deep in the heart of the marsh, two yellow eyes opened.', 'marsh:mist'),
+    SC_D('vagar', 'Another little wanderer wades into my marsh... My raiders will sink you long before you ever reach me. Come, little one, and see how far you get.'),
     SC_N('{n} gripped the weapon tighter and stepped into the mist.', null, {solo:true}),
     SC_N('Side by side, {n} and his brother {p} stepped into the mist.', null, {co:true})
   ]},
@@ -6001,10 +6003,10 @@ const SCENES = {
     SC_N('Beyond the marsh the rain turned to sleet, and the sleet turned to snow. The only road north was a narrow pass between frozen mountains.', 'pass'),
     SC_N('Half-buried in a snowdrift lay a scout in dark iron armor, a silver raven on his chest. Tucked in his belt were a set of orders, sealed with a black letter K.'),
     SC_D('hero', '“Map every pass before the thaw. The Warlord wants no road left unwatched.” ...The Warlord. Who are you, K?'),
-    SC_N('A shadow fell across the snow. The mountain itself seemed to stand up.', 'pass:giant'),
-    SC_D('gajin', 'Halt, little warm-blood! This pass is mine. Nothing crosses Gajin’s mountains and keeps its feet.'),
-    SC_D('hero', 'I am only passing through. Stand aside.'),
-    SC_D('gajin', 'Then you will pass through the snow... in pieces!'),
+    SC_N('High above the pass, a vast shape rose against the peaks, and a voice rolled down the mountainside like an avalanche.', 'pass:giant'),
+    SC_D('gajin', 'Halt, little warm-blood! This pass is mine. My snowmen and brutes guard every step between you and Gajin’s throne, and nothing crosses my mountains and keeps its feet.'),
+    SC_D('hero', 'I am only passing through. If your guards stand in my way, I will go through them, and then I will come for you.'),
+    SC_D('gajin', 'Then climb, little warm-blood, and see how many of you reach the top... in pieces!'),
     SC_N('{n} defies the Frost Colossus and enters the mountain pass.', null, {solo:true}),
     SC_N('{n} and his brother {p} defy the Frost Colossus and enter the mountain pass.', null, {co:true})
   ]},
@@ -6018,10 +6020,10 @@ const SCENES = {
     SC_C('CHAPTER 3', 'Scorched Dunes', 'desert'),
     SC_N('South of the mountains the world turned to sand and cactus. The sun was merciless, and danger waited behind every dune: bandits, restless skeletons, mummies... and worse.', 'desert'),
     SC_D('hero', 'Water, shade, and a road without bandits. I would settle for any one of the three.'),
-    SC_N('The sand began to tremble. Something enormous rose behind the dune.', 'desert:king'),
-    SC_D('zareth', 'Ssso. Fresh meat wanders into my sands. Every creature that crawls here pays tribute to Zareth, the Scorpion King.'),
-    SC_D('hero', 'I am not paying anyone anything.'),
-    SC_D('zareth', 'Then my children will collect it. Sssstings are very patient.'),
+    SC_N('The sand began to tremble. Far off, beyond the farthest dune, something enormous rose against the sun, a stinger curling over its back.', 'desert:king'),
+    SC_D('zareth', 'Ssso. Fresh meat wanders into my sands. Every creature that crawls here pays tribute to Zareth, the Scorpion King, and my bandits, bones and wrappings guard the road to my throne.'),
+    SC_D('hero', 'I am not paying anyone anything. If I have to fight my way through your army to reach you, I will.'),
+    SC_D('zareth', 'Then my children will collect it first. Sssstings are very patient.'),
     SC_N('{n} enters the desert despite the warning.', null, {solo:true}),
     SC_N('{n} and his brother {p} enter the desert despite the warning.', null, {co:true})
   ]},
@@ -6043,9 +6045,9 @@ const SCENES = {
     SC_D('maren', 'Gladly, but our village is dying. Korvath the Ancient, the oldest tree in the Greenwood, woke up angry. The boars run wild, the rangers shoot at their own kin, and his goblins throw bombs at our homes.'),
     SC_D('maren', 'End his reign, and I will tell you everything we know.'),
     SC_D('hero', 'You have my word. Show me the way to his roots.'),
-    SC_N('Deep in the forest the ground began to tremble. An enormous shape unfolded from between the trees.', 'forest:boss'),
-    SC_D('korvath', 'Little seedling... you walk on my roots and breathe my air. I have watched kingdoms rise and rot. You will not be remembered.'),
-    SC_D('hero', 'Then I will give them something to remember.'),
+    SC_N('Far beyond the village, deep in the dark heart of the wood, the ground began to tremble. Something enormous stirred among the oldest trees.', 'forest:boss'),
+    SC_D('korvath', 'Little seedling... you walk on my roots and breathe my air. I have watched kingdoms rise and rot. My boars, my rangers and my goblins will meet you long before you ever reach me.'),
+    SC_D('hero', 'Then I will fight through every one of them, and come for you last.'),
     SC_N('{n} gripped a weapon and stepped beneath the great dark boughs.', null, {solo:true}),
     SC_N('{n} and his brother {p} gripped their weapons and stepped beneath the great dark boughs.', null, {co:true})
   ]},
@@ -6071,10 +6073,10 @@ const SCENES = {
     SC_N('Then the water itself began to boil.', 'sea:storm'),
     SC_D('thalassa', 'Another little boat on my sea... Do you know why it is called the Dreadwater, mortal? Because it drowns the dreadful and the brave alike.'),
     SC_D('hero', 'Warlord Kane’s ships crossed this sea. Did you let them pass?'),
-    SC_D('thalassa', 'Kane pays me in iron and sorrow, and I let his ships sail. But you... you I will keep.'),
-    SC_D('hero', 'Then I will cut through you, witch.'),
-    SC_N('{n} lifted a weapon as the first great wave rose.', null, {solo:true}),
-    SC_N('{n} and his brother {p} lifted their weapons as the first great wave rose.', null, {co:true})
+    SC_D('thalassa', 'Kane pays me in iron and sorrow, and I let his ships sail. But you... my pirates, my merfolk and my krakens will see to you first. Whatever is left, I will keep.'),
+    SC_D('hero', 'Then I will cut through every one of them to reach you, witch.'),
+    SC_N('{n} lifted a weapon as the first black sails closed in.', null, {solo:true}),
+    SC_N('{n} and his brother {p} lifted their weapons as the first black sails closed in.', null, {co:true})
   ]},
   'sea-outro':{title:'Chapter 5 · Calm Water', beats:[
     SC_N('Thalassa shrieked as her tentacles thrashed for the last time, and the black water closed over her. The storm broke apart, and the waves lay down like sleeping dogs.', 'sea:dawn'),
