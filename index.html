@@ -259,7 +259,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 55;
+const VERSION = 58;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -554,7 +554,7 @@ function pollPad(dt){
     }
     if (padActive && !me.alive && !S.koth && hit(0)) tryRestart();
     if (padActive && S.over && hit(0)) tryRestart();
-    if (hit(9) && !me.alive){ const ex = $('exit'); if (ex) ex.click(); }
+    if (hit(9) && !me.alive && !(S.story && me.lives > 0)){ const ex = $('exit'); if (ex) ex.click(); }
   } else if (padActive){
     // menus: move a highlight with the D-pad or left stick, X presses it, Circle goes back
     padNavT -= dt;
@@ -3374,7 +3374,21 @@ function hostToLobby(){
 function showLobbyScreen(){
   $('menu').classList.remove('hide'); $('exit').style.display = 'none'; showScreen('s-lobby');
 }
+// after beating a boss, tapping moves on to the next story map (the last one just replays)
+function nextStoryLevel(){
+  if (!S.story || !S.over || S.story.lost || S.story.outro) return null;
+  const i = ADVENTURES.findIndex(a => a.lvl === S.story.levelId);
+  return i >= 0 && i + 1 < ADVENTURES.length ? ADVENTURES[i + 1].lvl : null;
+}
 function hostRestart(){
+  const nx = nextStoryLevel();
+  if (nx && NET.role === 'host' && NET.lobby && NET.lobby.length === 2){ NET.level = nx; hostBeginStory(); return; }
+  if (nx && NET.role === 'solo'){
+    soloLevel = nx; try { localStorage.setItem('sr-level', nx); } catch(_){}
+    const go = () => { initStory(nx); phase = 'play'; hideMenu(); }, ids = csIdsFor(nx);
+    if (ids.length) csPlay(ids, go); else go();
+    return;
+  }
   if (NET.role === 'host') hostToLobby();
   else if (S.story && S.story.lost) location.reload();
   else if (S.story || soloMode === 'story') initStory(S.story ? S.story.levelId : soloLevel);
@@ -4186,7 +4200,7 @@ function aimStroke(x1, y1, x2, y2, col, dot){
 }
 let exitBig = false;      // after you are out (or the match is over) the Menu button becomes a big one that is easy to hit on a phone
 function syncExitBtn(){
-  const big = !!(S && S.player && ((!S.player.alive && !S.koth) || S.over));
+  const big = !!(S && S.player && ((!S.player.alive && !S.koth && !(S.story && S.player.lives > 0)) || S.over));      // (in Story Mode a lost life just respawns you: no big button)
   if (big !== exitBig){ exitBig = big; $('exit').classList.toggle('big', big); $('exit').textContent = big ? '⬅ Main menu' : 'Menu'; }
 }
 function drawThicket(cam, vw, vh){          // the impassable swamp outside the paths and arenas: dark undergrowth with leafy blobs
@@ -4964,7 +4978,7 @@ function drawHUD(){
     ctx.fillStyle='#fff'; ctx.font=Math.min(24, vw/22)+'px sans-serif';
     const tt = S.story.t|0;
     ctx.fillText(bossThe(true)+' is defeated · '+p.kills+' kills · '+p.lives+(p.lives === 1 ? ' life left' : ' lives left')+' · '+((tt/60)|0)+':'+('0'+tt%60).slice(-2), vw/2, vh/2+6);
-    ctx.fillText((tm ? 'Tap' : 'Press R')+(NET.role === 'solo' ? ' to play the level again, or use the Main menu button' : ' to return to the lobby'), vw/2, vh/2+40);
+    ctx.fillText((tm ? 'Tap' : 'Press R')+(nextStoryLevel() ? ' to continue to ' + STORY_LEVELS[nextStoryLevel()].name : NET.role === 'solo' ? ' to play the level again, or use the Main menu button' : ' to return to the lobby'), vw/2, vh/2+40);
     if (S.story.unlockedNow){ ctx.fillStyle = '#9fe8ff'; ctx.font = 'bold ' + Math.min(24, vw/22) + 'px sans-serif'; ctx.fillText('NEW LEVEL UNLOCKED: ' + S.story.unlockedNow, vw/2, vh/2+112); ctx.fillStyle = '#fff'; ctx.font = Math.min(24, vw/22) + 'px sans-serif'; }
     drawXPLine(vw/2, vh/2+78, Math.min(22, vw/24));
   } else if (S.over){
@@ -5901,8 +5915,8 @@ const SCENES = {
     SC_D('gajin', 'Halt, little warm-blood! This pass is mine. Nothing crosses Gajin’s mountains and keeps its feet.'),
     SC_D('hero', 'I am only passing through. Stand aside.'),
     SC_D('gajin', 'Then you will pass through the snow... in pieces!'),
-    SC_N('{n} raised a weapon against the Frost Colossus.', null, {solo:true}),
-    SC_N('{n} and his brother {p} raised their weapons against the Frost Colossus.', null, {co:true})
+    SC_N('{n} defies the Frost Colossus and enters the mountain pass.', null, {solo:true}),
+    SC_N('{n} and his brother {p} defy the Frost Colossus and enter the mountain pass.', null, {co:true})
   ]},
   'cold-outro':{title:'Chapter 2 · The Pass Is Open', beats:[
     SC_N('With a groan like splitting ice, Gajin the Frost Colossus toppled, and the whole pass thundered. Then, slowly, the howling wind died.', 'pass:dawn'),
