@@ -30,7 +30,7 @@
   #advgrid,#scenegrid{display:grid;grid-template-columns:1fr;gap:8px;margin:6px 0}
   .advcard{display:block;width:100%;box-sizing:border-box;text-align:left;padding:10px 14px;border-radius:12px;border:2px solid #4a6;background:#223a2a;color:#e8fff0;cursor:pointer;font-family:inherit}
   .advcard .at{font-size:17px;font-weight:800}.advcard .as{font-size:12px;opacity:.85;margin-top:2px}.advcard .ast{font-size:12px;font-weight:700;margin-top:4px;color:#fc4}
-  .advcard.last{border-color:#fc4}.advcard.locked,.advcard.soon{opacity:.55;border-style:dashed;cursor:default}.advcard.done .ast{color:#7dff7d}
+  .advcard .abadge{font-size:12px;font-weight:800;margin-top:3px;color:#ffd24a}.advcard.last{border-color:#fc4}.advcard.locked,.advcard.soon{opacity:.55;border-style:dashed;cursor:default}.advcard.done .ast{color:#7dff7d}
   .pconly{display:none}
   @media (pointer:fine) and (min-width:820px){
     .card{width:min(820px,calc(100% - 40px));padding:20px 28px 14px}
@@ -205,6 +205,8 @@
 
     <div id="s-adv" hidden>
       <p style="font-size:18px;font-weight:700;margin:4px 0 10px">Story Mode · Choose your chapter</p>
+      <div class="lbl">Difficulty <span style="font-weight:400;opacity:.75">(Explorer = Easy · Adventurer = Normal · Veteran = Hard)</span></div><div class="mapbox" id="diffbox"></div>
+      <div id="diffhelp" style="font-size:13px;opacity:.85;margin:4px 0 10px"></div>
       <div id="advgrid"></div>
       <button class="btn" id="b-scenes">🎬 Replay cut scenes</button>
       <button class="btn ghost" data-back>Back</button>
@@ -235,6 +237,7 @@
       <div id="modebox"><button class="mini" data-mode="bots">With bots</button><button class="mini" data-mode="humans">Humans only</button><button class="mini" data-mode="koth">King of the Hill</button><button class="mini" data-mode="story">Story Mode</button></div>
       <div class="mapbox" id="mapbox-lobby"></div>
       <div class="mapbox" id="levelbox-lobby" style="display:none"></div>
+      <div id="diffwrap-lobby" style="display:none"><div class="lbl">Difficulty <span style="font-weight:400;opacity:.75">(host picks · Explorer = Easy, Adventurer = Normal, Veteran = Hard)</span></div><div class="mapbox" id="diffbox-lobby"></div></div>
       <p class="hint" id="lobby-info"></p>
       <button class="btn ghost" id="b-leaveteam" hidden>Leave team (play solo)</button>
       <button class="btn" id="b-start" hidden>Start Match</button>
@@ -264,7 +267,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 70;
+const VERSION = 76;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -426,9 +429,22 @@ const NOOB_LOOK = {shirt:26, skin:1, hair:1, pat:0, shirt2:8, style:0, hv:3, sle
 const avatarOpen = () => xpInfo(getXP()).lvl >= AVATAR_UNLOCK;
 const curLook = () => avatarOpen() ? look : NOOB_LOOK;      // the avatar actually used in games
 // Trophy heads: beat a Story Mode boss and (from avatar level 5) you may wear its head in every mode
+// ----- Story difficulty: Explorer (easy), Adventurer (normal), Veteran (hard: how the game was built) -----
+const DIFF_NAMES = ['Explorer', 'Adventurer', 'Veteran'], DIFF_HELP = ['Easy', 'Normal', 'Hard'];
+const DIFF_DESC = ['Explorer (Easy): smaller camps, weaker enemies that do less damage, no flanking, shorter chases, slower and gentler bosses, and extra healing and rifle drops.',
+  'Adventurer (Normal): somewhat smaller camps, enemies a bit weaker, only light flanking, a medium chase, and slightly easier bosses.',
+  'Veteran (Hard): the full challenge, with coordinated flanking, bombs aimed behind you and the toughest bosses. Only Veteran wins award boss-head trophies.'];
+const DFX = [
+  {hp:0.65, dmg:0.6,  camp:0.67, boss:0.6, bt:0.8,  sc:0.5,  flank:0, chase:0.7,  lf:1.4,  rf:2},
+  {hp:0.85, dmg:0.8,  camp:0.83, boss:0.8, bt:0.92, sc:0.75, flank:1, chase:0.85, lf:1.15, rf:1.5},
+  {hp:1,    dmg:1,    camp:1,    boss:1,   bt:1,    sc:1,    flank:2, chase:1,    lf:1,    rf:1}];
+let DIFF = 2;
+const DF = () => DFX[DIFF] || DFX[2], capD = n => Math.max(1, Math.round(n*DF().sc)), HM = () => STORY.hpMul * DF().hp;
+const diffGet = () => { try { const v = parseInt(localStorage.getItem('sr-diff'), 10); return v === 0 || v === 1 ? v : 2; } catch(_){ return 2; } };
+const bestDiff = id => { try { const v = localStorage.getItem('sr-best-' + id); return v === null ? null : (parseInt(v, 10) || 0); } catch(_){ return null; } };      // hardest level beaten: 1 Explorer, 2 Adventurer, 3 Veteran (none recorded = beaten before difficulty existed, which was Veteran)
 const TROPHIES = {marsh:'Swamp Warden', cold:'Frost Colossus', desert:'Scorpion King', forest:'Korvath', sea:'Thalassa', ravenrock:'War Machine'};
 const TROPHY_NEXT = {marsh:'cold', cold:'desert', desert:'forest', forest:'sea', sea:'ravenrock'};      // (a boss beaten before the 'done' flags existed still counts if the next chapter is unlocked)
-const trophyOwned = id => { try { if (!TROPHIES[id]) return false; if (localStorage.getItem('sr-done-' + id) === '1') return true; const nx = TROPHY_NEXT[id]; return !!nx && (localStorage.getItem('sr-unlock-' + nx) === '1' || (id === 'marsh' && (parseInt(localStorage.getItem('sr-wins-story'), 10) || 0) > 0)); } catch(_){ return false; } };
+const trophyOwned = id => { try { if (!TROPHIES[id]) return false; const bd = bestDiff(id); if (localStorage.getItem('sr-done-' + id) === '1') return bd === null || bd >= 3; if (bd !== null) return false; const nx = TROPHY_NEXT[id]; return !!nx && (localStorage.getItem('sr-unlock-' + nx) === '1' || (id === 'marsh' && (parseInt(localStorage.getItem('sr-wins-story'), 10) || 0) > 0)); } catch(_){ return false; } };
 // 500 Battle Royale kills unlock playing as a Bitter Cold snowman (in Battle Royale)
 const SNOW_KILLS = 500;
 const MER_WINS = 50;      // 50 Battle Royale wins unlock the Dreadwater merfolk
@@ -895,7 +911,7 @@ const STORY_LEVELS = {
     hint:'Story Mode (solo): cross the burning dunes past bandits, skeleton archers and mummies and defeat the Scorpion King. Unlocked by beating the Frost Colossus.'},
   forest:{id:'forest', ch:4, name:'The Greenwood', map:'grass', theme:'forest', HW:165, R:{S:330, C:450, B:640}, LIVES:5, cpAfter:[2, 4, 5, 7],
     nodes:[[600,5400,'S'],[2200,5400,'C'],[3600,4700,'C'],[5200,4400],[5300,3000,'C'],[4000,2400,'C'],[2700,3100,'C'],[1000,2900,'C'],[900,1500,'C'],[2500,900],[4200,800,'B']],
-    campN:[4,4,5,5,6,6,7], campEl:[0,0,0,0,0,0,0], comp:[[3,1,0],[2,1,1],[2,2,1],[2,2,1],[2,2,2],[2,2,2],[2,3,2]], hpMul:1.3,
+    campN:[4,4,5,5,6,6,7], campEl:[0,0,0,0,0,0,0], comp:[[2,2,0],[2,1,1],[2,2,1],[2,2,1],[2,2,2],[2,2,2],[2,3,2]], hpMul:1.3,
     bossName:'KORVATH THE ANCIENT', bossTitle:'Korvath the Ancient', bossShort:'Korvath', bossHp:6800, bossBar:['#6fcf4a', '#c9d13a', '#d9542a'], bossBack:'#10230f', bossBullet:'#8bff4a', bossDot:'#6fcf4a', xp:[250, 14],
     thicket:{base:'#0c1f0e', cols:['#16401a', '#1d5222', '#133416', '#25652b', '#194a1d', '#2f7a33']}, mmDark:'#08160a',
     hint:'Story Mode (solo): push through the Greenwood past wild boars, forest rangers and bomb-throwing goblins and defeat Korvath the Ancient. Unlocked by beating the Scorpion King.'},
@@ -943,15 +959,15 @@ function mkEnemy0(x, y, kind, camp){
   if (STORY.theme === 'war') return mkWar(x, y, kind, camp);
   const a = newActor('bot', ++S.story.n), elite = kind === 'elite', gun = elite ? 'ar' : kind === 'shot' ? 'shotgun' : 'pistol';
   a.x = a.tx = x; a.y = a.ty = y; a.team = 'E'; a.enemy = true; a.noDown = true; a.camp = camp; a.home = {x, y}; a.alert = camp < 0; a.rt = 0.5;
-  a.snow = STORY.theme === 'cold'; a.elite = elite;
-  a.name = a.snow ? (elite ? 'Frost Brute' : 'Snowman') : elite ? 'Marsh Brute' : 'Marsh Raider'; a.hp = a.hpMax = Math.round((elite ? 110 : 60) * STORY.hpMul); a.dmgMul = elite ? 0.55 : 0.4; a.spd = elite ? 165 : 145; a.aggro = elite ? 560 : 440;
+  a.snow = STORY.theme === 'cold'; a.elite = elite; if (kind === 'shot'){ a.flk = true; a.fr = 120; }      // shotgun carriers play the melee role: flank, push you back toward the shooters
+  a.name = a.snow ? (elite ? 'Frost Brute' : 'Snowman') : elite ? 'Marsh Brute' : 'Marsh Raider'; a.hp = a.hpMax = Math.round((elite ? 110 : 60) * HM()); a.dmgMul = elite ? 0.55 : 0.4; a.spd = elite ? 165 : 145; a.aggro = elite ? 560 : 440;
   a.inv = ['pickaxe', gun, null, null, null, null]; a.cur = 1; a.ammo[gun] = 14; a.started[gun] = true; a.gr[gun] = elite ? 1 : 0; a.wood = 0;
   a.color = elite ? 'hsl(0,70%,32%)' : 'hsl(18,55%,38%)'; if (a.snow){ a.color = '#e8f2fa'; if (elite) a.r = 17; } a.pref = gun === 'shotgun' ? 120 : gun === 'ar' ? 300 : 260;
   S.actors.push(a); return a;
 }
 // Desert foes: bandits (guns), skeleton archers (slow arrows from a distance), mummy warriors (rush you; some blast sand at close range) and the Scorpion King's little scorpions
 function mkDesert(x, y, kind, camp){
-  const a = newActor('bot', ++S.story.n), hm = STORY.hpMul;
+  const a = newActor('bot', ++S.story.n), hm = HM();
   a.x = a.tx = x; a.y = a.ty = y; a.team = 'E'; a.enemy = true; a.noDown = true; a.camp = camp; a.home = {x, y}; a.alert = camp < 0; a.rt = 0.5; a.desert = kind;
   a.inv = ['pickaxe', null, null, null, null, null]; a.cur = 1; a.wood = 0; a.dmgMul = 0.4; a.spd = 145; a.aggro = 440; a.pref = 260; a.color = '#c79a52';
   if (kind === 'bandit' || kind === 'banditS'){
@@ -960,9 +976,9 @@ function mkDesert(x, y, kind, camp){
   } else if (kind === 'archer'){
     a.name = 'Skeleton Archer'; a.hp = a.hpMax = Math.round(40*hm); a.dmgMul = 0.5; a.spd = 135; a.aggro = 600; a.pref = 430; a.archer = true; a.noGun = true; a.ammoDrop = 'pistol'; a.color = '#e8e2cf';
   } else if (kind === 'mummy' || kind === 'mummyB'){
-    a.name = 'Mummy Warrior'; a.hp = a.hpMax = Math.round(250*hm); a.r = 17; a.spd = 190; a.aggro = 480; a.elite = true; a.rush = true; a.reach = 48; a.mdmg = 16; a.mcdMax = 1.0; a.dmgMul = 1; a.blast = kind === 'mummyB'; a.noGun = true; a.ammoDrop = 'shotgun'; a.color = '#d8c9a0'; a.mcd = 0.4;
+    a.name = 'Mummy Warrior'; a.hp = a.hpMax = Math.round(250*hm); a.r = 17; a.spd = 190; a.aggro = 480; a.elite = true; a.rush = true; a.reach = 64; a.mdmg = 16; a.mcdMax = 1.0; a.dmgMul = 1; a.blast = kind === 'mummyB'; a.noGun = true; a.ammoDrop = 'shotgun'; a.color = '#d8c9a0'; a.mcd = 0.4;
   } else {
-    a.name = 'Scorpion'; a.hp = a.hpMax = 18; a.r = 11; a.spd = 250; a.aggro = 9999; a.rush = true; a.reach = 30; a.mdmg = 7; a.mcdMax = 0.7; a.dmgMul = 1; a.scorp = true; a.noGun = true; a.color = '#8a3d10'; a.mcd = 0.3;
+    a.name = 'Scorpion'; a.hp = a.hpMax = 18; a.r = 11; a.spd = 250; a.aggro = 9999; a.rush = true; a.reach = 52; a.mdmg = 7; a.mcdMax = 0.7; a.dmgMul = 1; a.scorp = true; a.noGun = true; a.color = '#8a3d10'; a.mcd = 0.3;
   }
   S.actors.push(a); return a;
 }
@@ -973,11 +989,11 @@ function deKind(c, k, ci){      // c = [bandits, archers, mummies] for this camp
 }
 // Forest foes: wild boars (charge you and gore you), forest rangers (arrows from a distance) and goblins (lob slow little bombs)
 function mkForest(x, y, kind, camp){
-  const a = newActor('bot', ++S.story.n), hm = STORY.hpMul;
+  const a = newActor('bot', ++S.story.n), hm = HM();
   a.x = a.tx = x; a.y = a.ty = y; a.team = 'E'; a.enemy = true; a.noDown = true; a.camp = camp; a.home = {x, y}; a.alert = camp < 0; a.rt = 0.5; a.forest = kind;
   a.inv = ['pickaxe', null, null, null, null, null]; a.cur = 1; a.wood = 0; a.dmgMul = 0.4; a.spd = 145; a.aggro = 440; a.pref = 260; a.color = '#5a7a3a'; a.noGun = true;
   if (kind === 'boar'){
-    a.name = 'Wild Boar'; a.hp = a.hpMax = Math.round(190*hm); a.r = 16; a.spd = 235; a.aggro = 520; a.elite = true; a.rush = true; a.boar = true; a.reach = 40; a.mdmg = 13; a.mcdMax = 0.9; a.dmgMul = 1; a.color = '#6a4a30'; a.mcd = 0.4;
+    a.name = 'Wild Boar'; a.hp = a.hpMax = Math.round(190*hm); a.r = 16; a.spd = 235; a.aggro = 520; a.elite = true; a.rush = true; a.boar = true; a.reach = 58; a.mdmg = 13; a.mcdMax = 0.9; a.dmgMul = 1; a.color = '#6a4a30'; a.mcd = 0.4;
   } else if (kind === 'ranger'){
     a.name = 'Forest Ranger'; a.hp = a.hpMax = Math.round(48*hm); a.dmgMul = 0.5; a.spd = 140; a.aggro = 620; a.pref = 430; a.archer = true; a.ammoDrop = 'pistol'; a.color = '#3f6a35';
   } else {
@@ -992,7 +1008,7 @@ function forestKind(c, k){      // c = [boars, rangers, goblins] for this camp
 }
 // Sea foes: pirate ships (cannons), merfolk (magic bolts) and giant squid (tentacle lashes)
 function mkSea(x, y, kind, camp){
-  const a = newActor('bot', ++S.story.n), hm = STORY.hpMul;
+  const a = newActor('bot', ++S.story.n), hm = HM();
   a.x = a.tx = x; a.y = a.ty = y; a.team = 'E'; a.enemy = true; a.noDown = true; a.camp = camp; a.home = {x, y}; a.alert = camp < 0; a.rt = 0.5; a.sea = kind;
   a.inv = ['pickaxe', null, null, null, null, null]; a.cur = 1; a.wood = 0; a.dmgMul = 0.5; a.spd = 145; a.aggro = 440; a.pref = 260; a.noGun = true; a.color = '#3a6a8a';
   if (kind === 'ship'){
@@ -1011,10 +1027,12 @@ function seaKind(c, k){      // c = [ships, mermen, squid] for this camp
 }
 // Ravenrock foes: Kane's iron soldiers (pistols), riflemen (assault rifles, in bursts) and grenadiers (heavy grenades with a big blast ring)
 function mkWar(x, y, kind, camp){
-  const a = newActor('bot', ++S.story.n), hm = STORY.hpMul;
+  const a = newActor('bot', ++S.story.n), hm = HM();
   a.x = a.tx = x; a.y = a.ty = y; a.team = 'E'; a.enemy = true; a.noDown = true; a.camp = camp; a.home = {x, y}; a.alert = camp < 0; a.rt = 0.5; a.war = kind;
   a.inv = ['pickaxe', null, null, null, null, null]; a.cur = 1; a.wood = 0; a.dmgMul = 0.45; a.spd = 145; a.aggro = 470; a.pref = 270; a.color = '#3e424b';
-  if (kind === 'soldier'){
+  if (kind === 'breach'){
+    a.name = 'Iron Breacher'; a.hp = a.hpMax = Math.round(70*hm); a.inv[1] = 'shotgun'; a.ammo.shotgun = 14; a.started.shotgun = true; a.gr.shotgun = 0; a.pref = 120; a.flk = true; a.fr = 120; a.spd = 150;
+  } else if (kind === 'soldier'){
     a.name = 'Iron Soldier'; a.hp = a.hpMax = Math.round(62*hm); a.inv[1] = 'pistol'; a.ammo.pistol = 14; a.started.pistol = true; a.gr.pistol = 0; a.pref = 270;
   } else if (kind === 'rifle'){
     a.name = 'Iron Rifleman'; a.hp = a.hpMax = Math.round(80*hm); a.inv[1] = 'ar'; a.ammo.ar = 14; a.started.ar = true; a.gr.ar = 0; a.pref = 340; a.aggro = 580; a.spd = 150; a.dmgMul = 0.5; a.rifle = true;
@@ -1023,13 +1041,14 @@ function mkWar(x, y, kind, camp){
   }
   S.actors.push(a); return a;
 }
-function warKind(c, k){      // c = [soldiers, riflemen, grenadiers] for this camp
+function warKind(c, k){      // c = [soldiers, riflemen, grenadiers] for this camp (about a third of the soldiers carry shotguns)
+  if (k < Math.ceil(c[0]/3)) return 'breach';
   if (k < c[0]) return 'soldier';
   if (k < c[0] + c[1]) return 'rifle';
   return 'gren';
 }
-function warBomb(b, p){      // the grenadier's grenade: faster than a goblin's bomb, a wider ring and twice the punch
-  const tx = p.x + rnd(-45, 45), ty = p.y + rnd(-45, 45), d = Math.hypot(tx-b.x, ty-b.y);
+function warBomb(b, p){      // the grenadier's grenade: faster than a goblin's bomb, a wider ring and twice the punch (lands behind you)
+  const [tx, ty] = bombAim(b, p, 125, 300, 0.8, 1.7, 45), d = Math.hypot(tx-b.x, ty-b.y);
   S.grenades.push({sx:b.x, sy:b.y, x:b.x, y:b.y, tx, ty, t:0, dur:Math.max(0.8, Math.min(1.7, d/300)), owner:b, weak:true, R:125, dmx:100, dmn:40, vis:2});
   b.swing = 0.3; sfx('th', b.x, b.y);
 }
@@ -1125,7 +1144,7 @@ function wmThink(b, dt){
   if (ph >= 2){      // reinforcements march in from the streets
     bs.tRe -= dt;
     if (bs.tRe <= 0){
-      bs.tRe = rnd(7, 12); const cap = sy.coop ? 12 : 8; let cnt = S.actors.filter(e => e.alive && e.war && e.camp === -1).length, n = 2 + (Math.random() < 0.5 ? 1 : 0);
+      bs.tRe = rnd(7, 12); const cap = capD(sy.coop ? 12 : 8); let cnt = S.actors.filter(e => e.alive && e.war && e.camp === -1).length, n = 2 + (Math.random() < 0.5 ? 1 : 0);
       bs.entI = (bs.entI || 0);
       for (let k = 0; k < n && cnt < cap; k++){
         const en = bs.ent[bs.entI++ % bs.ent.length], r = Math.random(), kind = r < 0.22 ? 'gren' : r < 0.6 ? 'rifle' : 'soldier';
@@ -1146,8 +1165,16 @@ function magicShot(b, ang, n, spread){
   sfx('sh', b.x, b.y);
 }
 const GR_WEAK_R = 90, GR_WEAK_MAX = 100, GR_WEAK_MIN = 30;
-function goblinBomb(b, p){      // a slow, small bomb: it lands where you were standing a moment ago, so keep moving
-  const tx = p.x + rnd(-55, 55), ty = p.y + rnd(-55, 55), d = Math.hypot(tx-b.x, ty-b.y);
+function bombAim(b, p, R, spd, dmn, dmx, jit){
+  const fl = DF().flank; if (fl === 0) return [p.x + rnd(-jit, jit), p.y + rnd(-jit, jit)];      // Explorer: right where you stand
+  // (Adventurer: behind you but close, no lead; Veteran: behind you, aimed where you are heading)      // bombs land BEHIND you (the way you would retreat), close enough that you are still inside the blast ring
+  let ax = p.x - b.x, ay = p.y - b.y; const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
+  const vl = Math.hypot(b.pvx || 0, b.pvy || 0); let lx = 0, ly = 0;
+  if (vl > 60 && fl >= 2){ const vx = b.pvx/vl, vy = b.pvy/vl; ax += vx; ay += vy; const l = Math.hypot(ax, ay) || 1; ax /= l; ay /= l; const dur = Math.max(dmn, Math.min(dmx, Math.hypot(p.x-b.x, p.y-b.y)/spd)); lx = b.pvx*dur; ly = b.pvy*dur; const ll = Math.hypot(lx, ly); if (ll > 450){ lx *= 450/ll; ly *= 450/ll; } }      // aim where you will be when it lands
+  const off = fl >= 2 ? 0.55 : 0.3; return [p.x + lx + ax*R*off + rnd(-15, 15), p.y + ly + ay*R*off + rnd(-15, 15)];
+}
+function goblinBomb(b, p){      // a slow, small bomb: it lands behind you, so you cannot just back away
+  const [tx, ty] = bombAim(b, p, GR_WEAK_R, 210, 1.0, 2.3, 55), d = Math.hypot(tx-b.x, ty-b.y);
   S.grenades.push({sx:b.x, sy:b.y, x:b.x, y:b.y, tx, ty, t:0, dur:Math.max(1.0, Math.min(2.3, d/210)), owner:b, weak:true});
   b.swing = 0.3; sfx('th', b.x, b.y);
 }
@@ -1199,17 +1226,20 @@ function storyLOS(x1, y1, x2, y2){
 }
 function initStory(levelId, humans){
   STORY = STORY_LEVELS[levelId] || STORY_LEVELS.marsh;
+  if (NET.role !== 'guest') DIFF = NET.role === 'host' ? (NET.diff ?? diffGet()) : diffGet();      // (a co-op guest is told the host's choice)
   init(humans || null, false, STORY.map, false);
   const st = S.storm; st.r = st.nr = st.rTo = 99999; st.state = 'final'; st.t = 99999; S.ammoChk = 1e12;      // no storm in Adventure
   S.actors = S.actors.filter(a => a.isPlayer); S.players = S.actors.slice(); S.loot = []; S.lakes = []; S.boats = []; S.trees = []; S.bog = []; S.ice = []; S.chests = []; S.walls = new Map(); S.bldgs = [];
   const p = S.player, coop = !!humans && humans.length > 1;
   const sh = storyShapes(), N = STORY.nodes;
-  S.story = {levelId:STORY.id, n:0, cp:-1, deaths:0, lives:STORY.LIVES, deadT:0, t:0, boss:null, bs:{awake:false, ph:1, tShot:1.5, tBurst:3, tCharge:5, wind:0, charge:0, hitCd:0, tSpawn:6}, mounds:[], waves:[], pools:[], beams:[], total:0, segs:sh.segs, circs:sh.circs,
+  S.story = {levelId:STORY.id, diff:DIFF, n:0, cp:-1, deaths:0, lives:STORY.LIVES, deadT:0, t:0, boss:null, bs:{awake:false, ph:1, tShot:1.5, tBurst:3, tCharge:5, wind:0, charge:0, hitCd:0, tSpawn:6}, mounds:[], waves:[], pools:[], beams:[], total:0, segs:sh.segs, circs:sh.circs,
     special: Math.random() < 0.5 ? 'minigun' : 'flame', camps:[], cps:[]};
   const sy = S.story; sy.coop = coop; sy.bdMul = coop ? 1.5 : 1; sy.newSp = []; sy.live = false; sy.wipe = false;
   const mul = coop ? 2 : 1;      // two players: twice the enemies, and the boss has twice the health and hits harder
   // camps, in route order
-  N.forEach((n, i) => { if (n[2] === 'C') sy.camps.push({x:n[0], y:n[1], idx:i, n:STORY.campN[sy.camps.length]*mul, el:STORY.campEl[sy.camps.length]*mul, cleared:false}); });
+  const cf = DF().camp, scaleComp = cmp => { const r = cmp.map(v => Math.round(v*mul*cf)); let t = r.reduce((x, y) => x + y, 0); while (t < 3*mul){ r[1]++; t++; } return r; };      // easier levels: smaller camps (the extra slots are never all melee)
+  N.forEach((n, i) => { if (n[2] === 'C'){ const ci = sy.camps.length, cp = STORY.comp ? scaleComp(STORY.comp[ci] || STORY.comp[STORY.comp.length-1]) : null, nn = cp ? cp.reduce((x, y) => x + y, 0) : Math.max(3*mul, Math.round(STORY.campN[ci]*mul*cf));
+    sy.camps.push({x:n[0], y:n[1], idx:i, n:nn, el:Math.min(nn, Math.round(STORY.campEl[ci]*mul*cf)), cp, cleared:false}); } });
   const bo = N.find(n => n[2] === 'B'), st0 = N[0];
   // scenery: solid thicket trees line the outside of every path and arena
   let tid = 1000;
@@ -1247,20 +1277,21 @@ function initStory(levelId, humans){
     [{type:'pistol', rar:3}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 2), ...heal('med', 1)],
     [{type:'shotgun', rar:3}, ...ammo('shotgun', 3), ...ammo('pistol', 3), ...heal('shield', 2), ...heal('med', 2)],
     [{type:sy.special, rar:4}, {type:'pistol', rar:4}, ...ammo('pistol', 3), ...ammo('shotgun', 3), ...heal('shield', 3), ...heal('med', 2)]];
-  sy.camps.forEach((c, ci) => { let lt = L[ci] || L[L.length-1]; if (ci >= 1 && ci < sy.camps.length - 1 && Math.random() < 0.3) lt = lt.concat([{type:'ar', rar:Math.min(3, 1 + (ci >> 1))}, ...ammo('ar', 2)]);      // a rifle turns up in some chests now and then (never the boss-side special chest)
+  sy.camps.forEach((c, ci) => { let lt = L[ci] || L[L.length-1]; if (ci >= 1 && ci < sy.camps.length - 1 && Math.random() < [0.6, 0.45, 0.3][DIFF]) lt = lt.concat([{type:'ar', rar:Math.min(3, 1 + (ci >> 1))}, ...ammo('ar', 2)]);      // a rifle turns up in some chests now and then (never the boss-side special chest)
+    if (DIFF < 2) lt = lt.concat(heal('med', 1), DIFF === 0 ? heal('shield', 1) : []);      // easier levels: more healing in every chest
     if (coop) lt = lt.flatMap(d => d.type === sy.special ? [{type:'minigun', rar:4}, {type:'flame', rar:4}] : [d]); c.chest = {x:c.x, y:c.y, open:false, hidden:true, loot:lt}; S.chests.push(c.chest); });      // co-op: the last chest holds both special weapons
   sy.camps.forEach((c, ci) => {
     for (let k = 0; k < c.n; k++){
       const ang = k/c.n*Math.PI*2 + rnd(-0.3, 0.3), d = rnd(70, coop ? 240 : 150), el = k < c.el;
-      mkEnemy(Math.round(c.x + Math.cos(ang)*d), Math.round(c.y + Math.sin(ang)*d), STORY.comp ? (STORY.theme === 'forest' ? forestKind : STORY.theme === 'sea' ? seaKind : STORY.theme === 'war' ? warKind : deKind)((STORY.comp[ci] || STORY.comp[STORY.comp.length-1]).map(v => v*mul), k, ci) : el ? 'elite' : k % 3 === 2 ? 'shot' : 'grunt', ci);
+      mkEnemy(Math.round(c.x + Math.cos(ang)*d), Math.round(c.y + Math.sin(ang)*d), STORY.comp ? (STORY.theme === 'forest' ? forestKind : STORY.theme === 'sea' ? seaKind : STORY.theme === 'war' ? warKind : deKind)(c.cp, k, ci) : el ? 'elite' : k % 3 === 2 ? 'shot' : 'grunt', ci);
     }
   });
   const b = newActor('bot', 99);
-  b.x = b.tx = bo[0]; b.y = b.ty = bo[1]; b.r = STORY.theme === 'sea' ? 56 : STORY.theme === 'forest' ? 52 : STORY.theme === 'desert' ? 48 : 44; b.scale = STORY.theme === 'sea' ? 3.5 : STORY.theme === 'forest' ? 3.3 : STORY.theme === 'desert' ? 3.1 : 2.9; b.team = 'E'; b.enemy = true; b.boss = true; b.noDown = true; b.name = STORY.bossName; b.hp = b.hpMax = STORY.bossHp * mul;
+  b.x = b.tx = bo[0]; b.y = b.ty = bo[1]; b.r = STORY.theme === 'sea' ? 56 : STORY.theme === 'forest' ? 52 : STORY.theme === 'desert' ? 48 : 44; b.scale = STORY.theme === 'sea' ? 3.5 : STORY.theme === 'forest' ? 3.3 : STORY.theme === 'desert' ? 3.1 : 2.9; b.team = 'E'; b.enemy = true; b.boss = true; b.noDown = true; b.name = STORY.bossName; b.hp = b.hpMax = Math.round(STORY.bossHp * mul * DF().boss);
   b.color = STORY.theme === 'cold' ? '#7fa6c8' : 'hsl(280,55%,30%)'; b.home = {x:bo[0], y:bo[1]}; b.inv = ['pickaxe', null, null, null, null, null]; b.wood = 0;
   if (STORY.theme === 'war'){      // the War Machine: a huge tank with four armor plates, one over each corner turret
     b.r = 86; b.scale = 1; b.wm = true; b.angle = Math.PI/2; b.color = '#434852';
-    const pm = 600*mul, bi = N.indexOf(bo), ent = [N[bi-1], N[bi+1]].filter(Boolean).map(q => { const dx = q[0]-bo[0], dy = q[1]-bo[1], l = Math.hypot(dx, dy) || 1; return [Math.round(bo[0] + dx/l*(STORY.R.B + 170)), Math.round(bo[1] + dy/l*(STORY.R.B + 170))]; });
+    const pm = Math.round(600*mul*DF().boss), bi = N.indexOf(bo), ent = [N[bi-1], N[bi+1]].filter(Boolean).map(q => { const dx = q[0]-bo[0], dy = q[1]-bo[1], l = Math.hypot(dx, dy) || 1; return [Math.round(bo[0] + dx/l*(STORY.R.B + 170)), Math.round(bo[1] + dy/l*(STORY.R.B + 170))]; });
     Object.assign(sy.bs, {plates:[0, 1, 2, 3].map(() => ({hp:pm, max:pm})), tur:[1.57, 1.57, 1.57, 1.57], tt:[1.2, 1.8, 2.4, 3], tb:[0, 0, 0, 0], gunA:1.57, tGun:3.5, tGr:6, tRe:4, pend:[], ent, kane:0});
   }
   S.actors.push(b); sy.boss = b;
@@ -1316,13 +1347,13 @@ function storyDrop(a){
   }
   else if (a.ammoDrop) S.loot.push({x:a.x + j(), y:a.y + j(), type:'ammo_'+a.ammoDrop, n:Math.max(1, Math.round(AMMO['ammo_'+a.ammoDrop].box*0.4)), exp:now + 30000});
   if (a.gDrop && Math.random() < 0.3) S.loot.push({x:a.x + j(), y:a.y + j(), type:'grenade', rar:0, exp:now + 25000});
-  if ((gun ? gun !== 'ar' : (a.ammoDrop && a.ammoDrop !== 'ar')) && Math.random() < (el ? 0.07 : 0.035)){      // armed foes that don't carry rifles can still, very rarely, drop one
+  if ((gun ? gun !== 'ar' : (a.ammoDrop && a.ammoDrop !== 'ar')) && Math.random() < (el ? 0.07 : 0.035)*DF().rf){      // armed foes that don't carry rifles can still, very rarely, drop one
     S.loot.push({x:a.x + j(), y:a.y + j(), type:'ar', rar:storyRarity(a.camp, 1), exp:now + 20000});
     S.loot.push({x:a.x + j(), y:a.y + j(), type:'ammo_ar', n:Math.max(1, Math.round(AMMO.ammo_ar.box*0.4)), exp:now + 30000});
   }
   const r = Math.random();
-  if (r < (el ? 0.45 : 0.30)) S.loot.push({x:a.x + j(), y:a.y + j(), type:'bandage', rar:0});
-  else if (r < (el ? 0.70 : 0.45)) S.loot.push({x:a.x + j(), y:a.y + j(), type:'shield', rar:0});
+  if (r < (el ? 0.45 : 0.30)*DF().lf) S.loot.push({x:a.x + j(), y:a.y + j(), type:'bandage', rar:0});
+  else if (r < (el ? 0.70 : 0.45)*DF().lf) S.loot.push({x:a.x + j(), y:a.y + j(), type:'shield', rar:0});
 }
 
 // The Frost Colossus, seen from above and facing right (x+): a bald, bearded ice giant with crystal armour on the shoulders and forearms
@@ -1679,6 +1710,37 @@ function drawWarden(c, ph){
   c.strokeStyle = '#8bd36a'; c.lineWidth = 0.7; c.beginPath(); c.moveTo(-4, -3); c.quadraticCurveTo(2, -6, 8, -2.5); c.moveTo(-4, 3); c.quadraticCurveTo(2, 6, 8, 2.5); c.stroke();      // veins on the hood
 }
 function alertCamp(b){ for (const o of S.actors) if (o.enemy && o.alive && !o.boss && (o === b || !o.ret) && (o === b || (b.camp >= 0 && o.camp === b.camp) || Math.hypot(o.x-b.x, o.y-b.y) < 320)){ if (!o.alert) o.rt = 0.45 + Math.random()*0.35; o.alert = true; } }
+// Camp melee tactics: fighters that rush you (not the Scorpion King's scorplings) work together. Two or fewer always flank, one on each side; with three or more the third one comes straight at you.
+// A flanker curves round you to a spot behind you (away from its camp's shooters, and ahead of you if you are backing off), so you get squeezed toward the guns.
+const TAC_CAP = 225;      // never faster than the player (230)
+function tacMove(b, p, d, dt){
+  const sy = S.story; if (!sy) return null;
+  const ids = []; let rx = 0, ry = 0, rn = 0;
+  for (const o of S.actors){ if (!o.enemy || !o.alive || o.boss || (o.pack || o.camp) !== (b.pack || b.camp)) continue; if ((o.rush && !o.scorp) || o.flk){ if (o.alert) ids.push(o); } else { rx += o.x; ry += o.y; rn++; } }
+  const i = ids.indexOf(b); if (i < 0) return null;
+  const n = ids.length, head = n >= 3 && i === 2;
+  const bo = sy.boss, cx = rn ? rx/rn : (b.pack && bo ? bo.x : b.home.x), cy = rn ? ry/rn : (b.pack && bo ? bo.y : b.home.y);
+  let ux = p.x - cx, uy = p.y - cy, ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
+  const vl = Math.hypot(b.pvx || 0, b.pvy || 0);
+  if (vl > 60 && DF().flank >= 2){ ux += (b.pvx/vl)*1.2; uy += (b.pvy/vl)*1.2; const l = Math.hypot(ux, uy) || 1; ux /= l; uy /= l; }      // backing away: get ahead of where you are heading
+  if (!sy.tac) sy.tac = {};
+  const sig = ids.map(o => S.actors.indexOf(o)).join(','); let t = sy.tac[b.pack || b.camp];
+  if (!t || t.sig !== sig){ const f = ids[0]; t = sy.tac[b.pack || b.camp] = {sig, s0: ((f.x-p.x)*uy - (f.y-p.y)*ux) >= 0 ? 1 : -1}; }
+  const fi = i > 2 && n >= 3 ? i - 1 : i, side = t.s0 * (fi % 2 === 0 ? 1 : -1);
+  if (head || (DF().flank === 1 && i > 0)){ b.tacReady = true; return null; }
+  const rx0 = b.x - p.x, ry0 = b.y - p.y, dd = Math.hypot(rx0, ry0) || 1;
+  const behind = (rx0*ux + ry0*uy)/dd;
+  if (behind > 0.35 || dd < (b.reach || b.fr || 40) + 25){ b.tacReady = true; return null; }      // in position (or already on top of you): attack
+  b.tacReady = false;
+  const Tx = p.x + ux*130 - uy*side*95, Ty = p.y + uy*130 + ux*side*95;
+  let gx = Tx, gy = Ty;
+  if (dd < 330){      // too close to run straight at the spot: circle round you instead (never straight through you)
+    const te = Math.atan2(ry0, rx0), tt = Math.atan2(Ty - p.y, Tx - p.x), dl = Math.atan2(Math.sin(tt-te), Math.cos(tt-te));
+    if (Math.abs(dl) > 0.3){ const R = Math.max(130, dd - 25), an = te + Math.sign(dl)*0.55; gx = p.x + Math.cos(an)*R; gy = p.y + Math.sin(an)*R; }
+  }
+  const mx = gx - b.x, my = gy - b.y, l = Math.hypot(mx, my) || 1;
+  return [mx/l, my/l];
+}
 function enemyThink(b, dt){
   if (S.over) return [0,0];
   if (b.emT > 0){ b.emT -= dt; return [0,0]; }      // still climbing out of the sand
@@ -1693,7 +1755,8 @@ function enemyThink(b, dt){
   if (b.ret && (dh < 140 || (!p.alive && dh < 400))) b.ret = false;
   if (b.ret && hurt && d < 520){ b.ret = false; b.keep = 7; }
   if (!b.alert && !b.ret && p.alive && ((d < b.aggro && b.los) || hurt)) alertCamp(b);
-  if (b.alert && b.camp >= 0 && !(b.keep > 0) && (!p.alive || dh > 1600 || (dh > 750 && d > 480) || (!b.los && dh > 300 && d > 250 && !hurt))){ b.alert = false; b.ret = true; b.wp = null; }      // gave up the chase: walk home
+  const mel = ((b.rush && !b.scorp) || b.flk) && (b.camp >= 0 || !!b.pack), trk = mel || b.gren || b.goblin, L1 = (mel ? 1000 : 900)*DF().chase, L2 = (mel ? 2000 : 1600)*DF().chase, D2 = (mel ? 600 : 480)*DF().chase;      // melee fighters chase furthest
+  if (b.alert && b.camp >= 0 && !(b.keep > 0) && (!p.alive || dh > L2 || (dh > L1 && d > D2) || (!b.los && dh > 300 && d > 250 && !hurt))){ b.alert = false; b.ret = true; b.wp = null; }      // gave up the chase: walk home
   let mx = 0, my = 0, speed = b.spd;
   if (b.alert && p.alive){
     const a = Math.atan2(p.y-b.y, p.x-b.x), diff = Math.atan2(Math.sin(a-b.angle), Math.cos(a-b.angle));
@@ -1701,6 +1764,14 @@ function enemyThink(b, dt){
     b.strafeT -= dt; if (b.strafeT <= 0){ b.strafe *= -1; b.strafeT = rnd(0.8, 2.2); }
     const fwd = b.rush ? (d > b.reach - 10 ? 1 : 0) : d > b.pref + 70 ? 1 : d < b.pref - 70 ? -1 : 0, sk = b.rush ? 0.2 : 0.6;
     mx = Math.cos(a)*fwd + Math.cos(a+Math.PI/2)*b.strafe*sk; my = Math.sin(a)*fwd + Math.sin(a+Math.PI/2)*b.strafe*sk;
+    if (trk){      // keep track of how you are moving (for flanking, and for aiming bombs behind you)
+      if (b.lpx !== undefined && dt > 0){ const k = Math.min(1, dt*4); b.pvx = (b.pvx || 0) + ((p.x-b.lpx)/dt - (b.pvx || 0))*k; b.pvy = (b.pvy || 0) + ((p.y-b.lpy)/dt - (b.pvy || 0))*k; }
+      b.lpx = p.x; b.lpy = p.y;
+    }
+    if (mel){      // flank (Explorer: no flanking, they just charge; Adventurer: only the first one flanks)
+      if (DF().flank > 0){ const tm = tacMove(b, p, d, dt); if (tm && (!b.reach || d > b.reach - 10)){ mx = tm[0]; my = tm[1]; b.angle = Math.atan2(p.y-b.y, p.x-b.x); } }
+      speed = Math.min(speed, TAC_CAP);
+    }
     b.rt -= dt;
     b.fg = (b.fg || 0) - dt;
     if (b.boar){      // wild boar: stops, paws the ground, then charges in a straight line and gores whatever it hits
@@ -1714,7 +1785,7 @@ function enemyThink(b, dt){
       } else {
         b.flash = false; b.ccd = (b.ccd === undefined ? rnd(0.2, 1.0) : b.ccd) - dt;
         if (b.chS > 0){ b.chS -= dt; mx = my = 0; }
-        else if (b.ccd <= 0 && d > 95 && d < 520 && b.los) b.chW = 0.5;
+        else if (b.ccd <= 0 && d > 95 && d < 520 && b.los && b.tacReady !== false) b.chW = 0.5;
       }
     }
     if (b.rush){
@@ -1769,7 +1840,7 @@ function scorpThink(b, dt){
   if (bs.tSpawn <= 0){                  // the king calls scorplings out of the sand (never more than 6 at a time)
     bs.tSpawn = ph === 1 ? 6.5 : ph === 2 ? 5 : 3.8;
     let cnt = S.actors.filter(e => e.alive && e.scorp).length + S.story.mounds.length, made = 0;
-    for (let k = 0; k < 2 && cnt < 6; k++){ const an = rnd(0, 6.28), dd = rnd(120, 190), x = b.x + Math.cos(an)*dd, y = b.y + Math.sin(an)*dd; if (storyClr(x, y) < 40) continue; S.story.mounds.push({x:Math.round(x), y:Math.round(y), t:0, T:0.6, bt:0}); sfx('bd', x, y); cnt++; made++; }
+    for (let k = 0; k < 2 && cnt < capD(6); k++){ const an = rnd(0, 6.28), dd = rnd(120, 190), x = b.x + Math.cos(an)*dd, y = b.y + Math.sin(an)*dd; if (storyClr(x, y) < 40) continue; S.story.mounds.push({x:Math.round(x), y:Math.round(y), t:0, T:0.6, bt:0}); sfx('bd', x, y); cnt++; made++; }
     if (made && !bs.calledOnce){ bs.calledOnce = true; stoast('The Scorpion King calls his scorplings!', 2600); }
   }
   if (bs.wind > 0){
@@ -1793,18 +1864,27 @@ function korvathThink(b, dt){      // Korvath the Ancient: half tree, half fores
   if (d < 140 && bs.hitCd <= 0){ bs.hitCd = 1.1; damage(p, 17, b, 'melee'); burst(p.x, p.y, '#c33', 4); }      // a swipe of his branch-arms
   if (bs.tSpawn <= 0){                  // goblins climb out of the roots (never more than 6 at a time, 8 with two players)
     bs.tSpawn = ph === 1 ? 8 : ph === 2 ? 6 : 4.6;
-    const cap = S.story.coop ? 8 : 6;
+    const cap = capD(S.story.coop ? 8 : 6);
     let cnt = S.actors.filter(e => e.alive && e.goblin && e.camp === -1).length + S.story.mounds.length, made = 0;
     for (let k = 0; k < 2 && cnt < cap; k++){ const an = rnd(0, 6.28), dd = rnd(130, 210), x = b.x + Math.cos(an)*dd, y = b.y + Math.sin(an)*dd; if (storyClr(x, y) < 40) continue; S.story.mounds.push({x:Math.round(x), y:Math.round(y), t:0, T:0.9, bt:0, k:'goblin'}); sfx('bd', x, y); cnt++; made++; }
     if (made && !bs.calledOnce){ bs.calledOnce = true; stoast('Korvath calls his goblins!', 2600); }
   }
+  bs.tBoar = (bs.tBoar === undefined ? 6 : bs.tBoar) - dt;
+  if (bs.tBoar <= 0){                   // boars burst out of the roots too (they and the goblins hunt you as a pack)
+    bs.tBoar = ph === 1 ? 14 : ph === 2 ? 11 : 8;
+    const cap = capD((ph === 1 ? 2 : ph === 2 ? 3 : 4) + (S.story.coop ? 1 : 0));
+    const cnt = S.actors.filter(e => e.alive && e.pack === 'kv' && e.forest === 'boar').length + S.story.mounds.filter(m => m.k === 'boar').length;
+    if (DIFF > 0 && cnt < cap){ for (let tr = 0; tr < 6; tr++){ const an = rnd(0, 6.28), dd = rnd(150, 240), x = b.x + Math.cos(an)*dd, y = b.y + Math.sin(an)*dd; if (storyClr(x, y) < 40) continue; S.story.mounds.push({x:Math.round(x), y:Math.round(y), t:0, T:0.9, bt:0, k:'boar'}); sfx('bd', x, y); break; } if (!bs.boarOnce){ bs.boarOnce = 1; stoast('Boars burst out of the roots!', 2400); } }
+  }
+  bs.tSpear = (bs.tSpear === undefined ? 4 : bs.tSpear) - dt;
+  if (ph === 3 && DIFF > 0 && d < 900 && bs.tSpear <= 0 && !(bs.wind > 0)){ bs.tSpear = DIFF === 1 ? 7.5 : 5.2; S.bullets.push({x:b.x + Math.cos(a)*50, y:b.y + Math.sin(a)*50, vx:Math.cos(a)*540, vy:Math.sin(a)*540, life:1.8, dmg:24, owner:b, wpn:'boss', color:STORY.bossBullet, big:true}); sfx('sh', b.x, b.y); }      // a heavy thorn spear
   if (bs.wind > 0){
     bs.wind -= dt; b.flash = true;
-    if (bs.wind <= 0){ b.flash = false; bossShot(b, b.angle, ph === 1 ? 3 : ph === 2 ? 5 : 7, 0.17, 10, 440); bs.tShot = ph === 1 ? 3.0 : ph === 2 ? 2.4 : 1.9; }
+    if (bs.wind <= 0){ b.flash = false; bossShot(b, b.angle, (ph === 1 ? 5 : ph === 2 ? 7 : 9) - (2 - DIFF), [0.17, 0.14, 0.12][DIFF], 10, 440); bs.tShot = ph === 1 ? 3.0 : ph === 2 ? 2.4 : 1.9; }
     return [0,0];
   }
   if (ph >= 2 && d < 900 && bs.tBurst <= 0){ bs.tBurst = ph === 3 ? 4 : 5.5; const n = ph === 3 ? 18 : 12, off = rnd(0, 6.28); for (let i = 0; i < n; i++) bossShot(b, off + i/n*Math.PI*2, 1, 0, 8, 330); }      // a ring of thorns
-  if (d < 900 && bs.tShot <= 0) bs.wind = ph === 1 ? 0.85 : ph === 2 ? 0.7 : 0.55;
+  if (d < 900 && bs.tShot <= 0) bs.wind = ph === 1 ? 0.75 : ph === 2 ? 0.62 : 0.5;
   const sp = ph === 3 ? 135 : ph === 2 ? 108 : 85, fwd = d > 320 ? 1 : d < 210 ? -0.4 : 0, st = Math.sin(performance.now()/900)*0.5;
   return [(Math.cos(a)*fwd + Math.cos(a+1.57)*st)*sp, (Math.sin(a)*fwd + Math.sin(a+1.57)*st)*sp];
 }
@@ -1843,7 +1923,7 @@ function thalassaThink(b, dt){
   } else if (bs.tWave <= 0 && d < 1050){ bs.waveWind = 0.85; bs.tWave = ph === 1 ? 8 : ph === 2 ? 6.2 : 5; }
   if (bs.tPool <= 0){      // whirlpools open around the hero
     bs.tPool = ph === 1 ? 6.5 : ph === 2 ? 5 : 4;
-    const cap = sy.coop ? 7 : 5; let n = ph === 1 ? 1 : 2;
+    const cap = capD(sy.coop ? 7 : 5); let n = ph === 1 ? 1 : 2;
     for (let k = 0; k < n && sy.pools.length < cap; k++){
       const tg = live.length ? live[Math.floor(Math.random()*live.length)] : p;
       for (let tr = 0; tr < 8; tr++){ const an = rnd(0, 6.28), dd = rnd(90, 260), x = tg.x + Math.cos(an)*dd, y = tg.y + Math.sin(an)*dd; if (storyClr(x, y) < 70 || Math.hypot(x-b.x, y-b.y) < 120) continue; sy.pools.push({x:Math.round(x), y:Math.round(y), r:72, t:0, life:9}); break; }
@@ -1857,7 +1937,7 @@ function thalassaThink(b, dt){
   if (ph >= 2 && bs.tSum <= 0){      // merfolk answer her call (never more than 4 at once)
     bs.tSum = ph === 2 ? 14 : 11;
     let cnt = S.actors.filter(e => e.alive && e.merman && e.camp === -1).length;
-    for (let k = 0; k < 2 && cnt < 4; k++){ const an = rnd(0, 6.28), dd = rnd(170, 260), x = b.x + Math.cos(an)*dd, y = b.y + Math.sin(an)*dd; if (storyClr(x, y) < 40) continue; const e = mkEnemy(Math.round(x), Math.round(y), 'merman', -1); e.emT = 0.5; e.invT = 0.5; e.alert = true; burst(x, y, '#9ff', 12); cnt++; }
+    for (let k = 0; k < 2 && cnt < capD(4); k++){ const an = rnd(0, 6.28), dd = rnd(170, 260), x = b.x + Math.cos(an)*dd, y = b.y + Math.sin(an)*dd; if (storyClr(x, y) < 40) continue; const e = mkEnemy(Math.round(x), Math.round(y), 'merman', -1); e.emT = 0.5; e.invT = 0.5; e.alert = true; burst(x, y, '#9ff', 12); cnt++; }
   }
   b.flash = bs.waveWind > 0 || sy.beams.some(z => z.wind > 0);
   const sp = ph === 3 ? 112 : ph === 2 ? 92 : 74, fwd = d > 430 ? 1 : d < 270 ? -0.5 : 0, st = Math.sin(performance.now()/1100)*0.5;
@@ -1935,7 +2015,7 @@ function storyTick(dt){
   for (let i = sy.mounds.length - 1; i >= 0; i--){      // sand stirs where a scorpling is about to burst out
     const m = sy.mounds[i]; m.t += dt; m.bt -= dt;
     if (m.bt <= 0){ m.bt = 0.12; burst(m.x + rnd(-14, 14), m.y + rnd(-10, 10), m.k === 'goblin' ? '#6a8a3a' : '#d9bf7a', 2); }
-    if (m.t >= m.T){ sy.mounds.splice(i, 1); const e = mkEnemy(m.x, m.y, m.k || 'scorp', -1); e.emT = 0.4; e.invT = 0.4; if (m.k === 'goblin'){ e.alert = true; burst(m.x, m.y, '#5a8a2a', 16); burst(m.x, m.y, '#4a3320', 8); } else { burst(m.x, m.y, '#e6cf8a', 16); burst(m.x, m.y, '#b8944a', 8); } sfx('bd', m.x, m.y); }
+    if (m.t >= m.T){ sy.mounds.splice(i, 1); const e = mkEnemy(m.x, m.y, m.k || 'scorp', -1); e.emT = 0.4; e.invT = 0.4; if (STORY.theme === 'forest' && (m.k === 'goblin' || m.k === 'boar')){ e.pack = 'kv'; e.alert = true; if (m.k === 'boar'){ burst(m.x, m.y, '#6a4a30', 14); burst(m.x, m.y, '#4a3320', 8); } else { burst(m.x, m.y, '#5a8a2a', 16); burst(m.x, m.y, '#4a3320', 8); } } else if (m.k === 'goblin'){ e.alert = true; burst(m.x, m.y, '#5a8a2a', 16); burst(m.x, m.y, '#4a3320', 8); } else { burst(m.x, m.y, '#e6cf8a', 16); burst(m.x, m.y, '#b8944a', 8); } sfx('bd', m.x, m.y); }
   }
   const bo = sy.boss;
   if (STORY.theme === 'sea') seaTick(dt);
@@ -2476,6 +2556,7 @@ function damage(a, dmg, owner, wpn){
   if (a.invT > 0 || (S.koth && S.over)) return;       // respawn protection
   if (S.story && S.over && a.isPlayer) return;      // level complete: nothing can hurt you any more
   if (owner && owner.dmgMul) dmg *= owner.dmgMul;
+  if (DIFF < 2 && S.story && owner && owner.enemy && a.isPlayer) dmg *= DF().dmg;      // easier levels: enemies hit softer
   if (a.wm && S.story){ dmg = wmAbsorb(a, dmg, owner); if (dmg <= 0) return; }      // the War Machine's armor plates soak up the shots
   if (S.story && S.story.bdMul > 1 && owner && owner.boss) dmg *= S.story.bdMul;      // co-op: the boss hits harder
   if (wpn === 'boss' && S.story && STORY.poison && a.isPlayer){ a.poisonT = 3; a.poisonTick = 0.6; }      // a stinger hit poisons you for a few seconds
@@ -2524,7 +2605,7 @@ function damage(a, dmg, owner, wpn){
 // Mini-Gun: one bullet of the line (the update loop spaces them out and keeps them following your aim)
 function mgShot(a){
   const ang = a.angle + rnd(-MG_SPREAD, MG_SPREAD);
-  S.bullets.push({x:a.x+Math.cos(ang)*22, y:a.y+Math.sin(ang)*22, vx:Math.cos(ang)*MG_SPD, vy:Math.sin(ang)*MG_SPD, life:MG_LIFE, dmg:MG_DMG, owner:a, wpn:'minigun', color:'#fc3', sx:a.x, sy:a.y, fall:0});
+  S.bullets.push({px:a.x, py:a.y, x:a.x+Math.cos(ang)*22, y:a.y+Math.sin(ang)*22, vx:Math.cos(ang)*MG_SPD, vy:Math.sin(ang)*MG_SPD, life:MG_LIFE, dmg:MG_DMG, owner:a, wpn:'minigun', color:'#fc3', sx:a.x, sy:a.y, fall:0});
   if ((a.mgLeft & 1) === 0) sfx('ar', a.x, a.y);
 }
 // Grapple Gun: the hook flies out along your aim; if it catches a tree, rock, fence or wall the chain reels you in to it, fast
@@ -2649,10 +2730,15 @@ function fire(a){
     const wt = a.inv[a.cur]; sfx(wt === 'shotgun' ? 'sg' : wt === 'ar' ? 'ar' : 'pi', a.x, a.y);
     for (let i=0;i<w.pellets;i++){
       const ang = a.angle + rnd(-w.spread, w.spread) * rm.spread;
-      S.bullets.push({x:a.x+Math.cos(ang)*20, y:a.y+Math.sin(ang)*20, vx:Math.cos(ang)*w.spd, vy:Math.sin(ang)*w.spd,
+      S.bullets.push({px:a.x, py:a.y, x:a.x+Math.cos(ang)*20, y:a.y+Math.sin(ang)*20, vx:Math.cos(ang)*w.spd, vy:Math.sin(ang)*w.spd,
         life:w.life, dmg:w.dmg * rm.dmg, owner:a, wpn:a.inv[a.cur], color:w.color, sx:a.x, sy:a.y, fall:w.fall ? w.fall/(w.spd*w.life) : 0});
     }
   }
+}
+function segHit(x1,y1,x2,y2,cx,cy,r){      // does the segment pass through the circle?
+  const dx = x2-x1, dy = y2-y1, l2 = dx*dx + dy*dy; if (l2 < 1e-6) return false;
+  const t = Math.max(0, Math.min(1, ((cx-x1)*dx + (cy-y1)*dy)/l2));
+  return Math.hypot(x1+dx*t-cx, y1+dy*t-cy) < r;
 }
 function burst(x,y,c,n){
   for(let i=0;i<n;i++) S.particles.push({x,y,vx:rnd(-80,80),vy:rnd(-80,80),life:0.4,c});
@@ -3203,7 +3289,7 @@ function update(dt){
         if (fxOn){ const fv = fxVel(a, 0, 0, dt, false); a.tx += fv[0]*dt; a.ty += fv[1]*dt; a.tpHold = Math.max(a.tpHold || 0, 0.15); }
         if (!(a.tpHold > 0)){ a.tx = g.x; a.ty = g.y; } a.angle = g.a; if (g.r && reviveTarget(a)) a.rvT = 0.2; else if (g.f && !fxOn) fire(a);
       }
-    } else [vx,vy] = a.boss ? bossThink(a, dt) : a.enemy ? enemyThink(a, dt) : botThink(a, dt);
+    } else [vx,vy] = a.boss ? bossThink(a, dt*DF().bt) : a.enemy ? enemyThink(a, dt) : botThink(a, dt);
 
     if (a.isPlayer && a.pid > 0){
       const k = Math.min(1, dt*20);
@@ -3247,6 +3333,8 @@ function update(dt){
   // bullets (teammates are never hurt by each other)
   for (let i=S.bullets.length-1;i>=0;i--){
     const b = S.bullets[i];
+    const sx0 = b.px !== undefined ? b.px : b.x, sy0 = b.py !== undefined ? b.py : b.y;      // where this step's path starts (a fresh shot starts at the shooter, so a creature touching you can still be hit)
+    b.px = undefined; b.py = undefined;
     b.x += b.vx*dt; b.y += b.vy*dt; b.life -= dt;
     let dead = b.life <= 0;
     if (b.fly === undefined) b.fly = !!(b.owner && b.owner.inv && b.owner.inv.includes('jetpack'));      // fired from a jet pack: shooting down from above, so nothing on the ground blocks the shot
@@ -3259,7 +3347,7 @@ function update(dt){
     if (!dead && !b.fly) for (const t of S.trees){ if (Math.hypot(b.x-t.x,b.y-t.y) < t.r){ dead = true; burst(b.x,b.y,'#4a4',2); break; } }
     if (!dead) for (const a of S.actors){
       if (a === b.owner || !a.alive || a.team === b.owner.team) continue;
-      if (a.wm ? wmBulletHit(a, b.x, b.y) : Math.hypot(b.x-a.x,b.y-a.y) < a.r){ WM_HIT = a.wm ? b : null; damage(a, b.fall ? b.dmg * Math.max(0.4, 1 - b.fall*Math.hypot(b.x-b.sx, b.y-b.sy)) : b.dmg, b.owner, b.wpn); WM_HIT = null; burst(b.x,b.y,'#f44',4); dead = true; break; }
+      if (a.wm ? wmBulletHit(a, b.x, b.y) : (Math.hypot(b.x-a.x,b.y-a.y) < a.r || segHit(sx0, sy0, b.x, b.y, a.x, a.y, a.r))){ WM_HIT = a.wm ? b : null; damage(a, b.fall ? b.dmg * Math.max(0.4, 1 - b.fall*Math.hypot(b.x-b.sx, b.y-b.sy)) : b.dmg, b.owner, b.wpn); WM_HIT = null; burst(b.x,b.y,'#f44',4); dead = true; break; }
     }
     if (dead) S.bullets.splice(i,1);
   }
@@ -3355,7 +3443,7 @@ function hostBeginStory(){
   const go = () => {
     const seed = (Math.random()*4294967296) >>> 0, hs = currentHumans();
     seededRun(seed, () => initStory(lvl, hs));
-    for (const pid in NET.peers){ try { NET.peers[pid].conn.send({t:'sinit', level:lvl, seed, humans:hs}); } catch(_){} }
+    for (const pid in NET.peers){ try { NET.peers[pid].conn.send({t:'sinit', level:lvl, seed, humans:hs, df:S.story.diff}); } catch(_){} }
     NET.last = {W:'', L:'', C:'', T:'', H:''};
     phase = 'play'; hideMenu(); NET.snapAcc = 0;
   };
@@ -3513,8 +3601,8 @@ function onPeerLeft(pid){
 const lp = id => NET.lobby.find(p => p.pid === id);
 function lobbyBroadcast(){
   const players = NET.lobby.map(p => ({pid:p.pid, name:p.name, tm:p.tm, bm:p.bm || 0, wins:p.wins || 0}));
-  broadcast({t:'lobby', players, mode:NET.mode || 'bots', map:NET.map || 'random', level:NET.level || 'marsh'});
-  onLobbyMsg({t:'lobby', players, mode:NET.mode || 'bots', map:NET.map || 'random', level:NET.level || 'marsh'});
+  broadcast({t:'lobby', players, mode:NET.mode || 'bots', map:NET.map || 'random', level:NET.level || 'marsh', diff:NET.diff ?? diffGet()});
+  onLobbyMsg({t:'lobby', players, mode:NET.mode || 'bots', map:NET.map || 'random', level:NET.level || 'marsh', diff:NET.diff ?? diffGet()});
 }
 function clearInvites(pid){
   NET.invites = NET.invites.filter(iv => {
@@ -3567,7 +3655,7 @@ function sendLobbyMsg(m){ if (NET.role === 'host') lobbyAction(0, m); else netSe
 // what the lobby screen does with a message (the host calls this for its own screen too)
 function onLobbyMsg(m){
   if (m.t === 'lobby'){
-    NET.view = m.players; NET.viewMode = m.mode || 'bots'; NET.viewMap = okMap(m.map); NET.viewLevel = STORY_LEVELS[m.level] ? m.level : 'marsh';
+    NET.view = m.players; NET.viewMode = m.mode || 'bots'; NET.viewMap = okMap(m.map); NET.viewLevel = STORY_LEVELS[m.level] ? m.level : 'marsh'; NET.viewDiff = (m.diff === 0 || m.diff === 1) ? m.diff : 2;
     const me = m.players.find(p => p.pid === NET.myPid);
     if (me && me.tm != null) NET.incoming = [];   // teamed up: invitations to me no longer apply
     renderLobby();
@@ -3595,6 +3683,7 @@ function buildGuestState(m){
 }
 function buildGuestStory(m){
   try { maybeAwardXP(true); } catch(_){}
+  DIFF = (m.df === 0 || m.df === 1) ? m.df : 2;
   seededRun(m.seed, () => initStory(m.level, m.humans));
   S.story.live = false;
   S.player = S.players.find(a => a.pid === NET.myPid) || S.players[S.players.length - 1];
@@ -4334,7 +4423,7 @@ function drawWarAsh(cam, vw, vh){      // Ravenrock: a smoky red-brown haze and 
 // the foot soldiers: dark iron armour with a silver raven, helmet with a glowing visor (grenadiers are bigger, with a bandolier of grenades)
 function drawWarFoe(c, a){
   const k = a.war, rim = '#0c0d10'; c.lineJoin = 'round'; c.lineCap = 'round'; c.lineWidth = 1; c.strokeStyle = rim;
-  const gren = k === 'gren', iron = gren ? '#4a3c3a' : '#3e424b', plate = k === 'rifle' ? '#5a606c' : '#4f5561', bw = gren ? 12.5 : 10, bh = gren ? 14.5 : 12;
+  const gren = k === 'gren', iron = gren ? '#4a3c3a' : '#3e424b', plate = k === 'rifle' ? '#5a606c' : k === 'breach' ? '#6b4b3c' : '#4f5561', bw = gren ? 12.5 : 10, bh = gren ? 14.5 : 12;
   c.fillStyle = '#2a2b30'; c.beginPath(); c.rect(-15, -bh*0.6, 7, bh*1.2); c.fill(); c.stroke();      // rucksack
   if (gren){ c.fillStyle = '#c0402a'; for (let q = -1; q <= 1; q++){ c.beginPath(); c.arc(-12, q*4.4, 1.9, 0, 7); c.fill(); } }
   c.fillStyle = iron; c.beginPath(); c.ellipse(-1, 0, bw, bh, 0, 0, 7); c.fill(); c.stroke();      // torso
@@ -5287,7 +5376,8 @@ function renderLobby(){
   document.querySelectorAll('#mapbox-lobby .mini').forEach(bt => { bt.classList.toggle('sel', bt.dataset.map === (NET.viewMap || 'random')); bt.disabled = !isHost; });
   $('b-start').disabled = (humansOnly && teams < 2) || !even;
   const storyM = NET.viewMode === 'story';
-  $('mapbox-lobby').style.display = storyM ? 'none' : ''; $('levelbox-lobby').style.display = storyM ? '' : 'none';
+  $('mapbox-lobby').style.display = storyM ? 'none' : ''; $('levelbox-lobby').style.display = storyM ? '' : 'none'; $('diffwrap-lobby').style.display = storyM ? '' : 'none';
+  document.querySelectorAll('#diffbox-lobby .mini').forEach(bt => { bt.classList.toggle('sel', +bt.dataset.df === (NET.viewDiff ?? 2)); bt.disabled = !isHost; });
   if (storyM){
     document.querySelectorAll('#levelbox-lobby .mini').forEach(bt => { const id = bt.dataset.lvl; bt.classList.toggle('sel', id === (NET.viewLevel || 'marsh')); bt.disabled = !isHost; bt.textContent = (isHost && !lvlOpen(id) ? '🔒 ' : '') + STORY_LEVELS[id].name; });
     $('b-start').disabled = list.length !== 2;
@@ -6314,9 +6404,15 @@ const raUnlocked = () => { try { return localStorage.getItem('sr-unlock-ravenroc
 const seaUnlocked = () => { try { return localStorage.getItem('sr-unlock-sea') === '1' || localStorage.getItem('sr-done-forest') === '1'; } catch(_){ return false; } };
 const foUnlocked = () => { try { return localStorage.getItem('sr-unlock-forest') === '1' || localStorage.getItem('sr-done-desert') === '1'; } catch(_){ return false; } };
 const deUnlocked = () => { try { return localStorage.getItem('sr-unlock-desert') === '1' || localStorage.getItem('sr-done-cold') === '1'; } catch(_){ return false; } };
+function renderDiff(){
+  const bx = $('diffbox'); if (!bx) return; bx.textContent = ''; const cur = diffGet();
+  DIFF_NAMES.forEach((n, i) => { const b = document.createElement('button'); b.className = 'mini' + (i === cur ? ' sel' : ''); b.textContent = n; b.onclick = () => { try { localStorage.setItem('sr-diff', String(i)); } catch(_){} renderDiff(); }; bx.appendChild(b); });
+  $('diffhelp').textContent = DIFF_DESC[cur];
+}
+{ const lb = $('diffbox-lobby'); DIFF_NAMES.forEach((n, i) => { const b = document.createElement('button'); b.className = 'mini'; b.dataset.df = i; b.textContent = n; b.onclick = () => { if (NET.role !== 'host' || phase !== 'lobby') return; NET.diff = i; lobbyBroadcast(); }; lb.appendChild(b); }); }
 const advDone = id => { try { return localStorage.getItem('sr-done-' + id) === '1' || (id === 'marsh' && coldUnlocked()); } catch(_){ return false; } };
 function renderAdv(){
-  const g = $('advgrid'); g.textContent = '';
+  renderDiff(); const g = $('advgrid'); g.textContent = '';
   for (const a of ADVENTURES){
     const b = document.createElement('button'); b.className = 'advcard';
     const L = a.lvl ? STORY_LEVELS[a.lvl] : null, lock = (a.lvl === 'cold' && !coldUnlocked()) || (a.lvl === 'desert' && !deUnlocked()) || (a.lvl === 'forest' && !foUnlocked()) || (a.lvl === 'sea' && !seaUnlocked()) || (a.lvl === 'ravenrock' && !raUnlocked());
@@ -6324,7 +6420,7 @@ function renderAdv(){
     if (L){
       mk('at', (lock ? '🔒 ' : '') + L.name); mk('as', MAPS[L.map].name + ' · Boss: ' + L.bossTitle);
       if (lock){ b.classList.add('locked'); mk('ast', 'Defeat the ' + LOCK[L.id] + ' to unlock'); }
-      else if (advDone(L.id)){ b.classList.add('done'); mk('ast', '✓ Completed'); }
+      else if (advDone(L.id)){ b.classList.add('done'); mk('ast', '✓ Completed'); const bd = bestDiff(L.id) === null ? 3 : bestDiff(L.id); if (bd >= 1 && bd <= 3) mk('abadge', '★'.repeat(bd) + ' ' + DIFF_NAMES[bd-1]); }
       else mk('ast', 'Ready');
       if (L.id === soloLevel) b.classList.add('last');
       b.onclick = () => { if (lock){ menuMsg('Defeat the ' + LOCK[L.id] + ' to unlock ' + L.name); return; } soloLevel = L.id; try { localStorage.setItem('sr-level', L.id); } catch(_){} NET.role = 'solo'; const go = () => { initStory(L.id); phase = 'play'; hideMenu(); }; const ids = csIdsFor(L.id); if (ids.length) csPlay(ids, go); else go(); };
@@ -6407,7 +6503,7 @@ function loop(now){
       if (S.story && S.story.levelId === 'forest' && !seaUnlocked()){ S.story.unlockedNow = 'The Dreadwater Sea'; toast('The Dreadwater Sea unlocked! Pick it from the Story Mode menu', 5000); }
       if (S.story && S.story.levelId === 'sea' && !raUnlocked()){ S.story.unlockedNow = 'Ravenrock'; toast('Ravenrock unlocked! Pick it from the Story Mode menu', 5000); }
       if (S.story && S.story.levelId === 'desert' && !foUnlocked()){ S.story.unlockedNow = 'The Greenwood'; toast('The Greenwood unlocked! Pick it from the Story Mode menu', 5000); }
-      if (S.story){ try { localStorage.setItem('sr-done-' + S.story.levelId, '1'); } catch(_){} if (csWanted(S.story.levelId + '-outro') || (S.story.levelId === 'ravenrock' && csWanted('epilogue'))){ S.story.outro = 1; S.story.outroAt = performance.now() + 2200; } }
+      if (S.story){ try { const lv = S.story.levelId, dn = (S.story.diff ?? 2) + 1, b0 = bestDiff(lv), prev = b0 === null ? (localStorage.getItem('sr-done-' + lv) === '1' ? 3 : 0) : b0; if (dn > prev) localStorage.setItem('sr-best-' + lv, String(dn)); if (dn < 3 && TROPHIES[lv] && !trophyOwned(lv)) setTimeout(() => { if (S && S.story) toast('Boss-head trophies are only awarded for beating a chapter on Veteran (Hard).', 4500); }, 3800); localStorage.setItem('sr-done-' + lv, '1'); } catch(_){} if (csWanted(S.story.levelId + '-outro') || (S.story.levelId === 'ravenrock' && csWanted('epilogue'))){ S.story.outro = 1; S.story.outroAt = performance.now() + 2200; } }
       addWin(modeOfGame());
     }       // Royale: solo and bot matches only (humans-only don't count). King of the Hill: finishing first. Adventure: beating the Warden
     if (!(S.winTeam !== null && S.winTeam === S.player.team)) playSnd('lose');     // winners hear the victory fanfare (music) instead
