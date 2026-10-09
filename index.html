@@ -260,7 +260,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 64;
+const VERSION = 65;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -423,7 +423,8 @@ const avatarOpen = () => xpInfo(getXP()).lvl >= AVATAR_UNLOCK;
 const curLook = () => avatarOpen() ? look : NOOB_LOOK;      // the avatar actually used in games
 // Trophy heads: beat a Story Mode boss and (from avatar level 5) you may wear its head in every mode
 const TROPHIES = {marsh:'Swamp Warden', cold:'Frost Colossus', desert:'Scorpion King', forest:'Korvath', sea:'Thalassa', ravenrock:'War Machine'};
-const trophyOwned = id => { try { return !!TROPHIES[id] && localStorage.getItem('sr-done-' + id) === '1'; } catch(_){ return false; } };
+const TROPHY_NEXT = {marsh:'cold', cold:'desert', desert:'forest', forest:'sea', sea:'ravenrock'};      // (a boss beaten before the 'done' flags existed still counts if the next chapter is unlocked)
+const trophyOwned = id => { try { if (!TROPHIES[id]) return false; if (localStorage.getItem('sr-done-' + id) === '1') return true; const nx = TROPHY_NEXT[id]; return !!nx && (localStorage.getItem('sr-unlock-' + nx) === '1' || (id === 'marsh' && (parseInt(localStorage.getItem('sr-wins-story'), 10) || 0) > 0)); } catch(_){ return false; } };
 const lookMsg = () => { const l = curLook(); return {shirt:l.shirt, skin:l.skin, hair:l.hair, pat:l.pat, shirt2:l.shirt2, style:l.style, sleeve:l.sleeve, trophy:l.trophy || ''}; };      // what other players are told about my avatar
 const okIdx = (i, n, d) => Number.isInteger(i) && i >= 0 && i < n ? i : d;
 let soloCrown = false;           // solo: did I win my previous game?
