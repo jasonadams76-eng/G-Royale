@@ -194,6 +194,7 @@
       <div class="lbl">Shirt pattern</div><div class="mapbox" id="av-pats"></div>
       <div class="lbl">Shirt colour</div><div class="sws big" id="av-shirts"></div>
       <div id="av-c2"><div class="lbl">Second colour</div><div class="sws big" id="av-shirts2"></div></div>
+      <div id="av-snowrow" hidden><div class="lbl">Creature avatar <span style="font-weight:400;opacity:.75">(Battle Royale only; earned: 500 kills = Snowman, 50 wins = Merfolk)</span></div><div class="mapbox" id="av-snow"></div></div>
       <div class="lbl">Trophy head <span style="font-weight:400;opacity:.75">(wear a defeated boss's head)</span></div><div class="mapbox" id="av-trophy"></div>
       </div></div>
       <button class="btn" id="b-avdone">Save &amp; Back to Main Menu</button>
@@ -260,7 +261,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 66;
+const VERSION = 68;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -425,12 +426,18 @@ const curLook = () => avatarOpen() ? look : NOOB_LOOK;      // the avatar actual
 const TROPHIES = {marsh:'Swamp Warden', cold:'Frost Colossus', desert:'Scorpion King', forest:'Korvath', sea:'Thalassa', ravenrock:'War Machine'};
 const TROPHY_NEXT = {marsh:'cold', cold:'desert', desert:'forest', forest:'sea', sea:'ravenrock'};      // (a boss beaten before the 'done' flags existed still counts if the next chapter is unlocked)
 const trophyOwned = id => { try { if (!TROPHIES[id]) return false; if (localStorage.getItem('sr-done-' + id) === '1') return true; const nx = TROPHY_NEXT[id]; return !!nx && (localStorage.getItem('sr-unlock-' + nx) === '1' || (id === 'marsh' && (parseInt(localStorage.getItem('sr-wins-story'), 10) || 0) > 0)); } catch(_){ return false; } };
-const lookMsg = () => { const l = curLook(); return {shirt:l.shirt, skin:l.skin, hair:l.hair, pat:l.pat, shirt2:l.shirt2, style:l.style, sleeve:l.sleeve, trophy:l.trophy || ''}; };      // what other players are told about my avatar
+// 500 Battle Royale kills unlock playing as a Bitter Cold snowman (in Battle Royale)
+const SNOW_KILLS = 500;
+const MER_WINS = 50;      // 50 Battle Royale wins unlock the Dreadwater merfolk
+const mermanOwned = () => { try { return (parseInt(localStorage.getItem('sr-wins-classic'), 10) || 0) >= MER_WINS; } catch(_){ return false; } };
+const crtCode = c => c === 'snow' && snowOwned() ? 1 : c === 'merman' && mermanOwned() ? 2 : 0;      // creature avatar sent to other players: 0 none, 1 snowman, 2 merfolk
+const snowOwned = () => { try { return (parseInt(localStorage.getItem('sr-kills-classic'), 10) || 0) >= SNOW_KILLS; } catch(_){ return false; } };
+const lookMsg = () => { const l = curLook(), me = typeof look !== 'undefined' ? look : l; return {shirt:l.shirt, skin:l.skin, hair:l.hair, pat:l.pat, shirt2:l.shirt2, style:l.style, sleeve:l.sleeve, trophy:l.trophy || '', snow:crtCode(me.crt)}; };      // what other players are told about my avatar
 const okIdx = (i, n, d) => Number.isInteger(i) && i >= 0 && i < n ? i : d;
 let soloCrown = false;           // solo: did I win my previous game?
 let look = {shirt:5, skin:1, hair:1, pat:0, shirt2:8, style:0, hv:3, sleeve:0};      // my avatar: shirt colour, skin tone, hair colour, shirt pattern and its second colour (indexes into SHIRTS / SKINS / HAIRS / PATTERNS)
 // (hair styles that were removed are converted below, once, when an older saved avatar is loaded)
-try { const l = JSON.parse(localStorage.getItem('sr-look')); if (l){ look.shirt = okIdx(l.shirt, SHIRTS.length, 5); look.skin = okIdx(l.skin, SKINS.length, 1); look.hair = okIdx(l.hair, HAIRS.length, 1); look.pat = okIdx(l.pat, PATTERNS.length, 0); look.sleeve = okIdx(l.sleeve, SLEEVES.length, 0); look.shirt2 = okIdx(l.shirt2, SHIRTS.length, 8); look.trophy = trophyOwned(l.trophy) ? l.trophy : ''; const oldNames = l.hv === 3 ? HAIRSTYLES : l.hv === 2 ? ['Short','Long','Ponytail','Bun','Mohawk','Afro','Bald'] : ['Short','Buzz Cut','Long','Ponytail','Bun','Mohawk','Afro','Bald'];
+try { const l = JSON.parse(localStorage.getItem('sr-look')); if (l){ look.shirt = okIdx(l.shirt, SHIRTS.length, 5); look.skin = okIdx(l.skin, SKINS.length, 1); look.hair = okIdx(l.hair, HAIRS.length, 1); look.pat = okIdx(l.pat, PATTERNS.length, 0); look.sleeve = okIdx(l.sleeve, SLEEVES.length, 0); look.shirt2 = okIdx(l.shirt2, SHIRTS.length, 8); look.trophy = trophyOwned(l.trophy) ? l.trophy : ''; look.crt = l.crt === 'snow' || l.crt === 'merman' ? l.crt : (l.snow ? 'snow' : ''); const oldNames = l.hv === 3 ? HAIRSTYLES : l.hv === 2 ? ['Short','Long','Ponytail','Bun','Mohawk','Afro','Bald'] : ['Short','Buzz Cut','Long','Ponytail','Bun','Mohawk','Afro','Bald'];
     const nm = Number.isInteger(l.style) ? oldNames[l.style] : null; look.style = Math.max(0, HAIRSTYLES.indexOf(nm));      /* removed styles (Buzz Cut, Afro) fall back to Short */ } else look.shirt = Math.random()*SHIRTS.length|0; } catch(_){}
 try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){}      // keep the (migrated) avatar
 const PLAYER_COLORS = ['#4af','#fa4','#e5e','#5e8','#ee4','#f66','#4ee','#a8f'];
@@ -688,7 +695,7 @@ function newActor(kind, i, h){
     color: human ? PLAYER_COLORS[pid % PLAYER_COLORS.length] : `hsl(${rnd(0,360)|0},60%,55%)`,
     strafe:1, strafeT:0, wp:null, wpT:0};
   a.crown = !!(human && h.crown);
-  if (human){ a.shirt = SHIRTS[okIdx(h.shirt, SHIRTS.length, -1)] || null; a.skin = SKINS[okIdx(h.skin, SKINS.length, 1)]; a.hair = HAIRS[okIdx(h.hair, HAIRS.length, 1)]; a.hstyle = okIdx(h.style, HAIRSTYLES.length, 0); a.sleeve = okIdx(h.sleeve, SLEEVES.length, 0); a.pat = okIdx(h.pat, PATTERNS.length, 0); a.shirt2 = SHIRTS[okIdx(h.shirt2, SHIRTS.length, 8)]; a.trophy = TROPHIES[h.trophy] ? h.trophy : ''; }
+  if (human){ a.shirt = SHIRTS[okIdx(h.shirt, SHIRTS.length, -1)] || null; a.skin = SKINS[okIdx(h.skin, SKINS.length, 1)]; a.hair = HAIRS[okIdx(h.hair, HAIRS.length, 1)]; a.hstyle = okIdx(h.style, HAIRSTYLES.length, 0); a.sleeve = okIdx(h.sleeve, SLEEVES.length, 0); a.pat = okIdx(h.pat, PATTERNS.length, 0); a.shirt2 = SHIRTS[okIdx(h.shirt2, SHIRTS.length, 8)]; a.trophy = TROPHIES[h.trophy] ? h.trophy : ''; a.snowAv = h.snow === 1 || h.snow === 2 ? h.snow : 0; }
   else a.skin = SKINS[Math.random()*SKINS.length|0];
   return a;
 }
@@ -3331,14 +3338,14 @@ function sendSnapshot(){
 function sendInit(){
   const base = {t:'init',
     map:S.map, ice:S.ice || [], bog:S.bog || [], koth:S.koth ? 1 : 0, hill:S.hill || null, bots:S.hasBots ? 1 : 0, trees:S.trees.map(t => [t.x, t.y]), chests:S.chests.map(c => [c.x, c.y]), lakes:S.lakes.map(l => [l.x, l.y, ...l.h, l.ox, l.oy]), boats:S.boats.map(b => [b.x, b.y, b.ang]),
-    actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, s:a.shirt || null, k:a.skin, hr:a.hair || null, hs:a.hstyle | 0, sl:a.sleeve | 0, pt:a.pat | 0, s2:a.shirt2 || null, tr:a.trophy || '', cw:a.crown ? 1 : 0, x:Math.round(a.x), y:Math.round(a.y)}))};
+    actors:S.actors.map(a => ({n:a.name, c:a.color, tm:a.team, h:a.isPlayer?1:0, pid:a.pid, s:a.shirt || null, k:a.skin, hr:a.hair || null, hs:a.hstyle | 0, sl:a.sleeve | 0, pt:a.pat | 0, s2:a.shirt2 || null, tr:a.trophy || '', sn:a.snowAv | 0, cw:a.crown ? 1 : 0, x:Math.round(a.x), y:Math.round(a.y)}))};
   for (const pid in NET.peers){
     const me = S.actors.findIndex(a => a.isPlayer && a.pid === +pid);
     try { NET.peers[pid].conn.send(Object.assign({me}, base)); } catch(_){}
   }
   NET.last = {W:'',L:'',C:'',T:''};
 }
-const currentHumans = () => NET.lobby.map(p => ({pid:p.pid, name:p.name, tm:NET.mode === 'koth' ? null : NET.mode === 'story' ? 0 : p.tm, bm:NET.mode === 'humans' || NET.mode === 'koth' || NET.mode === 'story' ? 0 : p.bm || 0, shirt:p.shirt, skin:p.skin, hair:p.hair, style:p.style, sleeve:p.sleeve, pat:p.pat, shirt2:p.shirt2, trophy:p.trophy || '', crown:!!p.crown}));
+const currentHumans = () => NET.lobby.map(p => ({pid:p.pid, name:p.name, tm:NET.mode === 'koth' ? null : NET.mode === 'story' ? 0 : p.tm, bm:NET.mode === 'humans' || NET.mode === 'koth' || NET.mode === 'story' ? 0 : p.bm || 0, shirt:p.shirt, skin:p.skin, hair:p.hair, style:p.style, sleeve:p.sleeve, pat:p.pat, shirt2:p.shirt2, trophy:p.trophy || '', snow:p.snow | 0, crown:!!p.crown}));
 function hostBeginStory(){
   if (NET.lobby.length !== 2){ toast('Story co-op needs exactly 2 players', 2500); return; }
   const lvl = STORY_LEVELS[NET.level] ? NET.level : 'marsh', ids = csIdsFor(lvl);
@@ -3475,7 +3482,7 @@ function hostAcceptConnection(conn){
     pid = NET.nextPid++;
     const name = uniqueName(cleanName(m.name) || 'Player ' + (pid+1));
     NET.peers[pid] = {conn, name};
-    NET.lobby.push({pid, name, tm:null, bm:0, wins:0, shirt:okIdx(m.shirt, SHIRTS.length, 0), skin:okIdx(m.skin, SKINS.length, 1), hair:okIdx(m.hair, HAIRS.length, 1), style:okIdx(m.style, HAIRSTYLES.length, 0), sleeve:okIdx(m.sleeve, SLEEVES.length, 0), pat:okIdx(m.pat, PATTERNS.length, 0), shirt2:okIdx(m.shirt2, SHIRTS.length, 8), trophy:TROPHIES[m.trophy] ? m.trophy : ''});   // wins only count inside this room
+    NET.lobby.push({pid, name, tm:null, bm:0, wins:0, shirt:okIdx(m.shirt, SHIRTS.length, 0), skin:okIdx(m.skin, SKINS.length, 1), hair:okIdx(m.hair, HAIRS.length, 1), style:okIdx(m.style, HAIRSTYLES.length, 0), sleeve:okIdx(m.sleeve, SLEEVES.length, 0), pat:okIdx(m.pat, PATTERNS.length, 0), shirt2:okIdx(m.shirt2, SHIRTS.length, 8), trophy:TROPHIES[m.trophy] ? m.trophy : '', snow:m.snow === 1 || m.snow === 2 ? m.snow : 0});   // wins only count inside this room
     try { conn.send({t:'welcome', pid, name}); } catch(_){}
     lobbyBroadcast();
     toast(name + ' joined'); playSnd('ui');
@@ -3579,7 +3586,7 @@ function buildGuestState(m){
   m.chests.forEach(([x,y]) => S.chests.push({x, y, open:false}));
   m.actors.forEach(d => S.actors.push({x:d.x, y:d.y, tx:d.x, ty:d.y, r:15, hp:100, sh:0, wood:0,
     inv:['pickaxe',null,null,null,null,null], gr:newGr(), ammo:newAmmo(), band:0, med:0, shd:0, heal:0, cur:0, angle:0, cd:0, swing:0, alive:true, down:0, rv:0, rvT:0, kills:0, place:0,
-    isPlayer:!!d.h, pid:d.pid, team:d.tm, name:d.n, color:d.c, shirt:d.s || null, skin:d.k, hair:d.hr || null, hstyle:d.hs | 0, sleeve:d.sl | 0, pat:d.pt | 0, shirt2:d.s2 || null, trophy:TROPHIES[d.tr] ? d.tr : '', crown:!!d.cw, seen:false}));
+    isPlayer:!!d.h, pid:d.pid, team:d.tm, name:d.n, color:d.c, shirt:d.s || null, skin:d.k, hair:d.hr || null, hstyle:d.hs | 0, sleeve:d.sl | 0, pat:d.pt | 0, shirt2:d.s2 || null, trophy:TROPHIES[d.tr] ? d.tr : '', snowAv:d.sn === 1 || d.sn === 2 ? d.sn : 0, crown:!!d.cw, seen:false}));
   S.player = S.actors[m.me];
   S.player.seen = true;
 }
@@ -4599,7 +4606,7 @@ function draw(){
       ctx.save(); if (Math.cos(a.angle) < 0) ctx.scale(1,-1);      // keep the gun the right way up when aiming left
       ctx.translate(a.inv[a.cur] === 'pistol' ? 10 : 18, 0); drawGun(ctx, a.inv[a.cur], a.inv[a.cur] === 'pistol' ? 1 : 0.78, RARITY[a.gr[a.inv[a.cur]] || 0].col); ctx.restore();
     }
-    if (a.boss) (STORY.theme === 'cold' ? drawColossus : STORY.theme === 'desert' ? drawScorpion : STORY.theme === 'forest' ? drawKorvath : STORY.theme === 'sea' ? drawThalassa : STORY.theme === 'war' ? drawWarMachine : drawWarden)(ctx, S.story ? S.story.bs.ph : 1, a.flash); else if (a.desert) drawDesertFoe(ctx, a); else if (a.forest) drawForestFoe(ctx, a); else if (a.sea) drawSeaFoe(ctx, a); else if (a.war) drawWarFoe(ctx, a); else if (a.snow) drawSnowman(ctx, a.elite); else drawPerson(ctx, a.shirt || a.color, a.skin || SKINS[1], Math.sin((a.x + a.y)*0.12)*5, a.crown, a.shirt ? {pat:a.pat, shirt2:a.shirt2, hair:a.hair, style:a.hstyle, sleeve:a.sleeve, trophy:a.trophy} : null);
+    if (a.boss) (STORY.theme === 'cold' ? drawColossus : STORY.theme === 'desert' ? drawScorpion : STORY.theme === 'forest' ? drawKorvath : STORY.theme === 'sea' ? drawThalassa : STORY.theme === 'war' ? drawWarMachine : drawWarden)(ctx, S.story ? S.story.bs.ph : 1, a.flash); else if (a.desert) drawDesertFoe(ctx, a); else if (a.forest) drawForestFoe(ctx, a); else if (a.sea) drawSeaFoe(ctx, a); else if (a.war) drawWarFoe(ctx, a); else if (a.snow) drawSnowman(ctx, a.elite); else if (a.snowAv && !S.story && !S.koth) { if (a.snowAv === 2) drawSeaFoe(ctx, {sea:'merman', swing:a.swing || 0, x:a.x}); else drawSnowman(ctx, false); } else drawPerson(ctx, a.shirt || a.color, a.skin || SKINS[1], Math.sin((a.x + a.y)*0.12)*5, a.crown, a.shirt ? {pat:a.pat, shirt2:a.shirt2, hair:a.hair, style:a.hstyle, sleeve:a.sleeve, trophy:a.trophy} : null);
     ctx.restore();
     // healing progress ring
     if (a.heal > 0){
@@ -5077,7 +5084,7 @@ function toast(t, ms){
   clearTimeout(toastT); toastT = setTimeout(() => el.style.display = 'none', ms || 3500);
 }
 const SCREENS = ['s-main','s-avatar','s-join','s-lobby','s-adv','s-scenes'];
-function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); menuMsg(''); }
+function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); menuMsg(''); if (id === 's-main') setTimeout(() => { try { checkSnowMsg(); } catch(_){} }, 400); }
 function menuMsg(t){ $('msg').textContent = t || ''; }
 function hideMenu(){ $('menu').classList.add('hide'); $('exit').style.display = 'block'; }
 
@@ -5098,6 +5105,19 @@ try { if (!localStorage.getItem('sr-mig39')){      // one-time move of the old c
   localStorage.setItem('sr-mig39', '1');
 } } catch(_){}
 function getKills(m){ try { return Math.max(0, parseInt(localStorage.getItem('sr-kills-' + (m || soloMode)), 10) || 0); } catch(_){ return 0; } }
+function checkSnowMsg(){      // the first time you are back at the main menu after earning a creature avatar
+  try {
+    if (!$('s-main') || $('s-main').hidden || $('menu').classList.contains('hide')) return;
+    const list = [];
+    if (snowOwned() && localStorage.getItem('sr-snow-seen') !== '1'){ localStorage.setItem('sr-snow-seen', '1'); list.push(['⛄', SNOW_KILLS + ' Battle Royale kills!', 'the Bitter Cold <b>Snowman</b>']); }
+    if (mermanOwned() && localStorage.getItem('sr-mer-seen') !== '1'){ localStorage.setItem('sr-mer-seen', '1'); list.push(['\u{1F9DC}', MER_WINS + ' Battle Royale wins!', 'the Dreadwater <b>Merfolk</b>']); }
+    if (!list.length) return;
+    const o = document.createElement('div'); o.style.cssText = 'position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center';
+    o.innerHTML = '<div style="background:#16251a;border:2px solid #fc4;border-radius:14px;padding:20px;width:min(420px,90vw);text-align:center;color:#eef;font:16px sans-serif">' + list.map(([ic, t, nm]) => '<div style="font-size:42px">' + ic + '</div><b style="font-size:20px;color:#fc4">' + t + '</b><p style="margin:10px 0 14px">You unlocked ' + nm + ' as an avatar in Battle Royale. Pick it in <b>Design Your Avatar</b>.</p>').join('') + '<button class="btn" id="snow-ok">Awesome!</button></div>';
+    document.body.appendChild(o); o.querySelector('#snow-ok').onclick = () => o.remove(); o.addEventListener('click', e => { if (e.target === o) o.remove(); });
+    try { playSnd('ui'); } catch(_){}
+  } catch(_){}
+}
 function showKills(){ const e = $('killcount'); if (e) e.textContent = getKills(); const l = $('killlbl'); if (l) l.textContent = 'Kills'; }
 function showXP(){
   const i = xpInfo(getXP()), a = $('lvltxt'), b = $('xptxt'), f = $('xpfill');
@@ -5153,7 +5173,7 @@ function drawLookPreview(){
     const cv2 = $(id), c = cv2.getContext('2d'), w = cv2.width; c.clearRect(0, 0, w, w);
     c.save(); c.translate(w/2, w*(id === 'avprev' ? 0.6 : 0.52)); c.rotate(-Math.PI/2); c.scale(sc, sc); c.lineWidth = 2; c.strokeStyle = '#000'; c.lineJoin = 'round';
     const L = id === 'avprev' ? look : curLook();      // (the designer screen always previews the avatar being designed)
-    drawPerson(c, SHIRTS[L.shirt], SKINS[L.skin], 0, false, {pat:L.pat, shirt2:SHIRTS[L.shirt2], hair:HAIRS[L.hair], style:L.style, sleeve:L.sleeve, trophy:L.trophy}); c.restore();
+    if (crtCode(L.crt) === 1) drawSnowman(c, false); else if (crtCode(L.crt) === 2) drawSeaFoe(c, {sea:'merman', swing:0, x:0}); else drawPerson(c, SHIRTS[L.shirt], SKINS[L.skin], 0, false, {pat:L.pat, shirt2:SHIRTS[L.shirt2], hair:HAIRS[L.hair], style:L.style, sleeve:L.sleeve, trophy:L.trophy}); c.restore();
   }
 }
 function buildLookPickers(){
@@ -5173,6 +5193,9 @@ function buildLookPickers(){
   SLEEVES.forEach((nm, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'mini' + (look.sleeve === i ? ' sel' : ''); b.textContent = nm; b.onclick = () => { look.sleeve = i; save(); }; sb.appendChild(b); });
   const pb = $('av-pats'); pb.textContent = '';
   PATTERNS.forEach((nm, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'mini' + (look.pat === i ? ' sel' : ''); b.textContent = nm; b.onclick = () => { look.pat = i; save(); }; pb.appendChild(b); });
+  { const sr = $('av-snowrow'), sb2 = $('av-snow'); sr.hidden = !(snowOwned() || mermanOwned()); sb2.textContent = '';
+    const opts = [['', 'Me']]; if (snowOwned()) opts.push(['snow', '\u26C4 Snowman']); if (mermanOwned()) opts.push(['merman', '\u{1F9DC} Merfolk']);
+    if (!sr.hidden) opts.forEach(([v, nm]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'mini' + ((look.crt || '') === v ? ' sel' : ''); b.textContent = nm; b.onclick = () => { look.crt = v; save(); }; sb2.appendChild(b); }); }
   const tb = $('av-trophy'); tb.textContent = '';
   const mkT = (id, nm) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'mini' + ((look.trophy || '') === id ? ' sel' : ''); b.textContent = nm; b.onclick = () => { look.trophy = id; save(); }; tb.appendChild(b); };
   mkT('', 'None'); let anyT = false; for (const id in TROPHIES) if (trophyOwned(id)){ mkT(id, TROPHIES[id]); anyT = true; }
@@ -5190,6 +5213,7 @@ function refreshAvatarLock(){
 $('b-avatar').onclick = () => { if (!avatarOpen()){ toast('Reach Level ' + AVATAR_UNLOCK + ' to design your own avatar. Until then you play as the starter avatar.', 3500); return; } showScreen('s-avatar'); buildLookPickers(); $('menu').scrollTop = 0; document.querySelectorAll('#menu *').forEach(n => { if (n.scrollTop) n.scrollTop = 0; }); };
 $('b-avdone').onclick = () => { showScreen('s-main'); refreshAvatarLock(); };
 refreshAvatarLock();
+setTimeout(() => { try { checkSnowMsg(); } catch(_){} }, 600);
 
 function renderLobby(){
   const kothSolo = NET.viewMode === 'koth' || NET.viewMode === 'story';      // King of the Hill: no teams
