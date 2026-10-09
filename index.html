@@ -39,6 +39,7 @@
     #advgrid,#scenegrid{grid-template-columns:1fr 1fr}
     .colL,.colR{min-width:0}
     #s-main .hint{text-align:center}
+    #s-main .menumini{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:2px 0 6px}
     #chk-auto{display:none}                                  /* Autofire is a touch-screen option: not shown on PC */
     .menubtns{width:min(420px,100%);margin:6px auto 12px}
     #s-avatar .cols{grid-template-columns:240px 1fr}
@@ -167,8 +168,6 @@
       <div id="xpbox" title="Earn XP at the end of every game: finishing place, kills and a bonus for winning"><div class="xprow"><b id="lvltxt">Level 1</b><span id="xptxt">0 / 100 XP</span></div><div id="xpbar"><i id="xpfill"></i></div></div>
       <div class="look"><canvas id="lookprev" width="112" height="112"></canvas><button class="btn" id="b-avatar">🎨 Design Your Avatar</button></div>
       <label class="chk" id="chk-auto"><input type="checkbox" id="autofire"> <span><b>Autofire</b> (touch controls): the gun fires by itself while you aim at an enemy you can see. Off: fire when you let go of the aim stick.</span></label>
-      <button class="mini" id="cs-set" title="Story Mode cut scenes: play them the first time only, every time, or never">🎬 Cut scenes: First time only</button>
-      <button class="mini" id="sv-open" title="Move your progress to another device">💾 Save transfer</button>
       </div><div class="colR">
       <div class="lbl">Mode</div><div class="mapbox" id="modebox-main"><button class="mini" data-smode="classic">Battle Royale</button><button class="mini" data-smode="koth">King of the Hill</button><button class="mini" data-smode="story">Story Mode</button></div><div id="storyhint" style="display:none;font-size:13px;opacity:.85;margin:4px 0 8px">Story Mode (solo): follow the hero’s journey through levels full of enemy camps and defeat each boss, with cut scenes between chapters. Press Play Solo to choose your chapter.</div>
       <div class="lbl">Map</div><div class="mapbox" id="mapbox-main"></div>
@@ -177,6 +176,10 @@
       <button class="btn" id="b-solo">Play Solo</button>
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
+      </div>
+      <div class="menumini">
+        <button class="mini" id="cs-set" title="Story Mode cut scenes: play them the first time only, every time, or never">🎬 Cut scenes: First time only</button>
+        <button class="mini" id="sv-open" title="Move your progress to another device">💾 Save transfer</button>
       </div>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
       <div class="ver" id="ver">G Royale</div>
@@ -261,7 +264,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 68;
+const VERSION = 69;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
