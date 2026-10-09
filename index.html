@@ -259,7 +259,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 58;
+const VERSION = 59;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -6292,7 +6292,7 @@ function loop(now){
   if (CS){ try { csStep(dt); } catch(e){ console.error(e); } }
   document.body.classList.toggle('inscene', !!CS);
   if (phase === 'play' && S && S.story && S.story.outro && S.story.outroAt && !CS && performance.now() >= S.story.outroAt){      // the boss is down: the chapter's closing cut scene, then the Level Complete screen
-    const sy = S.story; sy.outroAt = 0; const oids = [sy.levelId + '-outro', ...(sy.levelId === 'ravenrock' ? ['epilogue'] : [])].filter(id => SCENES[id] && csWanted(id)); csPlay(oids, () => { sy.outro = 0; });
+    const sy = S.story; sy.outroAt = 0; const oids = [sy.levelId + '-outro', ...(sy.levelId === 'ravenrock' ? ['epilogue'] : [])].filter(id => SCENES[id] && csWanted(id)); csPlay(oids, () => { sy.outro = 0; if (S && S.story === sy && NET.role === 'solo' && nextStoryLevel()) hostRestart(); });      // solo: straight on to the next map after the closing scene (co-op taps to continue so both players stay together)
   }
   if (phase === 'play'){
     if (S.story && S.story.hold && NET.role !== 'guest'){ if (NET.csMid) csMidCheck(); if (S.story.holdMax && performance.now() > S.story.holdMax){ S.story.hold = false; NET.csMid = null; if (CS && CS.kane) csClear(); } }
