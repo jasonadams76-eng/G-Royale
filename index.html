@@ -259,7 +259,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 59;
+const VERSION = 63;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -864,36 +864,36 @@ function init(humans, humansOnly, mapId, koth){
 const STORY_LEVELS = {
   marsh:{id:'marsh', ch:1, name:'The Sunken Marsh', map:'swamp', theme:'marsh', HW:160, R:{S:330, C:450, B:620}, LIVES:5, cpAfter:[2, 4, 6],
     nodes:[[500,5500,'S'],[1300,5000],[2000,5300,'C'],[3000,5600],[3900,5300,'C'],[5000,5500],[5300,4600],[5000,4000,'C'],[4300,3300],[2600,3300,'C'],[1200,3400],[800,2400],[1500,1800,'C'],[1900,1100],[2900,900,'C'],[4100,1050],[5200,700,'B']],
-    campN:[3,4,5,6,6,6], campEl:[0,1,1,2,2,3], hpMul:1, bossName:'SWAMP WARDEN', bossTitle:'Swamp Warden', bossShort:'Warden', bossHp:1800, bossBar:['#b8844a','#8e5a2a','#b5481f'], bossBack:'#2e1d0e', bossBullet:'#7be04a', bossDot:'#b8844a', xp:[100, 8],
+    campN:[3,4,5,6,6,6], campEl:[0,1,1,2,2,3], hpMul:1, bossName:'SWAMP WARDEN', bossTitle:'Swamp Warden', bossShort:'Warden', bossHp:4000, bossBar:['#b8844a','#8e5a2a','#b5481f'], bossBack:'#2e1d0e', bossBullet:'#7be04a', bossDot:'#b8844a', xp:[100, 8],
     thicket:{base:'#08130d', cols:['#0f2a1b','#143522','#0b2016','#1a3d27']}, mmDark:'#06100b',
     hint:'Story Mode (solo): fight through The Sunken Marsh, past the enemy camps, and defeat the Swamp Warden to finish the level.'},
   cold:{id:'cold', ch:2, name:'Bitter Cold', map:'snow', theme:'cold', HW:160, R:{S:330, C:450, B:620}, LIVES:5, cpAfter:[2, 4, 5, 7],
     nodes:[[5500,5200,'S'],[3900,5200,'C'],[2000,5200,'C'],[700,5200],[700,3900,'C'],[700,3100],[3000,3100,'C'],[5300,3100],[5300,2100,'C'],[5300,1000],[4200,1000,'C'],[2900,1000,'C'],[700,1000,'B']],
-    campN:[4,4,5,5,6,6,7], campEl:[0,1,1,2,2,3,3], hpMul:1.25, bossName:'FROST COLOSSUS', bossTitle:'Frost Colossus', bossShort:'Colossus', bossHp:2400, bossBar:['#8fd6ff','#5fb2ee','#e8f6ff'], bossBack:'#10283a', bossBullet:'#bfe8ff', bossDot:'#7fd0ff', xp:[150, 10], slow:true,
+    campN:[4,4,5,5,6,6,7], campEl:[0,1,1,2,2,3,3], hpMul:1.25, bossName:'FROST COLOSSUS', bossTitle:'Frost Colossus', bossShort:'Colossus', bossHp:5200, bossBar:['#8fd6ff','#5fb2ee','#e8f6ff'], bossBack:'#10283a', bossBullet:'#bfe8ff', bossDot:'#7fd0ff', xp:[150, 10], slow:true,
     thicket:{base:'#1e2f3b', cols:['#2a4352','#314c5c','#25404f','#3a5a6c','#cfe0ec','#27414f']}, mmDark:'#1b2a35',
     hint:'Story Mode (solo): climb the frozen mountain past living snowmen and defeat the Frost Colossus. Unlocked by beating the Swamp Warden.'},
   desert:{id:'desert', ch:3, name:'Scorched Dunes', map:'desert', theme:'desert', HW:160, R:{S:330, C:450, B:620}, LIVES:5, cpAfter:[2, 4, 5, 7],
     nodes:[[600,5400,'S'],[2100,5400,'C'],[3900,5400,'C'],[5400,5400],[5400,3800,'C'],[5400,2100,'C'],[5400,600],[3300,600,'C'],[900,600],[900,2300,'C'],[900,3700],[2200,3700,'C'],[4000,3200,'B']],
     campN:[4,4,5,5,6,6,7], campEl:[0,0,0,0,0,0,0], comp:[[3,1,0],[2,2,0],[2,2,1],[2,2,1],[2,2,2],[1,3,2],[2,2,3]], hpMul:1.25,
-    bossName:'THE SCORPION KING', bossTitle:'Scorpion King', bossShort:'Scorpion King', bossHp:2800, bossBar:['#c8802a','#b8561f','#c93a1a'], bossBack:'#2b1a0a', bossBullet:'#c6ff3a', bossDot:'#e0a040', xp:[200, 12], poison:true,
+    bossName:'THE SCORPION KING', bossTitle:'Scorpion King', bossShort:'Scorpion King', bossHp:6000, bossBar:['#c8802a','#b8561f','#c93a1a'], bossBack:'#2b1a0a', bossBullet:'#c6ff3a', bossDot:'#e0a040', xp:[200, 12], poison:true,
     thicket:{base:'#4a3320', cols:['#6a4a2a','#5c3f22','#7a5632','#52381d','#8a6438','#43301c']}, mmDark:'#24170a',
     hint:'Story Mode (solo): cross the burning dunes past bandits, skeleton archers and mummies and defeat the Scorpion King. Unlocked by beating the Frost Colossus.'},
   forest:{id:'forest', ch:4, name:'The Greenwood', map:'grass', theme:'forest', HW:165, R:{S:330, C:450, B:640}, LIVES:5, cpAfter:[2, 4, 5, 7],
     nodes:[[600,5400,'S'],[2200,5400,'C'],[3600,4700,'C'],[5200,4400],[5300,3000,'C'],[4000,2400,'C'],[2700,3100,'C'],[1000,2900,'C'],[900,1500,'C'],[2500,900],[4200,800,'B']],
     campN:[4,4,5,5,6,6,7], campEl:[0,0,0,0,0,0,0], comp:[[3,1,0],[2,1,1],[2,2,1],[2,2,1],[2,2,2],[2,2,2],[2,3,2]], hpMul:1.3,
-    bossName:'KORVATH THE ANCIENT', bossTitle:'Korvath the Ancient', bossShort:'Korvath', bossHp:3200, bossBar:['#6fcf4a', '#c9d13a', '#d9542a'], bossBack:'#10230f', bossBullet:'#8bff4a', bossDot:'#6fcf4a', xp:[250, 14],
+    bossName:'KORVATH THE ANCIENT', bossTitle:'Korvath the Ancient', bossShort:'Korvath', bossHp:6800, bossBar:['#6fcf4a', '#c9d13a', '#d9542a'], bossBack:'#10230f', bossBullet:'#8bff4a', bossDot:'#6fcf4a', xp:[250, 14],
     thicket:{base:'#0c1f0e', cols:['#16401a', '#1d5222', '#133416', '#25652b', '#194a1d', '#2f7a33']}, mmDark:'#08160a',
     hint:'Story Mode (solo): push through the Greenwood past wild boars, forest rangers and bomb-throwing goblins and defeat Korvath the Ancient. Unlocked by beating the Scorpion King.'},
   sea:{id:'sea', ch:5, name:'The Dreadwater Sea', map:'ocean', theme:'sea', HW:190, R:{S:340, C:470, B:660}, LIVES:5, cpAfter:[2, 4, 5, 7],
     nodes:[[5400,5400,'S'],[3800,5400,'C'],[2200,5200,'C'],[900,4300,'C'],[1100,2900,'C'],[2900,3100,'C'],[4300,2600,'C'],[5200,1500,'C'],[3700,900],[2100,800,'B']],
     campN:[4,4,5,5,6,6,7], campEl:[0,0,0,0,0,0,0], comp:[[1,2,1],[1,2,1],[1,2,2],[2,2,1],[2,2,2],[2,3,1],[2,3,2]], hpMul:1.35,
-    bossName:'THALASSA THE SEA WITCH', bossTitle:'Thalassa the Sea Witch', bossShort:'Thalassa', bossHp:3600, bossBar:['#3ad0d8', '#7a5ae0', '#e0407a'], bossBack:'#061a2a', bossBullet:'#6ff0ff', bossDot:'#3ad0d8', xp:[300, 16],
+    bossName:'THALASSA THE SEA WITCH', bossTitle:'Thalassa the Sea Witch', bossShort:'Thalassa', bossHp:7600, bossBar:['#3ad0d8', '#7a5ae0', '#e0407a'], bossBack:'#061a2a', bossBullet:'#6ff0ff', bossDot:'#3ad0d8', xp:[300, 16],
     thicket:{base:'#04122a', cols:['#082246', '#0a2a56', '#06193a', '#0e3466', '#071d40', '#12407a']}, mmDark:'#030c1c',
     hint:'Story Mode (solo): sail the Dreadwater past pirate ships, merfolk and giant squid, and defeat Thalassa the Sea Witch. Unlocked by beating Korvath the Ancient.'},
   ravenrock:{id:'ravenrock', ch:6, name:'Ravenrock', map:'city', theme:'war', HW:170, R:{S:340, C:470, B:780}, LIVES:5, cpAfter:[2, 4, 5, 7],
     nodes:[[500,5400,'S'],[1900,5400,'C'],[3500,5400,'C'],[5300,5400],[5300,4650,'C'],[5300,3900],[3700,3900,'C'],[2100,3900,'C'],[700,3900],[700,3200,'C'],[700,2500],[3000,2500,'C'],[4600,2500],[4600,900,'B'],[3000,900]],
     campN:[4,4,5,5,6,6,7], campEl:[0,0,0,0,0,0,0], comp:[[3,1,0],[3,1,0],[2,2,1],[2,2,1],[2,2,2],[1,3,2],[2,3,2]], hpMul:1.45,
-    bossName:'THE WAR MACHINE', bossTitle:'War Machine', bossShort:'War Machine', bossHp:4400, bossBar:['#aab4c6', '#e8902a', '#e8382a'], bossBack:'#16121a', bossBullet:'#ffd84a', bossDot:'#c0c8d8', xp:[400, 20],
+    bossName:'THE WAR MACHINE', bossTitle:'War Machine', bossShort:'War Machine', bossHp:9000, bossBar:['#aab4c6', '#e8902a', '#e8382a'], bossBack:'#16121a', bossBullet:'#ffd84a', bossDot:'#c0c8d8', xp:[400, 20],
     thicket:{base:'#17131a', cols:['#241d22', '#2d2428', '#33282a', '#1d171c', '#3b2c26', '#272026']}, mmDark:'#0d0b10',
     hint:'Story Mode (solo): fight through the war-torn streets of Ravenrock past soldiers, riflemen and grenadiers, and destroy Marcus Kane\u2019s War Machine. Unlocked by beating Thalassa the Sea Witch.'}
 };
@@ -945,7 +945,7 @@ function mkDesert(x, y, kind, camp){
   } else if (kind === 'archer'){
     a.name = 'Skeleton Archer'; a.hp = a.hpMax = Math.round(40*hm); a.dmgMul = 0.5; a.spd = 135; a.aggro = 600; a.pref = 430; a.archer = true; a.noGun = true; a.ammoDrop = 'pistol'; a.color = '#e8e2cf';
   } else if (kind === 'mummy' || kind === 'mummyB'){
-    a.name = 'Mummy Warrior'; a.hp = a.hpMax = Math.round(110*hm); a.r = 17; a.spd = 122; a.aggro = 480; a.elite = true; a.rush = true; a.reach = 48; a.mdmg = 16; a.mcdMax = 1.0; a.dmgMul = 1; a.blast = kind === 'mummyB'; a.noGun = true; a.ammoDrop = 'shotgun'; a.color = '#d8c9a0'; a.mcd = 0.4;
+    a.name = 'Mummy Warrior'; a.hp = a.hpMax = Math.round(250*hm); a.r = 17; a.spd = 190; a.aggro = 480; a.elite = true; a.rush = true; a.reach = 48; a.mdmg = 16; a.mcdMax = 1.0; a.dmgMul = 1; a.blast = kind === 'mummyB'; a.noGun = true; a.ammoDrop = 'shotgun'; a.color = '#d8c9a0'; a.mcd = 0.4;
   } else {
     a.name = 'Scorpion'; a.hp = a.hpMax = 18; a.r = 11; a.spd = 250; a.aggro = 9999; a.rush = true; a.reach = 30; a.mdmg = 7; a.mcdMax = 0.7; a.dmgMul = 1; a.scorp = true; a.noGun = true; a.color = '#8a3d10'; a.mcd = 0.3;
   }
@@ -962,7 +962,7 @@ function mkForest(x, y, kind, camp){
   a.x = a.tx = x; a.y = a.ty = y; a.team = 'E'; a.enemy = true; a.noDown = true; a.camp = camp; a.home = {x, y}; a.alert = camp < 0; a.rt = 0.5; a.forest = kind;
   a.inv = ['pickaxe', null, null, null, null, null]; a.cur = 1; a.wood = 0; a.dmgMul = 0.4; a.spd = 145; a.aggro = 440; a.pref = 260; a.color = '#5a7a3a'; a.noGun = true;
   if (kind === 'boar'){
-    a.name = 'Wild Boar'; a.hp = a.hpMax = Math.round(85*hm); a.r = 16; a.spd = 150; a.aggro = 520; a.elite = true; a.rush = true; a.boar = true; a.reach = 40; a.mdmg = 13; a.mcdMax = 0.9; a.dmgMul = 1; a.color = '#6a4a30'; a.mcd = 0.4;
+    a.name = 'Wild Boar'; a.hp = a.hpMax = Math.round(190*hm); a.r = 16; a.spd = 235; a.aggro = 520; a.elite = true; a.rush = true; a.boar = true; a.reach = 40; a.mdmg = 13; a.mcdMax = 0.9; a.dmgMul = 1; a.color = '#6a4a30'; a.mcd = 0.4;
   } else if (kind === 'ranger'){
     a.name = 'Forest Ranger'; a.hp = a.hpMax = Math.round(48*hm); a.dmgMul = 0.5; a.spd = 140; a.aggro = 620; a.pref = 430; a.archer = true; a.ammoDrop = 'pistol'; a.color = '#3f6a35';
   } else {
@@ -985,7 +985,7 @@ function mkSea(x, y, kind, camp){
   } else if (kind === 'merman'){
     a.name = 'Merfolk Warrior'; a.hp = a.hpMax = Math.round(55*hm); a.r = 14; a.spd = 150; a.aggro = 620; a.pref = 340; a.merman = true; a.dmgMul = 0.75; a.ammoDrop = 'pistol'; a.color = '#2f9a8a';
   } else {
-    a.name = 'Giant Squid'; a.hp = a.hpMax = Math.round(130*hm); a.r = 20; a.spd = 128; a.aggro = 540; a.elite = true; a.rush = true; a.squid = true; a.reach = 88; a.mdmg = 15; a.mcdMax = 1.1; a.dmgMul = 1; a.ammoDrop = 'shotgun'; a.color = '#a03a5a'; a.mcd = 0.5;
+    a.name = 'Giant Squid'; a.hp = a.hpMax = Math.round(290*hm); a.r = 20; a.spd = 185; a.aggro = 540; a.elite = true; a.rush = true; a.squid = true; a.reach = 88; a.mdmg = 15; a.mcdMax = 1.1; a.dmgMul = 1; a.ammoDrop = 'shotgun'; a.color = '#a03a5a'; a.mcd = 0.5;
   }
   S.actors.push(a); return a;
 }
@@ -1023,6 +1023,13 @@ const WM_PL = [[1, -1], [1, 1], [-1, 1], [-1, -1]];
 let WM_HIT = null;
 function wmCorner(b, i){ const c = Math.cos(b.angle), s = Math.sin(b.angle), lx = WM_PL[i][0]*92, ly = WM_PL[i][1]*60; return [b.x + lx*c - ly*s, b.y + lx*s + ly*c]; }
 function wmHit(b, x, y){ const c = Math.cos(b.angle), s = Math.sin(b.angle), dx = x - b.x, dy = y - b.y, lx = dx*c + dy*s, ly = -dx*s + dy*c; return Math.abs(lx) < 124 && Math.abs(ly) < 88; }
+// shots fly through the hull and only stop at an armor plate that is still standing (so the rear plates can be hit once the front ones are gone); with no plates left the hull itself takes hits
+function wmBulletHit(b, x, y){
+  if (!wmHit(b, x, y)) return false;
+  const pl = S.story.bs.plates; if (!pl || !pl.some(q => q.hp > 0)) return true;
+  let bi = 0, bd = 1e9; for (let i = 0; i < 4; i++){ const c = wmCorner(b, i), d = Math.hypot(x - c[0], y - c[1]); if (d < bd){ bd = d; bi = i; } }
+  return pl[bi].hp > 0 && bd < 120;
+}
 function wmAbsorb(b, dmg, owner){      // while any armor plate is left, the hull takes only a tenth; the plate nearest to the hit wears down
   const pl = S.story.bs.plates; if (!pl || !pl.some(q => q.hp > 0)) return dmg;
   const hx = WM_HIT ? WM_HIT.x : owner ? owner.x : b.x, hy = WM_HIT ? WM_HIT.y : owner ? owner.y : b.y;
@@ -1205,27 +1212,28 @@ function initStory(levelId, humans){
   const cover = (cx, cy, n, r0, r1) => { for (let k = 0; k < n; k++){ const an = k/n*Math.PI*2 + rnd(-0.3, 0.3), rr = rnd(r0, r1); addTree(cx + Math.cos(an)*rr, cy + Math.sin(an)*rr, true); } };
   cover(st0[0], st0[1], 3, 200, 270); sy.camps.forEach(c => cover(c.x, c.y, 7, 230, 380)); cover(bo[0], bo[1], 9, 220, 520);
   S.players.forEach((q, qi) => {
-    q.x = q.tx = st0[0] + qi*60; q.y = q.ty = st0[1] + qi*50; q.angle = -0.8; q.invT = 2; q.hp = 100; q.sh = 0; q.lives = STORY.LIVES; q.deadT = 0; q.poisonT = 0; q.slowT = 0;
+    q.x = q.tx = st0[0] + qi*60; q.y = q.ty = st0[1] + qi*50; q.angle = -0.8; q.invT = 2; q.hp = 100; q.sh = 0; q.lives = STORY.LIVES; q.deadT = 0; q.poisonT = 0; q.slowT = 0; q.crown = false;      // no crown in Story Mode
     q.inv = ['pickaxe', null, null, null, null, null]; q.cur = 0; q.ammo = newAmmo(); q.gr = newGr(); q.started = {};
   });
   // chests: the start chest (a gun) and one per camp, which only appears once the camp is cleared
   const ammo = (g, n) => Array.from({length:n}, () => ({type:'ammo_'+g, n:AMMO['ammo_'+g].box})), heal = (k, n) => Array.from({length:n}, () => ({type:k}));
   S.chests.push({x:st0[0] + 170, y:st0[1] - 90, open:false, loot:[{type:'pistol', rar:0}, ...ammo('pistol', 3)]});
   const L = STORY.id !== 'marsh' ? [
-    [{type:'shotgun', rar:1}, ...ammo('shotgun', 3), ...ammo('pistol', 2), ...heal('bandage', 2)],
-    [{type:'pistol', rar:2}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 1), ...heal('bandage', 2)],
-    [{type:'shotgun', rar:2}, ...ammo('shotgun', 3), ...ammo('pistol', 3), ...heal('shield', 1), ...heal('bandage', 2)],
-    [{type:'pistol', rar:3}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 2), ...heal('bandage', 2)],
-    [{type:'shotgun', rar:3}, ...ammo('shotgun', 3), ...ammo('pistol', 3), ...heal('shield', 2), ...heal('bandage', 3)],
-    [{type:'pistol', rar:4}, ...ammo('pistol', 3), ...ammo('shotgun', 3), ...heal('shield', 2), ...heal('bandage', 3)],
-    [{type:sy.special, rar:4}, {type:'shotgun', rar:4}, ...ammo('pistol', 3), ...ammo('shotgun', 3), ...heal('shield', 3), ...heal('bandage', 3)]] : [
-    [{type:'shotgun', rar:0}, ...ammo('shotgun', 3), ...ammo('pistol', 2), ...heal('bandage', 2)],
-    [{type:'pistol', rar:1}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 1), ...heal('bandage', 2)],
-    [{type:'shotgun', rar:2}, ...ammo('shotgun', 3), ...ammo('pistol', 2), ...heal('shield', 1), ...heal('bandage', 2)],
-    [{type:'pistol', rar:3}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 2), ...heal('bandage', 2)],
-    [{type:'shotgun', rar:3}, ...ammo('shotgun', 3), ...ammo('pistol', 3), ...heal('shield', 2), ...heal('bandage', 3)],
-    [{type:sy.special, rar:4}, {type:'pistol', rar:4}, ...ammo('pistol', 3), ...ammo('shotgun', 3), ...heal('shield', 3), ...heal('bandage', 3)]];
-  sy.camps.forEach((c, ci) => { let lt = L[ci] || L[L.length-1]; if (coop) lt = lt.flatMap(d => d.type === sy.special ? [{type:'minigun', rar:4}, {type:'flame', rar:4}] : [d]); c.chest = {x:c.x, y:c.y, open:false, hidden:true, loot:lt}; S.chests.push(c.chest); });      // co-op: the last chest holds both special weapons
+    [{type:'shotgun', rar:1}, ...ammo('shotgun', 3), ...ammo('pistol', 2), ...heal('med', 1)],
+    [{type:'pistol', rar:2}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 1), ...heal('med', 1)],
+    [{type:'shotgun', rar:2}, ...ammo('shotgun', 3), ...ammo('pistol', 3), ...heal('shield', 1), ...heal('med', 1)],
+    [{type:'pistol', rar:3}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 2), ...heal('med', 1)],
+    [{type:'shotgun', rar:3}, ...ammo('shotgun', 3), ...ammo('pistol', 3), ...heal('shield', 2), ...heal('med', 2)],
+    [{type:'pistol', rar:4}, ...ammo('pistol', 3), ...ammo('shotgun', 3), ...heal('shield', 2), ...heal('med', 2)],
+    [{type:sy.special, rar:4}, {type:'shotgun', rar:4}, ...ammo('pistol', 3), ...ammo('shotgun', 3), ...heal('shield', 3), ...heal('med', 2)]] : [
+    [{type:'shotgun', rar:0}, ...ammo('shotgun', 3), ...ammo('pistol', 2), ...heal('med', 1)],
+    [{type:'pistol', rar:1}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 1), ...heal('med', 1)],
+    [{type:'shotgun', rar:2}, ...ammo('shotgun', 3), ...ammo('pistol', 2), ...heal('shield', 1), ...heal('med', 1)],
+    [{type:'pistol', rar:3}, ...ammo('pistol', 3), ...ammo('shotgun', 2), ...heal('shield', 2), ...heal('med', 1)],
+    [{type:'shotgun', rar:3}, ...ammo('shotgun', 3), ...ammo('pistol', 3), ...heal('shield', 2), ...heal('med', 2)],
+    [{type:sy.special, rar:4}, {type:'pistol', rar:4}, ...ammo('pistol', 3), ...ammo('shotgun', 3), ...heal('shield', 3), ...heal('med', 2)]];
+  sy.camps.forEach((c, ci) => { let lt = L[ci] || L[L.length-1]; if (ci >= 1 && ci < sy.camps.length - 1 && Math.random() < 0.3) lt = lt.concat([{type:'ar', rar:Math.min(3, 1 + (ci >> 1))}, ...ammo('ar', 2)]);      // a rifle turns up in some chests now and then (never the boss-side special chest)
+    if (coop) lt = lt.flatMap(d => d.type === sy.special ? [{type:'minigun', rar:4}, {type:'flame', rar:4}] : [d]); c.chest = {x:c.x, y:c.y, open:false, hidden:true, loot:lt}; S.chests.push(c.chest); });      // co-op: the last chest holds both special weapons
   sy.camps.forEach((c, ci) => {
     for (let k = 0; k < c.n; k++){
       const ang = k/c.n*Math.PI*2 + rnd(-0.3, 0.3), d = rnd(70, coop ? 240 : 150), el = k < c.el;
@@ -1237,7 +1245,7 @@ function initStory(levelId, humans){
   b.color = STORY.theme === 'cold' ? '#7fa6c8' : 'hsl(280,55%,30%)'; b.home = {x:bo[0], y:bo[1]}; b.inv = ['pickaxe', null, null, null, null, null]; b.wood = 0;
   if (STORY.theme === 'war'){      // the War Machine: a huge tank with four armor plates, one over each corner turret
     b.r = 86; b.scale = 1; b.wm = true; b.angle = Math.PI/2; b.color = '#434852';
-    const pm = 450*mul, bi = N.indexOf(bo), ent = [N[bi-1], N[bi+1]].filter(Boolean).map(q => { const dx = q[0]-bo[0], dy = q[1]-bo[1], l = Math.hypot(dx, dy) || 1; return [Math.round(bo[0] + dx/l*(STORY.R.B + 170)), Math.round(bo[1] + dy/l*(STORY.R.B + 170))]; });
+    const pm = 600*mul, bi = N.indexOf(bo), ent = [N[bi-1], N[bi+1]].filter(Boolean).map(q => { const dx = q[0]-bo[0], dy = q[1]-bo[1], l = Math.hypot(dx, dy) || 1; return [Math.round(bo[0] + dx/l*(STORY.R.B + 170)), Math.round(bo[1] + dy/l*(STORY.R.B + 170))]; });
     Object.assign(sy.bs, {plates:[0, 1, 2, 3].map(() => ({hp:pm, max:pm})), tur:[1.57, 1.57, 1.57, 1.57], tt:[1.2, 1.8, 2.4, 3], tb:[0, 0, 0, 0], gunA:1.57, tGun:3.5, tGr:6, tRe:4, pend:[], ent, kane:0});
   }
   S.actors.push(b); sy.boss = b;
@@ -1293,6 +1301,10 @@ function storyDrop(a){
   }
   else if (a.ammoDrop) S.loot.push({x:a.x + j(), y:a.y + j(), type:'ammo_'+a.ammoDrop, n:Math.max(1, Math.round(AMMO['ammo_'+a.ammoDrop].box*0.4)), exp:now + 30000});
   if (a.gDrop && Math.random() < 0.3) S.loot.push({x:a.x + j(), y:a.y + j(), type:'grenade', rar:0, exp:now + 25000});
+  if ((gun ? gun !== 'ar' : (a.ammoDrop && a.ammoDrop !== 'ar')) && Math.random() < (el ? 0.07 : 0.035)){      // armed foes that don't carry rifles can still, very rarely, drop one
+    S.loot.push({x:a.x + j(), y:a.y + j(), type:'ar', rar:storyRarity(a.camp, 1), exp:now + 20000});
+    S.loot.push({x:a.x + j(), y:a.y + j(), type:'ammo_ar', n:Math.max(1, Math.round(AMMO.ammo_ar.box*0.4)), exp:now + 30000});
+  }
   const r = Math.random();
   if (r < (el ? 0.45 : 0.30)) S.loot.push({x:a.x + j(), y:a.y + j(), type:'bandage', rar:0});
   else if (r < (el ? 0.70 : 0.45)) S.loot.push({x:a.x + j(), y:a.y + j(), type:'shield', rar:0});
@@ -3232,7 +3244,7 @@ function update(dt){
     if (!dead && !b.fly) for (const t of S.trees){ if (Math.hypot(b.x-t.x,b.y-t.y) < t.r){ dead = true; burst(b.x,b.y,'#4a4',2); break; } }
     if (!dead) for (const a of S.actors){
       if (a === b.owner || !a.alive || a.team === b.owner.team) continue;
-      if (a.wm ? wmHit(a, b.x, b.y) : Math.hypot(b.x-a.x,b.y-a.y) < a.r){ WM_HIT = a.wm ? b : null; damage(a, b.fall ? b.dmg * Math.max(0.4, 1 - b.fall*Math.hypot(b.x-b.sx, b.y-b.sy)) : b.dmg, b.owner, b.wpn); WM_HIT = null; burst(b.x,b.y,'#f44',4); dead = true; break; }
+      if (a.wm ? wmBulletHit(a, b.x, b.y) : Math.hypot(b.x-a.x,b.y-a.y) < a.r){ WM_HIT = a.wm ? b : null; damage(a, b.fall ? b.dmg * Math.max(0.4, 1 - b.fall*Math.hypot(b.x-b.sx, b.y-b.sy)) : b.dmg, b.owner, b.wpn); WM_HIT = null; burst(b.x,b.y,'#f44',4); dead = true; break; }
     }
     if (dead) S.bullets.splice(i,1);
   }
@@ -5932,8 +5944,8 @@ const SCENES = {
     SC_D('zareth', 'Ssso. Fresh meat wanders into my sands. Every creature that crawls here pays tribute to Zareth, the Scorpion King.'),
     SC_D('hero', 'I am not paying anyone anything.'),
     SC_D('zareth', 'Then my children will collect it. Sssstings are very patient.'),
-    SC_N('{n} drew a weapon and stepped onto the burning sand.', null, {solo:true}),
-    SC_N('{n} and his brother {p} drew their weapons and stepped onto the burning sand.', null, {co:true})
+    SC_N('{n} enters the desert despite the warning.', null, {solo:true}),
+    SC_N('{n} and his brother {p} enter the desert despite the warning.', null, {co:true})
   ]},
   'desert-outro':{title:'Chapter 3 · Escape from the Dunes', beats:[
     SC_N('The Scorpion King’s stinger sank into the sand one last time, and the desert fell silent.', 'desert'),
@@ -6308,7 +6320,7 @@ function loop(now){
   if (S && S.player) maybeAwardXP(false);
   if (phase === 'play' && S.over && !S.sfxDone){
     S.sfxDone = true;
-    if (NET.role === 'host') creditWins(); else if (NET.role === 'solo') soloCrown = S.winTeam !== null && S.winTeam === S.player.team;
+    if (S.story){ /* Story Mode wins never earn a crown */ } else if (NET.role === 'host') creditWins(); else if (NET.role === 'solo') soloCrown = S.winTeam !== null && S.winTeam === S.player.team;
     if (S.winTeam !== null && S.winTeam === S.player.team && (S.story || S.koth || S.hasBots)){
       if (S.story && S.story.levelId === 'marsh' && !coldUnlocked()){ try { localStorage.setItem('sr-unlock-cold', '1'); } catch(_){} S.story.unlockedNow = 'Bitter Cold'; toast('Bitter Cold unlocked! Pick it from the Story Mode menu', 5000); }
       if (S.story && S.story.levelId === 'cold' && !deUnlocked()){ S.story.unlockedNow = 'Scorched Dunes'; toast('Scorched Dunes unlocked! Pick it from the Story Mode menu', 5000); }
