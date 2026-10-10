@@ -72,11 +72,13 @@
   #b-avatar.locked{background:#3a463e;color:#aab;font-size:13px}
   .sws{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
   .sws.big{gap:7px;margin-bottom:8px;justify-content:center}.sws.big .sw{width:32px;height:32px}
-  #avstick{position:sticky;top:6px;z-index:3;display:flex;gap:10px;justify-content:center;align-items:flex-start;margin:4px auto 8px}
+  #avstick{display:flex;gap:10px;justify-content:center;align-items:flex-start;margin:0 auto}
   #avport,#avprev{display:block;box-shadow:0 4px 12px #0008;background:#2e4a33;border-radius:14px;border:1px solid #3a5a40}
-  #avport{width:104px;height:177px;cursor:pointer;touch-action:manipulation}
+  #avport{width:88px;height:150px;cursor:pointer;touch-action:manipulation}
   #avprev{width:78px;height:78px}
   .avside{text-align:center}.avcap{font-size:11px;opacity:.75;margin-top:3px}
+  #s-avatar .colL{position:sticky;top:0;z-index:6;background:#16221a;margin:0 -16px 6px;padding:6px 16px 8px;border-bottom:1px solid #3a5a40;box-shadow:0 6px 8px -4px #000a}
+  @media (pointer:fine) and (min-width:820px){ #s-avatar .colL{margin:0;padding:0;border:0;background:none;box-shadow:none;align-self:start} }
   .sw.wheel{background:conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);position:relative}
   .sw.wheel i{position:absolute;inset:8px;border-radius:50%;border:1px solid #000a}
   .wheelpanel{margin:4px auto 10px;padding:10px;background:#1b2e20;border:1px solid #3a5a40;border-radius:14px;width:224px;text-align:center}
@@ -289,7 +291,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 87;
+const VERSION = 88;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
