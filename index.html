@@ -289,7 +289,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 86;
+const VERSION = 87;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -4351,10 +4351,23 @@ function drawPerson(c, shirt, skinCol, ph, crown, opt){
     }
 }
 // A trophy head for the portrait and cut scenes: the same head art, seen from above and turned to face the viewer (or away, from behind), sat on the wearer's head. Origin = the head centre, s = scale.
+// Thalassa's head worn in the portrait and cut scenes: a front-facing face with her crown across the brow, hair framing it (the top-down version has the face and crown on the front edge)
+function drawSeaWorn(c, back){
+  const TEAL = '#0f4a50'; c.lineJoin = 'round'; c.strokeStyle = '#000'; c.lineWidth = 0.7;
+  c.fillStyle = TEAL; c.beginPath(); c.ellipse(0, 0.5, 10.4, 11.6, 0, 0, 7); c.fill(); c.stroke();
+  if (back){ c.fillStyle = '#ff7a8a'; c.strokeStyle = '#8a2a3a'; c.lineWidth = 0.5; for (let i = -2; i <= 2; i++){ const x = i*3.6; c.beginPath(); c.moveTo(x - 1.8, -9 + Math.abs(i)*0.5); c.lineTo(x, -13.4 + (i % 2 ? 1.4 : 0)); c.lineTo(x + 1.8, -9 + Math.abs(i)*0.5); c.closePath(); c.fill(); c.stroke(); } c.strokeStyle = '#06282c'; c.lineWidth = 0.6; for (let i = -3; i <= 3; i++){ c.beginPath(); c.moveTo(i*2.6, -6); c.lineTo(i*3, 10); c.stroke(); } return; }
+  c.fillStyle = TEAL; c.beginPath(); c.roundRect(-11.4, 0, 4.4, 11, 2); c.fill(); c.stroke(); c.beginPath(); c.roundRect(7, 0, 4.4, 11, 2); c.fill(); c.stroke();
+  c.fillStyle = '#e8bfa5'; c.strokeStyle = '#8a5a44'; c.lineWidth = 0.7; c.beginPath(); c.ellipse(0, 1.6, 7.3, 8.6, 0, 0, 7); c.fill(); c.stroke();
+  c.fillStyle = TEAL; c.beginPath(); c.moveTo(-7.4, 0); c.quadraticCurveTo(-5.4, -9, 0, -9); c.quadraticCurveTo(5.4, -9, 7.4, 0); c.quadraticCurveTo(3.6, -4.2, 0, -4.6); c.quadraticCurveTo(-3.6, -4.2, -7.4, 0); c.fill();
+  c.fillStyle = '#ff7a8a'; c.strokeStyle = '#8a2a3a'; c.lineWidth = 0.5; for (let i = -2; i <= 2; i++){ const x = i*3.3, y0 = -6.4 + Math.abs(i)*0.9; c.beginPath(); c.moveTo(x - 1.7, y0); c.lineTo(x, y0 - 5 + (i % 2 ? 1.3 : 0)); c.lineTo(x + 1.7, y0); c.closePath(); c.fill(); c.stroke(); }
+  c.strokeStyle = '#06282c'; c.lineWidth = 1; c.beginPath(); c.moveTo(-5.2, -1.6); c.lineTo(-1.2, -0.6); c.moveTo(5.2, -1.6); c.lineTo(1.2, -0.6); c.stroke();
+  c.fillStyle = '#6ff0ff'; c.shadowColor = '#6ff0ff'; c.shadowBlur = 3; for (const sd of [-1, 1]){ c.beginPath(); c.arc(sd*2.9, 1.1, 1.15, 0, 7); c.fill(); } c.shadowBlur = 0;
+  c.strokeStyle = '#a0405a'; c.lineWidth = 0.7; c.beginPath(); c.moveTo(-2, 6.2); c.quadraticCurveTo(0, 5.2, 2, 6.2); c.stroke();
+}
 let _trTmp = null;
 function drawTrophyOn(c, id, s, back, tint){
   if (!TROPHIES[id]) return;
-  const place = g => { g.save(); g.scale(s, s); g.rotate(back ? -Math.PI/2 : Math.PI/2); g.translate(-1.5, 0); drawTrophyHead(g, id); g.restore(); };
+  const place = g => { g.save(); g.scale(s, s); if (id === 'sea') drawSeaWorn(g, back); else { g.rotate(back ? -Math.PI/2 : Math.PI/2); g.translate(-1.5, 0); drawTrophyHead(g, id); } g.restore(); };
   if (!tint){ c.save(); place(c); c.restore(); return; }
   const R = Math.ceil(24*s); if (!_trTmp) _trTmp = document.createElement('canvas'); _trTmp.width = _trTmp.height = R*2; const g = _trTmp.getContext('2d'); g.clearRect(0, 0, R*2, R*2);
   g.save(); g.translate(R, R); place(g); g.restore(); g.globalCompositeOperation = 'source-atop'; g.globalAlpha = 0.74; g.fillStyle = tint; g.fillRect(0, 0, R*2, R*2); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
