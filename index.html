@@ -287,7 +287,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 78;
+const VERSION = 79;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -5413,7 +5413,7 @@ function drawAvatarFigure(c, L, back, tint){      // the whole person standing, 
   else if (st !== 5 && st !== 4 && hs !== 6){ c.beginPath(); c.ellipse(0, -262, 24.5, 28.5, 0, Math.PI*1.04, Math.PI*1.96); c.quadraticCurveTo(14, -266, 0, -272); c.quadraticCurveTo(-14, -266, -24, -262); c.closePath(); c.fillStyle = hair; c.fill(); c.stroke(); if (st === 1){ rr(-26, -266, 6, 40, 3, hair); rr(20, -266, 6, 40, 3, hair); } }
   if (st === 3) el(0, -296, 11, 11, hair);
   if (st === 2 && back) rr(-6, -254, 12, 58, 6, hair);
-  if (st === 4 && hs !== 6){ rr(-5, -294, 10, back ? 40 : 34, 4, hair); }
+  if (st === 4 && hs !== 6){ rr(-5, -294, 10, back ? 40 : 18, 4, hair); }
   // face
   if (!back){
     for (const sd of [-1, 1]){ el(sd*9.5, -262, 5.5, 4.6, K('#ffffff')); c.beginPath(); c.arc(sd*9.5 + 0.8, -262, 2.4, 0, 7); c.fillStyle = K('#1d2a3a'); c.fill(); c.beginPath(); c.moveTo(sd*9.5 - 6, -271); c.lineTo(sd*9.5 + 6, -270.5 + sd*0.5); c.lineWidth = 2.2; c.stroke(); c.lineWidth = 3; }
@@ -6054,7 +6054,7 @@ CSP.hero = (c, t, talk) => {
   c.fillStyle = hair;
   if (st === 0 || st === 1 || st === 2 || st === 3){ c.beginPath(); c.moveTo(-50, -170); c.quadraticCurveTo(-58, -238, 0, -236); c.quadraticCurveTo(58, -238, 50, -170); c.quadraticCurveTo(42, -208, 8, -205); c.quadraticCurveTo(-26, -202, -40, -184); c.closePath(); c.fill(); }
   if (st === 3){ c.beginPath(); c.arc(0, -246, 22, 0, 7); c.fill(); }
-  if (st === 4){ c.beginPath(); c.moveTo(-14, -218); for (let i = 0; i < 5; i++){ c.lineTo(-14 + i*7 + 3.5, -262 + (i % 2)*14); c.lineTo(-14 + (i + 1)*7, -222); } c.lineTo(14, -218); c.lineTo(10, -190); c.lineTo(-10, -190); c.closePath(); c.fill(); }
+  if (st === 4){ c.beginPath(); c.moveTo(-14, -218); for (let i = 0; i < 5; i++){ c.lineTo(-14 + i*7 + 3.5, -262 + (i % 2)*14); c.lineTo(-14 + (i + 1)*7, -222); } c.lineTo(14, -218); c.lineTo(10, -208); c.lineTo(-10, -208); c.closePath(); c.fill(); }
   if (st === 5 && !hw){ c.fillStyle = 'rgba(255,255,255,0.18)'; c.beginPath(); c.ellipse(-14, -214, 14, 8, -0.5, 0, 7); c.fill(); }
   if (hw){      // headwear on the bust
     const dk = csShade(hat, 0.72), ln = (f) => { c.fillStyle = f; c.fill(); c.strokeStyle = 'rgba(0,0,0,0.55)'; c.lineWidth = 3; c.stroke(); };
