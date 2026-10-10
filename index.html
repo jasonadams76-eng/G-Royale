@@ -291,7 +291,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 88;
+const VERSION = 89;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -4366,10 +4366,44 @@ function drawSeaWorn(c, back){
   c.fillStyle = '#6ff0ff'; c.shadowColor = '#6ff0ff'; c.shadowBlur = 3; for (const sd of [-1, 1]){ c.beginPath(); c.arc(sd*2.9, 1.1, 1.15, 0, 7); c.fill(); } c.shadowBlur = 0;
   c.strokeStyle = '#a0405a'; c.lineWidth = 0.7; c.beginPath(); c.moveTo(-2, 6.2); c.quadraticCurveTo(0, 5.2, 2, 6.2); c.stroke();
 }
+// Every boss head worn in the portrait and cut scenes: front-facing (eyes in the middle of the face), or the back of the head.
+function drawTrophyWorn(c, id, back){
+  if (id === 'sea') return drawSeaWorn(c, back);
+  c.lineJoin = 'round'; c.lineCap = 'round'; c.strokeStyle = '#000'; c.lineWidth = 0.8;
+  const eyes = (x, y, col, r) => { c.fillStyle = col; c.shadowColor = col; c.shadowBlur = 3; for (const sd of [-1, 1]){ c.beginPath(); c.arc(sd*x, y, r, 0, 7); c.fill(); } c.shadowBlur = 0; };
+  const ell = (x, y, rx, ry, f) => { c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, 7); c.fillStyle = f; c.fill(); c.stroke(); };
+  const tri = (x1, y1, x2, y2, x3, y3, f) => { c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.lineTo(x3, y3); c.closePath(); c.fillStyle = f; c.fill(); c.stroke(); };
+  if (id === 'marsh'){            // Swamp Warden: peaked green hood, dark hollow, glowing eyes
+    tri(-5, -8, 0, -17, 5, -8, '#3f8f35'); ell(0, 0.5, 10.4, 11.4, '#3f8f35');
+    if (back){ c.strokeStyle = '#25581f'; c.lineWidth = 0.9; c.beginPath(); c.moveTo(0, -8); c.lineTo(0, 11); c.stroke(); return; }
+    ell(0, 1.4, 6.6, 7.6, '#0a140a'); eyes(2.7, 0.6, '#d8ff8a', 1.15);
+  } else if (id === 'cold'){      // Frost Colossus: icy head, crystal spikes, cyan eyes, long white-blue beard
+    for (let i = -3; i <= 3; i++){ const a = i*0.36, bx = Math.sin(a)*7.6, by = -Math.cos(a)*7.6 + 1; tri(bx - 1.8*Math.cos(a), by - 1.8*Math.sin(a), Math.sin(a)*14.5, -Math.cos(a)*14.5 + 1, bx + 1.8*Math.cos(a), by + 1.8*Math.sin(a), '#cfe8f7'); }
+    ell(0, 1, 8.8, 9.2, '#9bbfd8'); if (back) return;
+    c.beginPath(); c.moveTo(-7, 3.4); c.quadraticCurveTo(-9, 12, 0, 15.5); c.quadraticCurveTo(9, 12, 7, 3.4); c.quadraticCurveTo(3, 6.6, 0, 6.2); c.quadraticCurveTo(-3, 6.6, -7, 3.4); c.fillStyle = '#e9f4fb'; c.fill(); c.stroke();
+    eyes(3, -0.6, '#7fe8ff', 1.3); c.strokeStyle = '#4a7a9a'; c.lineWidth = 0.9; c.beginPath(); c.moveTo(-5, -3.2); c.lineTo(-1.2, -2.2); c.moveTo(5, -3.2); c.lineTo(1.2, -2.2); c.stroke();
+  } else if (id === 'desert'){    // Scorpion King: armoured carapace, bone crown, mandibles, golden eyes
+    for (const sd of [-1, 1]) tri(sd*8, 3.4, sd*13.2, 11.4, sd*5, 8.6, '#efe6c8');
+    ell(0, 0.6, 10.2, 10.4, '#a2501a');
+    for (let k = -2; k <= 2; k++) tri(k*3.6 - 1.7, -8.2, k*3.6, -14 + Math.abs(k)*1.2, k*3.6 + 1.7, -8.2, '#efe6c8');
+    if (back){ c.strokeStyle = '#6e3410'; c.lineWidth = 0.9; for (const x of [-4.5, 0, 4.5]){ c.beginPath(); c.moveTo(x, -7); c.lineTo(x*1.2, 9); c.stroke(); } return; }
+    ell(0, 0.5, 6.8, 5.8, '#b86a28'); c.fillStyle = '#2a1408'; c.beginPath(); c.roundRect(-6.2, -2.4, 12.4, 5.2, 2); c.fill(); c.stroke(); eyes(2.9, 0.2, '#ffd24a', 1.4);
+  } else if (id === 'forest'){    // Korvath: wooden face, antler boughs with leaves, amber eyes, dark nose
+    c.strokeStyle = '#4a3020'; c.lineWidth = 1.7; for (const sd of [-1, 1]){ c.beginPath(); c.moveTo(sd*4, -7); c.quadraticCurveTo(sd*9, -9.5, sd*9, -14.5); c.moveTo(sd*7.4, -9.2); c.lineTo(sd*11.6, -11); c.moveTo(sd*9, -12.4); c.lineTo(sd*5.8, -14.8); c.stroke(); c.fillStyle = '#4fa03d'; for (const [lx, ly] of [[9, -14.6], [11.8, -11.2], [5.6, -15]]){ c.beginPath(); c.arc(sd*lx, ly, 1.7, 0, 7); c.fill(); } }
+    c.strokeStyle = '#000'; c.lineWidth = 0.8; ell(0, 1, 8.8, 9.8, '#6b4a2c');
+    if (back){ c.strokeStyle = '#4a3320'; c.lineWidth = 0.9; for (const x of [-4, 0, 4]){ c.beginPath(); c.moveTo(x, -7); c.quadraticCurveTo(x*1.3, 1, x, 9); c.stroke(); } return; }
+    c.strokeStyle = '#4a3320'; c.lineWidth = 1; c.beginPath(); c.moveTo(-6, -3.4); c.lineTo(-1.6, -1.8); c.moveTo(6, -3.4); c.lineTo(1.6, -1.8); c.stroke(); c.strokeStyle = '#000'; c.lineWidth = 0.8;
+    eyes(3, -0.2, '#ffc23a', 1.4); tri(-1.8, 2.6, 1.8, 2.6, 0, 6.8, '#4a3320');
+  } else if (id === 'ravenrock'){ // War Machine: steel dome, orange visor slit, red lamp
+    ell(0, 0, 10.2, 10.2, '#7a8494'); c.strokeStyle = '#4a5262'; c.lineWidth = 1.2; c.beginPath(); c.arc(0, 0, 7.2, 0, 7); c.stroke(); c.strokeStyle = '#000'; c.lineWidth = 0.8;
+    if (!back){ c.fillStyle = '#10151c'; c.beginPath(); c.roundRect(-7.4, -2.8, 14.8, 5.8, 1.8); c.fill(); c.stroke(); c.fillStyle = '#e8902a'; c.shadowColor = '#e8902a'; c.shadowBlur = 4; c.fillRect(-6.2, -1.1, 12.4, 2.4); c.shadowBlur = 0; }
+    c.fillStyle = '#e8382a'; c.beginPath(); c.arc(0, -7.4, 1.7, 0, 7); c.fill(); c.stroke();
+  }
+}
 let _trTmp = null;
 function drawTrophyOn(c, id, s, back, tint){
   if (!TROPHIES[id]) return;
-  const place = g => { g.save(); g.scale(s, s); if (id === 'sea') drawSeaWorn(g, back); else { g.rotate(back ? -Math.PI/2 : Math.PI/2); g.translate(-1.5, 0); drawTrophyHead(g, id); } g.restore(); };
+  const place = g => { g.save(); g.scale(s, s); drawTrophyWorn(g, id, back); g.restore(); };
   if (!tint){ c.save(); place(c); c.restore(); return; }
   const R = Math.ceil(24*s); if (!_trTmp) _trTmp = document.createElement('canvas'); _trTmp.width = _trTmp.height = R*2; const g = _trTmp.getContext('2d'); g.clearRect(0, 0, R*2, R*2);
   g.save(); g.translate(R, R); place(g); g.restore(); g.globalCompositeOperation = 'source-atop'; g.globalAlpha = 0.74; g.fillStyle = tint; g.fillRect(0, 0, R*2, R*2); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
