@@ -289,7 +289,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 83;
+const VERSION = 85;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -6254,8 +6254,6 @@ CSP.kane = (c, t, talk) => {
   const bl = csBlink(t, 6);
   c.fillStyle = '#4a1620'; c.beginPath(); c.moveTo(-104, 0); c.lineTo(-96, -94); c.lineTo(-58, -112); c.lineTo(-54, 0); c.closePath(); c.fill(); c.beginPath(); c.moveTo(104, 0); c.lineTo(96, -94); c.lineTo(58, -112); c.lineTo(54, 0); c.closePath(); c.fill();
   csBody(c, '#30333b', 92);
-  c.fillStyle = '#464b57'; c.beginPath(); c.ellipse(-86, -82, 34, 24, -0.4, 0, 7); c.ellipse(86, -82, 34, 24, 0.4, 0, 7); c.fill();
-  c.strokeStyle = '#1a1c20'; c.lineWidth = 3; c.beginPath(); c.ellipse(-86, -82, 34, 24, -0.4, 0, 7); c.ellipse(86, -82, 34, 24, 0.4, 0, 7); c.stroke();
   csRaven(c, 0, -52, 2.1, '#c9d2e0');
   c.fillStyle = '#22242a'; c.beginPath(); c.moveTo(-44, -100); c.lineTo(-58, -146); c.lineTo(-26, -132); c.lineTo(0, -108); c.lineTo(26, -132); c.lineTo(58, -146); c.lineTo(44, -100); c.closePath(); c.fill();
   c.fillStyle = '#c79e84'; c.fillRect(-19, -134, 38, 30);
@@ -6265,8 +6263,6 @@ CSP.kane = (c, t, talk) => {
   c.fillStyle = '#8b8e98'; c.fillRect(-45, -184, 7, 24); c.fillRect(38, -184, 7, 24);
   csEyes(c, t, -174, 18, bl, '#f1ece4', '#4f6d8e', 9, 6.2);
   c.strokeStyle = '#26262c'; c.lineWidth = 7; c.lineCap = 'round'; for (const sd of [-1, 1]){ c.beginPath(); c.moveTo(sd*36, -194); c.lineTo(sd*8, -183); c.stroke(); }
-  c.strokeStyle = '#9a4f4a'; c.lineWidth = 3.4; c.beginPath(); c.moveTo(-28, -202); c.lineTo(-17, -176); c.lineTo(-9, -150); c.stroke();
-  c.strokeStyle = '#b08870'; c.lineWidth = 3; c.beginPath(); c.moveTo(0, -172); c.lineTo(-4, -156); c.lineTo(4, -154); c.stroke();
   csMouth(c, t, talk, -134, 13, '#7a3a3a', 3);
 };
 const CS_CH = {
