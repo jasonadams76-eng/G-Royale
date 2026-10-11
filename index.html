@@ -300,7 +300,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 98;
+const VERSION = 99;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -2652,6 +2652,7 @@ function build(a){
   const gx = Math.floor((a.x + Math.cos(a.angle)*62)/G), gy = Math.floor((a.y + Math.sin(a.angle)*62)/G);
   const k = wallKey(gx,gy);
   if (S.walls.has(k) || gx<0 || gy<0 || gx*G>=W || gy*G>=W || nearLake(gx*G+G/2, gy*G+G/2, 0)) return;       // no fences on the lakes or islands
+  if (S.koth && S.hill && Math.hypot(gx*G + G/2 - S.hill.x, gy*G + G/2 - S.hill.y) < S.hill.r + 50){ if (a === S.player) toast("Can't build on the Hill", 1500); return; }
   S.walls.set(k, {gx, gy, hp:mapOf().fenceHp || 150}); a.wood -= 10; sfx('bd', a.x, a.y);
 }
 // kill feed (top left): the last few eliminations, fading out after a few seconds
@@ -2833,6 +2834,17 @@ function fire(a){
       }
     }
     S.trees = S.trees.filter(t => t.wood > 0 || t.solid);
+    if (!S.story) for (const [k, fw] of [...S.walls]){      // the pickaxe breaks fences that players built (3 swings), not the walls of map buildings
+      if (fw.bld) continue;
+      const fx = fw.gx*G + G/2, fy = fw.gy*G + G/2, d = Math.hypot(fx - a.x, fy - a.y);
+      if (d < w.range + G*0.7){
+        const ang = Math.atan2(fy - a.y, fx - a.x);
+        if (d < G*0.9 || Math.abs(Math.atan2(Math.sin(ang - a.angle), Math.cos(ang - a.angle))) < 0.9){
+          fw.hp -= 50; burst(fx, fy, '#c9a36a', 6); sfx('ch', fx, fy);
+          if (fw.hp <= 0){ S.walls.delete(k); burst(fx, fy, '#c9a36a', 12); }
+        }
+      }
+    }
     for (const o of S.actors){
       if (o === a || !o.alive || o.team === a.team) continue;   // no friendly fire
       const d = Math.hypot(o.x-a.x, o.y-a.y);
@@ -2983,11 +2995,25 @@ function dropItem(a){
   a.heal = 0; a.inv[i] = null; a.cur = 0; sfx('pk', a.x, a.y);
 }
 // When ammo gets scarce (little on the ground in the safe zone, little carried), fresh boxes appear at random spots inside the safe zone.
+function kothSupply(){      // King of the Hill: every 15 seconds a crate with a box of each ammo type lands around the hill
+  if (S.over || !S.hill) return;
+  let any = false;
+  for (const g of ['pistol','shotgun','ar']){
+    const key = 'ammo_' + g, m = AMMO[key]; let x = S.hill.x, y = S.hill.y;
+    for (let tries = 0; tries < 14; tries++){
+      const ang = rnd(0, Math.PI*2), r2 = S.hill.r*rnd(0.5, 1.9);
+      x = Math.round(Math.max(60, Math.min(W-60, S.hill.x + Math.cos(ang)*r2))); y = Math.round(Math.max(60, Math.min(W-60, S.hill.y + Math.sin(ang)*r2)));
+      if (!nearLake(x, y, 15) && S.trees.every(t => Math.hypot(t.x-x, t.y-y) > 40) && !S.walls.has(wallKey(Math.floor(x/G), Math.floor(y/G)))) break;
+    }
+    S.loot.push({x, y, type:key, n:m.box}); burst(x, y, '#ffd84a', 16); any = true;
+  }
+  if (any){ toast('Ammo crate dropped near the Hill!', 1800); if (NET.role === 'host') broadcast({t:'tst', x:'Ammo crate dropped near the Hill!'}); }
+}
 function ammoCheck(){
   if (S.over) return;
   const st = S.storm, R = Math.min(st.r, st.nr) * 0.9;
   if (R < 80) return;
-  const alive = S.actors.filter(a => a.alive), need = S.koth ? Math.max(5, Math.ceil(alive.length * 0.8)) : Math.max(3, Math.ceil(alive.length * 0.35));      // boxes' worth of each ammo type the map should hold
+  const alive = S.actors.filter(a => a.alive), need = S.koth ? Math.max(8, Math.ceil(alive.length * 1.2)) : Math.max(3, Math.ceil(alive.length * 0.35));      // boxes' worth of each ammo type the map should hold
   let dropped = 0;
   for (const g of ['pistol','shotgun','ar']){
     const key = 'ammo_' + g, m = AMMO[key];
@@ -2996,7 +3022,7 @@ function ammoCheck(){
     for (const a of alive) supply += a.ammo[g] / m.box;
     for (const c of S.chests) if (!c.open && Math.hypot(c.x-st.cx, c.y-st.cy) < st.r) supply += 0.3;
     if (supply >= need) continue;
-    for (let k = Math.min(S.koth ? 4 : 3, Math.ceil(need - supply)); k > 0; k--){
+    for (let k = Math.min(S.koth ? 6 : 3, Math.ceil(need - supply)); k > 0; k--){
       let x = st.nx, y = st.ny;
       for (let tries = 0; tries < 12; tries++){
         const ang = rnd(0, Math.PI*2), r = Math.sqrt(Math.random()) * R, nearHill = S.koth && S.hill && Math.random() < 0.7, cx2 = nearHill ? S.hill.x : st.nx, cy2 = nearHill ? S.hill.y : st.ny, r2 = nearHill ? S.hill.r*rnd(0.4, 2.6) : r;      // in King of the Hill most drops land around the hill
@@ -3084,7 +3110,7 @@ function openChest(c){
   if (c.shieldgen) drops.push({type:'shieldgen', rar:4});
   if (c.jetpack) drops.push({type:'jetpack', rar:4});
   if (Math.random() < GR_CHANCE) drops.push({type:'grenade', rar:4});   // 7%: a (gold) grenade
-  drops.filter(d => GUN_W[d.type]).forEach(d => { if (!S.koth || Math.random() < 0.2) drops.push({type:'ammo_'+d.type, n:AMMO['ammo_'+d.type].box}); });      // every gun comes with a box of its bullets (King of the Hill: guns are plentiful, ammo comes from the drops)
+  drops.filter(d => GUN_W[d.type]).forEach(d => { if (!S.koth || Math.random() < 0.5) drops.push({type:'ammo_'+d.type, n:AMMO['ammo_'+d.type].box}); });      // every gun comes with a box of its bullets (King of the Hill: guns are plentiful, ammo comes from the drops)
   if (!S.koth && Math.random() < 0.4){ const t = ['ammo_pistol','ammo_shotgun','ammo_ar'][Math.random()*3|0]; drops.push({type:t, n:AMMO[t].box}); }   // 40%: an extra box
   if (c.island){ drops.push({type:pick(), rar:Math.max(rollRarity(), rollRarity())}); drops.push({type:'shield'}); }      // island chests are richer: a better gun and a shield potion
   const off = Math.random()*Math.PI*2;
@@ -3345,6 +3371,7 @@ function update(dt){
   if (S.ammoChk === undefined) S.ammoChk = S.koth ? 8 : 40;                 // first supply check 40 s in (chests haven't been looted yet before that)
   S.ammoChk -= dt;
   if (S.ammoChk <= 0){ S.ammoChk = S.koth ? 6 : 10; ammoCheck(); }
+  if (S.koth){ if (S.supT === undefined) S.supT = 15; S.supT -= dt; if (S.supT <= 0){ S.supT = 15; kothSupply(); } }
   const stormDps = 8 + st.i*4;   // per second: roughly 12 seconds to eliminate at first, much faster in later phases
 
   if (S.koth){
