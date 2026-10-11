@@ -214,6 +214,7 @@
       <div class="lbl">Glove colour</div><div class="sws big" id="av-glovec"></div>
       <div class="lbl">Back</div><div class="mapbox" id="av-back"></div>
       <div class="lbl">Cape colour</div><div class="sws big" id="av-capec"></div>
+      <div class="lbl">Prestige extras</div><div class="mapbox" id="av-xtra"></div>
       <div class="lbl">Face gear</div><div class="mapbox" id="av-face"></div>
       <div class="lbl">Shirt style</div><div class="mapbox" id="av-sstyle"></div>
       <div class="lbl">Sleeves</div><div class="mapbox" id="av-sleeves"></div>
@@ -299,7 +300,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 94;
+const VERSION = 95;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -453,6 +454,7 @@ const SHIRTS = ['#e53935','#fb8c00','#fdd835','#43a047','#00acc1','#1e88e5','#8e
   '#b71c1c','#ff7043','#ffee58','#c6ff00','#1b5e20','#00e676','#009688','#4dd0e1','#0d47a1','#64b5f6','#303f9f','#7e57c2','#4a148c','#f06292','#880e4f','#8d6e63','#4e342e','#9e9e9e','#455a64','#212121'];      // (the first nine are the originals: saved avatars keep their colours)
 const HAIRS = ['#1a1410','#4a3020','#8a5a35','#c9a24b','#e8d28a','#b5361b','#7a7a85','#f2f2f2','#3a7bd5','#e0457b','#43a047','#8e24aa'];
 const HAIRSTYLES = ['Short','Long','Ponytail','Bun','Mohawk','Bald','Pigtails','Spiky','Mullet','Cornrows','Dreadlocks'];
+const XTRA = ['Gold Medal Necklace','Glow Aura','Gold Finish'];      // look.xtra is a set of these (bit 0, 1, 2)
 const HANDS = ['None','Gloves'], BACKS = ['None','Cape'];
 const FACES = ['None','Goggles','Aviator Sunglasses','Ninja Mask','Eyepatch'];
 const SHIRTSTYLES = ['T-Shirt','Sleeveless','Button-Up','Polo','Basketball Jersey','Football Jersey'];
@@ -466,9 +468,9 @@ const QCOL = ['#1a1a1a','#555555','#9e9e9e','#f5f5f5','#6d4c41','#a1887f','#c628
 const LKEYS = ['skin','hair','shirt','shirt2','pants','belt','shoes','hat','outer','tie','gloves','cape'], LCDEF = {gloves:'#2b2b2b', cape:'#a31d2a', tie:'#e53935', pants:'#35507a', belt:'#5a3a1f', shoes:'#3b3b44', hat:'#b5361b', outer:'#4a5d3a'};
 const hexOK = v => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : null;
 const cleanCx = x => { const o = {}; if (x && typeof x === 'object') for (const k of LKEYS){ const h = hexOK(x[k]); if (h) o[k] = h; } return o; };
-const lkc = (L, k) => { const h = L.cx && hexOK(L.cx[k]); if (h) return h; if (k === 'skin') return SKINS[L.skin] || SKINS[1]; if (k === 'hair') return HAIRS[L.hair] || HAIRS[1]; if (k === 'shirt') return SHIRTS[L.shirt] || SHIRTS[5]; if (k === 'shirt2') return SHIRTS[L.shirt2] || SHIRTS[8]; return LCDEF[k]; };      // the colour of one part of an avatar
-const lkOf = L => { const c = {}; for (const k of LKEYS) c[k] = lkc(L, k); return {c, st:[okIdx(L.pants, PANTS.length, 0), okIdx(L.belt, BELTS.length, 0), okIdx(L.shoes, SHOES.length, 0), okIdx(L.hat, HATS.length, 0), okIdx(L.outer, OUTERS.length, 0), okIdx(L.sstyle, SHIRTSTYLES.length, 0), okIdx(L.face, FACES.length, 0), okIdx(L.hands, HANDS.length, 0), okIdx(L.back, BACKS.length, 0)]}; };      // what other players are told: every colour, plus the pants / belt / shoe / headwear styles
-const cleanLk = x => { if (!x || typeof x !== 'object' || !x.c) return null; const c = {}; for (const k of LKEYS) c[k] = hexOK(x.c[k]); const st = Array.isArray(x.st) ? x.st : []; return {c, st:[okIdx(st[0], PANTS.length, 0), okIdx(st[1], BELTS.length, 0), okIdx(st[2], SHOES.length, 0), okIdx(st[3], HATS.length, 0), okIdx(st[4], OUTERS.length, 0), okIdx(st[5], SHIRTSTYLES.length, 0), okIdx(st[6], FACES.length, 0), okIdx(st[7], HANDS.length, 0), okIdx(st[8], BACKS.length, 0)]}; };
+const lkc = (L, k) => { if ((k === 'hat' || k === 'shoes') && ((L.xtra | 0) & 4)) return '#e6b422'; const h = L.cx && hexOK(L.cx[k]); if (h) return h; if (k === 'skin') return SKINS[L.skin] || SKINS[1]; if (k === 'hair') return HAIRS[L.hair] || HAIRS[1]; if (k === 'shirt') return SHIRTS[L.shirt] || SHIRTS[5]; if (k === 'shirt2') return SHIRTS[L.shirt2] || SHIRTS[8]; return LCDEF[k]; };      // the colour of one part of an avatar
+const lkOf = L => { const c = {}; for (const k of LKEYS) c[k] = lkc(L, k); return {c, st:[okIdx(L.pants, PANTS.length, 0), okIdx(L.belt, BELTS.length, 0), okIdx(L.shoes, SHOES.length, 0), okIdx(L.hat, HATS.length, 0), okIdx(L.outer, OUTERS.length, 0), okIdx(L.sstyle, SHIRTSTYLES.length, 0), okIdx(L.face, FACES.length, 0), okIdx(L.hands, HANDS.length, 0), okIdx(L.back, BACKS.length, 0), (L.xtra | 0) & 7]}; };      // what other players are told: every colour, plus the pants / belt / shoe / headwear styles
+const cleanLk = x => { if (!x || typeof x !== 'object' || !x.c) return null; const c = {}; for (const k of LKEYS) c[k] = hexOK(x.c[k]); const st = Array.isArray(x.st) ? x.st : []; return {c, st:[okIdx(st[0], PANTS.length, 0), okIdx(st[1], BELTS.length, 0), okIdx(st[2], SHOES.length, 0), okIdx(st[3], HATS.length, 0), okIdx(st[4], OUTERS.length, 0), okIdx(st[5], SHIRTSTYLES.length, 0), okIdx(st[6], FACES.length, 0), okIdx(st[7], HANDS.length, 0), okIdx(st[8], BACKS.length, 0), (st[9] | 0) & 7]}; };
 
 // ----- Unlockable avatar items: earned by Battle Royale play (level counts XP from any mode) -----
 const CT = {};      // the counters, refreshed whenever a game ends
@@ -490,7 +492,7 @@ const UNL = {
   back:{1:[['bestk',12]]},
   face:{1:[['lvl',12]], 2:[['top3',10]], 3:[['win0',1]], 4:[['comeback',1]]},
   pat:{5:[['top5',25]], 6:[['kills',150]], 7:[['lvl',15]]}};
-const SOON = new Set(['belt:3']);      // not drawn yet: shown locked as "coming soon"
+const SOON = new Set([]);      // not drawn yet: shown locked as "coming soon"
 const ROWNAMES = {hands:HANDS, back:BACKS, face:FACES, sstyle:SHIRTSTYLES, style:HAIRSTYLES, hat:HATS, shoes:SHOES, pants:PANTS, belt:BELTS, outer:OUTERS, pat:PATTERNS};
 const unlockedIdx = (row, i) => { if (!i) return true; const u = UNL[row] && UNL[row][i]; if (!u) return true; if (SOON.has(row + ':' + i)) return false; return u.every(([k, n]) => (CT[k] || 0) >= n); };
 function lockText(row, i){
@@ -498,8 +500,12 @@ function lockText(row, i){
   const req = u.map(([k, n]) => CTX[k](n) + ((k === 'win0' || k === 'comeback') ? '' : ' (' + Math.min(CT[k] || 0, n) + ' of ' + n + ')')).join(', and ');
   return SOON.has(row + ':' + i) ? '\u{1F512} Coming soon. To unlock: ' + req : '\u{1F512} ' + req;
 }
+const XUNL = [[['wins', 25]], [['kills', 1000]], [['wins', 50]]];
+const unlockedX = i => XUNL[i].every(([k, n]) => (CT[k] || 0) >= n);
+const lockTextX = i => '\u{1F512} ' + XUNL[i].map(([k, n]) => CTX[k](n) + ' (' + Math.min(CT[k] || 0, n) + ' of ' + n + ')').join(', and ');
 function safeLook(L){      // an avatar using something not unlocked falls back to the default for that part
-  let o = null; for (const row in UNL){ if (L[row] && !unlockedIdx(row, L[row] | 0)){ o = o || Object.assign({}, L); o[row] = 0; } } return o || L;
+  let o = null; { let m = (L.xtra | 0) & 7; for (let i = 0; i < 3; i++) if ((m >> i & 1) && !unlockedX(i)) m &= ~(1 << i); if (m !== ((L.xtra | 0) & 7)){ o = Object.assign({}, L); o.xtra = m; } }
+  if (o) L = o; o = null; for (const row in UNL){ if (L[row] && !unlockedIdx(row, L[row] | 0)){ o = o || Object.assign({}, L); o[row] = 0; } } return o || L;
 }
 const AVATAR_UNLOCK = 5;      // you play as the plain starter avatar until this level, then you can design your own
 const NOOB_LOOK = {shirt:26, skin:1, hair:1, pat:0, shirt2:8, style:0, hv:3, sleeve:0, pants:0, belt:0, shoes:0, hat:0, cx:{}};      // grey shirt, short brown hair
@@ -531,11 +537,11 @@ const snowOwned = () => { try { return (parseInt(localStorage.getItem('sr-kills-
 const lookMsg = () => { const l = curLook(), me = typeof look !== 'undefined' ? look : l; return {shirt:l.shirt, skin:l.skin, hair:l.hair, pat:l.pat, shirt2:l.shirt2, style:l.style, sleeve:l.sleeve, trophy:l.trophy || '', snow:crtCode(me.crt), lk:lkOf(l)}; };      // what other players are told about my avatar
 const okIdx = (i, n, d) => Number.isInteger(i) && i >= 0 && i < n ? i : d;
 let soloCrown = false;           // solo: did I win my previous game?
-let look = {shirt:5, skin:1, hair:1, pat:0, shirt2:8, style:0, sstyle:0, face:0, hands:0, back:0, hv:3, sleeve:0, pants:0, belt:0, shoes:0, hat:0, outer:0, cx:{}};      // my avatar: shirt colour, skin tone, hair colour, shirt pattern and its second colour (indexes into SHIRTS / SKINS / HAIRS / PATTERNS)
+let look = {shirt:5, skin:1, hair:1, pat:0, shirt2:8, style:0, sstyle:0, face:0, hands:0, back:0, xtra:0, hv:3, sleeve:0, pants:0, belt:0, shoes:0, hat:0, outer:0, cx:{}};      // my avatar: shirt colour, skin tone, hair colour, shirt pattern and its second colour (indexes into SHIRTS / SKINS / HAIRS / PATTERNS)
 // (hair styles that were removed are converted below, once, when an older saved avatar is loaded)
 try { const l = JSON.parse(localStorage.getItem('sr-look')); if (l){ look.shirt = okIdx(l.shirt, SHIRTS.length, 5); look.skin = okIdx(l.skin, SKINS.length, 1); look.hair = okIdx(l.hair, HAIRS.length, 1); look.pat = okIdx(l.pat, PATTERNS.length, 0); look.sleeve = okIdx(l.sleeve, SLEEVES.length, 0); look.shirt2 = okIdx(l.shirt2, SHIRTS.length, 8); look.trophy = trophyOwned(l.trophy) ? l.trophy : ''; look.crt = l.crt === 'snow' || l.crt === 'merman' ? l.crt : (l.snow ? 'snow' : ''); const oldNames = l.hv === 3 ? HAIRSTYLES : l.hv === 2 ? ['Short','Long','Ponytail','Bun','Mohawk','Afro','Bald'] : ['Short','Buzz Cut','Long','Ponytail','Bun','Mohawk','Afro','Bald'];
     const nm = Number.isInteger(l.style) ? oldNames[l.style] : null; look.style = Math.max(0, HAIRSTYLES.indexOf(nm));      /* removed styles (Buzz Cut, Afro) fall back to Short */ } else look.shirt = Math.random()*SHIRTS.length|0; } catch(_){}
-try { const l = JSON.parse(localStorage.getItem('sr-look')) || {}; look.pants = okIdx(l.pants, PANTS.length, 0); look.belt = okIdx(l.belt, BELTS.length, 0); look.shoes = okIdx(l.shoes, SHOES.length, 0); look.hat = okIdx(l.hat, HATS.length, 0); look.outer = okIdx(l.outer, OUTERS.length, 0); look.sstyle = okIdx(l.sstyle, SHIRTSTYLES.length, 0); look.face = okIdx(l.face, FACES.length, 0); look.hands = okIdx(l.hands, HANDS.length, 0); look.back = okIdx(l.back, BACKS.length, 0); look.cx = cleanCx(l.cx); } catch(_){}
+try { const l = JSON.parse(localStorage.getItem('sr-look')) || {}; look.pants = okIdx(l.pants, PANTS.length, 0); look.belt = okIdx(l.belt, BELTS.length, 0); look.shoes = okIdx(l.shoes, SHOES.length, 0); look.hat = okIdx(l.hat, HATS.length, 0); look.outer = okIdx(l.outer, OUTERS.length, 0); look.sstyle = okIdx(l.sstyle, SHIRTSTYLES.length, 0); look.face = okIdx(l.face, FACES.length, 0); look.hands = okIdx(l.hands, HANDS.length, 0); look.back = okIdx(l.back, BACKS.length, 0); look.xtra = okIdx(l.xtra, 8, 0); look.cx = cleanCx(l.cx); } catch(_){}
 try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){}      // keep the (migrated) avatar
 const PLAYER_COLORS = ['#4af','#fa4','#e5e','#5e8','#ee4','#f66','#4ee','#a8f'];
 const NET = {
@@ -4308,6 +4314,7 @@ function drawPerson(c, shirt, skinCol, ph, crown, opt){
     {   // a little person seen from above, facing right: feet, shoulders (team colour), arms, head with hair
       const skin = skinCol;
       const LK = opt.lk, LC = LK && LK.c, LS = LK && LK.st || [0, 0, 0, 0, 0], OW = LS[4] | 0, SS = LS[5] | 0, JL = OW === 1 || OW === 2 || OW === 5, OC = LC && LC.outer;
+      if ((LS[9] | 0) & 2){ const ag = c.createRadialGradient(0, 0, 4, 0, 0, 27); ag.addColorStop(0, 'rgba(255,240,160,0.55)'); ag.addColorStop(0.6, 'rgba(255,214,90,0.28)'); ag.addColorStop(1, 'rgba(255,200,60,0)'); c.fillStyle = ag; c.beginPath(); c.arc(0, 0, 27, 0, 7); c.fill(); }      // glow aura
       if (!LK){
         c.fillStyle = '#3b3b44';                                                       // shoes step as you move
         c.beginPath(); c.ellipse(ph, -6, 5.5, 3.6, 0, 0, 7); c.fill(); c.stroke();
@@ -4376,6 +4383,7 @@ function drawPerson(c, shirt, skinCol, ph, crown, opt){
         if (OW === 2){ c.beginPath(); c.ellipse(-6.5, 0, 6.2, 7.6, 0, 0, 7); c.fill(); c.stroke(); c.strokeStyle = mixHex(OC, '#000000', 0.4); c.lineWidth = 1; c.beginPath(); c.moveTo(-9, -3); c.quadraticCurveTo(-5, 0, -9, 3); c.stroke(); c.strokeStyle = '#000'; c.lineWidth = 2; }
         else if (OW === 3){ for (const sy of [-1, 1]){ c.beginPath(); c.ellipse(0.5, sy*11.5, 4.6, 3.4, 0, 0, 7); c.fill(); c.stroke(); c.fillStyle = mixHex(OC, '#ffffff', 0.3); c.fillRect(-1.5, sy*11.5 - 0.8, 4, 1.6); c.fillStyle = OC; } }
       }
+      if ((LS[9] | 0) & 1){ c.strokeStyle = '#e6b422'; c.lineWidth = 1.3; c.beginPath(); c.arc(1.5, 0, 8.4, Math.PI*0.55, Math.PI*1.45); c.stroke(); c.fillStyle = '#e6b422'; c.beginPath(); c.arc(-6.6, 0, 1.6, 0, 7); c.fill(); c.strokeStyle = '#000'; c.lineWidth = 2; }      // medal necklace
       const hc = opt.hair || '#4a3020', hs = opt.style | 0;                            // hair style: 0 short, 1 long, 2 ponytail, 3 bun, 4 mohawk, 5 bald
       {
         c.fillStyle = hc;
@@ -5414,6 +5422,7 @@ function checkUnlockMsg(){      // new avatar items earned since the last time y
     if (!$('s-main') || $('s-main').hidden || $('menu').classList.contains('hide') || !avatarOpen()) return;
     ctrRefresh(); let seen = []; try { seen = JSON.parse(localStorage.getItem('sr-unl-seen') || '[]'); } catch(_){ seen = []; }
     const out = []; for (const row in UNL) for (const i in UNL[row]){ const key = row + ':' + i; if (!seen.includes(key) && unlockedIdx(row, +i)) out.push([key, ROWNAMES[row][+i]]); }
+    XTRA.forEach((nm, i) => { const key = 'xtra:' + i; if (!seen.includes(key) && unlockedX(i)) out.push([key, nm]); });
     if (!out.length) return;
     localStorage.setItem('sr-unl-seen', JSON.stringify(seen.concat(out.map(q => q[0]))));
     const o = document.createElement('div'); o.style.cssText = 'position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center';
@@ -5482,7 +5491,7 @@ function drawXPLine(x, y, size){
   ctx.strokeText(t, x, y); ctx.fillStyle = g.up ? '#7dff7d' : '#ffd34d'; ctx.fillText(t, x, y);
 }
 showXP(); showKills();
-ctrRefresh(); { let ch = false; for (const row in UNL) if (look[row] && !unlockedIdx(row, look[row] | 0)){ look[row] = 0; ch = true; } if (ch) try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){} }      // a saved avatar using something not unlocked falls back to the default
+ctrRefresh(); { let ch = false; for (let i = 0; i < 3; i++) if ((look.xtra >> i & 1) && !unlockedX(i)){ look.xtra &= ~(1 << i); ch = true; } for (const row in UNL) if (look[row] && !unlockedIdx(row, look[row] | 0)){ look[row] = 0; ch = true; } if (ch) try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){} }      // a saved avatar using something not unlocked falls back to the default
 
 // total Royale wins in solo and bot matches (kept on this device)
 function getWins(m){ try { return Math.max(0, parseInt(localStorage.getItem('sr-wins-' + (m || soloMode)), 10) || 0); } catch(_){ return 0; } }
@@ -5565,11 +5574,12 @@ function drawCowboyHat(c, hat, band, stud, line, lw, back){
 function drawAvatarFigure(c, L, back, tint){      // the whole person standing, front or back (origin = the ground between the feet; about 300 units tall with the hat)
   const K = col => tint ? mixHex(col, tint, 0.72) : col;
   const skin = K(lkc(L, 'skin')), hair = K(lkc(L, 'hair')), shirt = K(lkc(L, 'shirt')), shirt2 = K(lkc(L, 'shirt2')), pants = K(lkc(L, 'pants')), belt = K(lkc(L, 'belt')), shoes = K(lkc(L, 'shoes')), hat = K(lkc(L, 'hat')), line = K('#000000');
-  const OW = L.outer | 0, ow = K(lkc(L, 'outer')), jl = OW === 1 || OW === 2 || OW === 5, tcol = OW === 2 || ((OW === 1 || OW === 5) && back) ? ow : shirt, tr = TROPHIES[L.trophy] ? L.trophy : '', ps = L.pants | 0, bs = L.belt | 0, ss = L.shoes | 0, hs = tr ? 0 : L.hat | 0, st = tr ? 5 : L.style | 0, sl = L.sleeve | 0, pat = L.pat | 0, SS = L.sstyle | 0, fg = tr ? 0 : L.face | 0, noTop = hs >= 7 && hs !== 9, GLV = (L.hands | 0) === 1, glc = K(lkc(L, 'gloves')), CPV = (L.back | 0) === 1, cpc = K(lkc(L, 'cape'));
+  const OW = L.outer | 0, ow = K(lkc(L, 'outer')), jl = OW === 1 || OW === 2 || OW === 5, tcol = OW === 2 || ((OW === 1 || OW === 5) && back) ? ow : shirt, tr = TROPHIES[L.trophy] ? L.trophy : '', ps = L.pants | 0, bs = L.belt | 0, ss = L.shoes | 0, hs = tr ? 0 : L.hat | 0, st = tr ? 5 : L.style | 0, sl = L.sleeve | 0, pat = L.pat | 0, SS = L.sstyle | 0, fg = tr ? 0 : L.face | 0, noTop = hs >= 7 && hs !== 9, GLV = (L.hands | 0) === 1, glc = K(lkc(L, 'gloves')), CPV = (L.back | 0) === 1, cpc = K(lkc(L, 'cape')), XT = (L.xtra | 0) & 7, gold = K('#e6b422');
   c.save(); c.lineJoin = 'round'; c.lineCap = 'round'; c.lineWidth = 3; c.strokeStyle = line;
   const rr = (x, y, w, h, r, f) => { c.beginPath(); c.roundRect(x, y, w, h, r); c.fillStyle = f; c.fill(); c.stroke(); };
   const el = (x, y, rx, ry, f) => { c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, 7); c.fillStyle = f; c.fill(); c.stroke(); };
   const poly = (pts, f) => { c.beginPath(); pts.forEach((q, i) => c[i ? 'lineTo' : 'moveTo'](q[0], q[1])); c.closePath(); c.fillStyle = f; c.fill(); c.stroke(); };
+  if ((XT & 2) && !tint){ const ag = c.createRadialGradient(0, -150, 20, 0, -150, 160); ag.addColorStop(0, 'rgba(255,240,160,0.8)'); ag.addColorStop(0.55, 'rgba(255,214,90,0.38)'); ag.addColorStop(1, 'rgba(255,200,60,0)'); c.fillStyle = ag; c.beginPath(); c.ellipse(0, -150, 100, 175, 0, 0, 7); c.fill(); }      // glow aura
   // hair that hangs behind the head and shoulders
   if (st === 1) rr(-31, -278, 62, 84, 16, hair);
   if (st === 2 && !back){ rr(23, -252, 11, 52, 5, hair); rr(22, -251, 13, 7, 2, K(lkc(L, 'tie'))); }
@@ -5619,7 +5629,8 @@ function drawAvatarFigure(c, L, back, tint){      // the whole person standing, 
   if ((OW === 1 || OW === 5) && back){ c.beginPath(); c.moveTo(0, -226); c.lineTo(0, -150); c.lineWidth = 2; c.stroke(); c.lineWidth = 3; rr(-18, -232, 36, 8, 3, shadeHex(ow, 0.8)); }
   if (OW === 2 && !back){ rr(-24, -190, 48, 24, 7, shadeHex(ow, 0.82)); c.beginPath(); c.moveTo(0, -190); c.lineTo(0, -166); c.lineWidth = 2; c.stroke(); c.lineWidth = 3; for (const sd of [-1, 1]){ c.beginPath(); c.moveTo(sd*9, -230); c.lineTo(sd*10, -204); c.lineWidth = 2.4; c.strokeStyle = K('#f2f2f2'); c.stroke(); c.strokeStyle = line; c.lineWidth = 3; el(sd*10, -202, 2.6, 3.4, K('#f2f2f2')); } }
   if (OW === 3){ poly([[-30, -228], [30, -228], [28, -160], [-28, -160]], ow); if (!back){ poly([[-10, -224], [10, -224], [9, -166], [-9, -166]], mixHex(ow, '#ffffff', 0.28)); c.beginPath(); c.moveTo(-28, -196); c.lineTo(28, -196); c.moveTo(-28, -176); c.lineTo(28, -176); c.stroke(); } else { c.beginPath(); c.moveTo(0, -226); c.lineTo(0, -162); c.stroke(); } }
-  if (bs > 0){ rr(-35, -154, 70, 11, 2, belt); if (bs === 2 && !back) rr(-8, -156, 16, 15, 2, K('#d8c27a')); }
+  if (bs > 0){ rr(-35, -154, 70, bs === 3 ? 15 : 11, 2, belt); if (bs === 2 && !back) rr(-8, -156, 16, 15, 2, XT & 4 ? gold : K('#d8c27a')); if (bs === 3 && !back){ rr(-19, -164, 38, 30, 7, gold); rr(-13, -158, 26, 18, 4, shadeHex(gold, 0.82)); el(0, -149, 6, 6, K('#c62828')); } }      // (the champion belt has a big gold plate)
+  if (XT & 1){ c.lineJoin = 'round'; c.lineCap = 'round'; for (const w2 of [[5, line], [2.6, gold]]){ c.lineWidth = w2[0]; c.strokeStyle = w2[1]; c.beginPath(); if (back){ c.moveTo(-11, -232); c.quadraticCurveTo(0, -224, 11, -232); } else { c.moveTo(-11, -234); c.lineTo(0, -202); c.lineTo(11, -234); } c.stroke(); } c.lineWidth = 3; c.strokeStyle = line; if (!back){ el(0, -193, 10.5, 10.5, gold); el(0, -193, 6, 6, mixHex(gold, '#ffffff', 0.45)); } }      // gold medal necklace
   // arms
   for (const sd of [-1, 1]){
     const ax = sd < 0 ? -55 : 38, slv = jl ? ow : pat === 3 && sd === 1 ? shirt2 : shirt, bare = (SS === 1 || SS === 4) && !jl;
@@ -5714,7 +5725,8 @@ function buildLookPickers(){
   $('av-hatc').previousElementSibling.hidden = $('av-hatc').hidden = !look.hat;      // (no colour to pick without headwear)
   $('av-beltrow').hidden = !look.belt;
   $('av-reset').onclick = () => { look.cx = {}; save(); };
-  mkSty('av-styles', HAIRSTYLES, 'style'); mkSty('av-sstyle', SHIRTSTYLES, 'sstyle'); mkSty('av-face', FACES, 'face'); mkSty('av-hands', HANDS, 'hands'); mkSty('av-back', BACKS, 'back'); mkCol('av-glovec', 'gloves'); mkCol('av-capec', 'cape'); $('av-glovec').previousElementSibling.hidden = $('av-glovec').hidden = !look.hands; $('av-capec').previousElementSibling.hidden = $('av-capec').hidden = !look.back;
+  mkSty('av-styles', HAIRSTYLES, 'style'); mkSty('av-sstyle', SHIRTSTYLES, 'sstyle'); mkSty('av-face', FACES, 'face'); { const bx = $('av-xtra'); bx.textContent = ''; XTRA.forEach((nm, i) => { const lk = !unlockedX(i), on = ((look.xtra | 0) >> i & 1) === 1, b = document.createElement('button'); b.type = 'button'; b.className = 'mini' + (on ? ' sel' : '') + (lk ? ' locked' : ''); b.textContent = (lk ? '\u{1F512} ' : '') + nm; if (lk) b.title = lockTextX(i); b.onclick = () => { if (lk){ toast(nm + ': ' + lockTextX(i), 5000); playSnd('ui'); return; } look.xtra = (look.xtra | 0) ^ (1 << i); save(); }; bx.appendChild(b); }); }
+  mkSty('av-hands', HANDS, 'hands'); mkSty('av-back', BACKS, 'back'); mkCol('av-glovec', 'gloves'); mkCol('av-capec', 'cape'); $('av-glovec').previousElementSibling.hidden = $('av-glovec').hidden = !look.hands; $('av-capec').previousElementSibling.hidden = $('av-capec').hidden = !look.back;
   const sb = $('av-sleeves'); sb.textContent = '';
   SLEEVES.forEach((nm, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'mini' + (look.sleeve === i ? ' sel' : ''); b.textContent = nm; b.onclick = () => { look.sleeve = i; save(); }; sb.appendChild(b); });
   mkSty('av-pats', PATTERNS, 'pat');
@@ -6287,6 +6299,7 @@ function csMouth(c, t, talk, y, w2, col, down){
 const CSP = {};
 CSP.hero = (c, t, talk) => {
   const l = curLook(), skin = lkc(l, 'skin'), hair = lkc(l, 'hair'), shirt = lkc(l, 'shirt'), tr = TROPHIES[l.trophy] ? l.trophy : '', st = tr ? 5 : l.style|0, bl = csBlink(t, 1), hw = tr ? 0 : l.hat|0, hat = lkc(l, 'hat'), fg = tr ? 0 : l.face|0, noTop = hw >= 7 && hw !== 9;
+  if ((l.xtra | 0) & 2){ const ag = c.createRadialGradient(0, -130, 30, 0, -130, 270); ag.addColorStop(0, 'rgba(255,240,160,' + (0.75 + 0.15*Math.sin(t*3)) + ')'); ag.addColorStop(0.55, 'rgba(255,214,90,0.35)'); ag.addColorStop(1, 'rgba(255,200,60,0)'); c.fillStyle = ag; c.beginPath(); c.arc(0, -130, 270, 0, 7); c.fill(); }      // glow aura
   c.fillStyle = (l.back | 0) === 1 ? lkc(l, 'cape') : '#3b2a1c'; c.beginPath(); c.moveTo(-112, 0); c.quadraticCurveTo(-116, -92, -40, -112); c.lineTo(40, -112); c.quadraticCurveTo(116, -92, 112, 0); c.closePath(); c.fill();      // travelling cloak
   csBody(c, shirt, 90);
   { const pt = l.pat|0, s2 = lkc(l, 'shirt2'), ow = l.outer|0, oc = lkc(l, 'outer'), jl = ow === 1 || ow === 2;
@@ -6311,7 +6324,8 @@ CSP.hero = (c, t, talk) => {
     else if (ow === 2){ c.fillStyle = csShade(oc, 0.82); c.beginPath(); c.roundRect(-52, -50, 104, 36, 12); c.fill(); c.stroke(); c.fillStyle = csShade(oc, 0.9); c.beginPath(); c.ellipse(0, -112, 54, 22, 0, 0, 7); c.fill(); c.stroke(); c.strokeStyle = '#f2f2f2'; c.lineWidth = 4; for (const sd of [-1, 1]){ c.beginPath(); c.moveTo(sd*14, -94); c.lineTo(sd*16, -62); c.stroke(); c.fillStyle = '#f2f2f2'; c.beginPath(); c.arc(sd*16, -58, 4.5, 0, 7); c.fill(); } }
     else if (ow === 3){ c.fillStyle = oc; c.beginPath(); c.moveTo(-52, -100); c.lineTo(52, -100); c.lineTo(58, -8); c.lineTo(-58, -8); c.closePath(); c.fill(); c.stroke(); c.fillStyle = csShade(oc, 1.3); c.beginPath(); c.roundRect(-18, -92, 36, 76, 6); c.fill(); c.stroke(); c.beginPath(); c.moveTo(-54, -62); c.lineTo(54, -62); c.moveTo(-56, -34); c.lineTo(56, -34); c.stroke(); for (const sd of [-1, 1]){ c.fillStyle = oc; c.beginPath(); c.ellipse(sd*66, -86, 30, 17, sd*0.35, 0, 7); c.fill(); c.stroke(); } }
   }
-  c.strokeStyle = '#5a3b22'; c.lineWidth = 14; c.lineCap = 'round'; c.beginPath(); c.moveTo(-70, -86); c.lineTo(62, -8); c.stroke(); c.fillStyle = '#c9a24b'; c.beginPath(); c.arc(-10, -52, 7, 0, 7); c.fill();      // strap and buckle
+  c.strokeStyle = '#5a3b22'; c.lineWidth = 14; c.lineCap = 'round'; c.beginPath(); c.moveTo(-70, -86); c.lineTo(62, -8); c.stroke(); c.fillStyle = (l.xtra | 0) & 4 ? '#e6b422' : '#c9a24b'; c.beginPath(); c.arc(-10, -52, 7, 0, 7); c.fill();      // strap and buckle
+  if ((l.xtra | 0) & 1){ c.lineCap = 'round'; for (const w2 of [[8, 'rgba(0,0,0,0.5)'], [4.5, '#e6b422']]){ c.lineWidth = w2[0]; c.strokeStyle = w2[1]; c.beginPath(); c.moveTo(-22, -106); c.lineTo(0, -64); c.lineTo(22, -106); c.stroke(); } c.fillStyle = '#e6b422'; c.beginPath(); c.arc(0, -52, 17, 0, 7); c.fill(); c.strokeStyle = 'rgba(0,0,0,0.5)'; c.lineWidth = 3; c.stroke(); c.fillStyle = '#fff1a8'; c.beginPath(); c.arc(0, -52, 10, 0, 7); c.fill(); }      // gold medal necklace
   if (st === 1){ c.fillStyle = hair; c.beginPath(); c.moveTo(-58, -190); c.quadraticCurveTo(-72, -110, -56, -66); c.lineTo(56, -66); c.quadraticCurveTo(72, -110, 58, -190); c.closePath(); c.fill(); }
   if (st === 6){ for (const sd of [-1, 1]){ c.fillStyle = hair; c.beginPath(); c.ellipse(sd*60, -132, 14, 44, sd*-0.12, 0, 7); c.fill(); c.fillStyle = lkc(l, 'tie'); c.beginPath(); c.ellipse(sd*61, -166, 9, 5, sd*-0.12, 0, 7); c.fill(); c.strokeStyle = 'rgba(0,0,0,0.5)'; c.lineWidth = 2; c.stroke(); } }
   if (st === 8){ c.fillStyle = hair; c.beginPath(); c.moveTo(-52, -186); c.quadraticCurveTo(-68, -120, -50, -88); c.lineTo(50, -88); c.quadraticCurveTo(68, -120, 52, -186); c.closePath(); c.fill(); }
