@@ -300,7 +300,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 100;
+const VERSION = 101;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -5811,10 +5811,11 @@ function drawCreatureFigure(c, kind, back, tint){
       c.beginPath(); c.moveTo(-18, -200); c.lineTo(-6, -196); c.moveTo(18, -200); c.lineTo(6, -196); c.lineWidth = 4; c.stroke(); c.lineWidth = 3; }
   } else if (kind === 7){      // giant squid
     const bod = K('#c0506e'), dk = K('#8a2e4a'), lt = K('#e890a8'); c.strokeStyle = K('#3a0f1c');
-    for (let i = 0; i < 8; i++){ const x0 = -63 + i*18, sw = Math.sin(performance.now()/500 + i)*6; c.beginPath(); c.moveTo(x0*0.6, -80); c.bezierCurveTo(x0*0.9 + sw, -56, x0*1.25 - sw, -30, x0*1.3 + sw*0.5, -4); c.lineWidth = 17; c.strokeStyle = K('#3a0f1c'); c.stroke(); c.lineWidth = 12; c.strokeStyle = i % 2 ? bod : dk; c.stroke();
-      if (!back){ c.fillStyle = K('#ffb8c8'); for (const q of [0.45, 0.7]) { el(x0*(0.6 + 0.7*q) + sw*q, -80 + 76*q, 2.6, 2.6, K('#ffb8c8')); } } }
+    for (let i = 0; i < 8; i++){ const x0 = -63 + i*18, sw = Math.sin(performance.now()/500 + i)*6; c.beginPath(); c.moveTo(x0*0.6, -135); c.bezierCurveTo(x0*0.85 + sw, -92, x0*1.25 - sw, -42, x0*1.3 + sw*0.5, -4); c.lineWidth = 17; c.strokeStyle = K('#3a0f1c'); c.stroke(); c.lineWidth = 12; c.strokeStyle = i % 2 ? bod : dk; c.stroke();
+      if (!back){ c.fillStyle = K('#ffb8c8'); for (const q of [0.45, 0.7]) { el(x0*(0.6 + 0.7*q) + sw*q, -135 + 131*q, 2.6, 2.6, K('#ffb8c8')); } } }
     c.lineWidth = 3; c.strokeStyle = K('#3a0f1c');
-    poly([[-16, -300], [0, -318], [16, -300], [60, -208], [-60, -208]], bod); poly([[-48, -250], [-90, -218], [-36, -208]], dk); poly([[48, -250], [90, -218], [36, -208]], dk);
+    poly([[-16, -300], [0, -318], [16, -300], [56, -180], [-56, -180]], bod); poly([[-48, -250], [-90, -218], [-36, -208]], dk); poly([[48, -250], [90, -218], [36, -208]], dk);
+    el(0, -126, 50, 34, bod);
     el(0, -176, 56, 52, bod);
     if (!back){ c.save(); c.beginPath(); c.ellipse(0, -176, 56, 52, 0, 0, 7); c.clip(); c.fillStyle = lt; c.globalAlpha = 0.35; for (const q of [[-26, -150], [-8, -140], [18, -150], [30, -134]]){ c.beginPath(); c.arc(q[0], q[1], 5, 0, 7); c.fill(); } c.restore();
       for (const sd of [-1, 1]){ el(sd*30, -184, 17, 17, K('#ffe64a')); el(sd*30, -184, 4.5, 11, K('#111')); } c.beginPath(); c.moveTo(-18, -148); c.quadraticCurveTo(0, -138, 18, -148); c.lineWidth = 3; c.stroke(); }
