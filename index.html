@@ -292,7 +292,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 90;
+const VERSION = 91;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -4293,7 +4293,7 @@ function drawPerson(c, shirt, skinCol, ph, crown, opt){
       }
       if (OW > 0 && OC){                                                                  // jacket / hoodie: the body is the outer layer; armor: a plate on the back
         c.save(); c.beginPath(); c.ellipse(-1, 0, 7.5, 13.5, 0, 0, 7); c.clip();
-        if (JL){ c.fillStyle = OC; c.fillRect(-9, -14, 18, 28); if (OW === 1){ c.fillStyle = shirt; c.fillRect(-3, -1.7, 11, 3.4); c.strokeStyle = '#000'; c.lineWidth = 0.8; c.beginPath(); c.moveTo(-8, -1.7); c.lineTo(8, -1.7); c.moveTo(-8, 1.7); c.lineTo(8, 1.7); c.stroke(); } }
+        if (JL){ c.fillStyle = OC; if (OW === 2) c.fillRect(-9, -14, 18, 28); else { c.fillRect(-9, -14, 18, 12.3); c.fillRect(-9, 1.7, 18, 12.3); c.fillRect(-9, -2, 6, 4); } if (OW === 1){ c.strokeStyle = '#000'; c.lineWidth = 0.8; c.beginPath(); c.moveTo(-8, -1.7); c.lineTo(8, -1.7); c.moveTo(-8, 1.7); c.lineTo(8, 1.7); c.stroke(); } }
         else { c.fillStyle = OC; c.beginPath(); c.ellipse(-1, 0, 5, 9.5, 0, 0, 7); c.fill(); c.strokeStyle = '#000'; c.lineWidth = 0.9; c.stroke(); c.fillStyle = mixHex(OC, '#ffffff', 0.3); c.fillRect(-3, -2.4, 3.4, 4.8); }
         c.restore(); c.lineWidth = 2; c.strokeStyle = '#000';
       }
@@ -5456,7 +5456,7 @@ function drawCowboyHat(c, hat, band, stud, line, lw, back){
 function drawAvatarFigure(c, L, back, tint){      // the whole person standing, front or back (origin = the ground between the feet; about 300 units tall with the hat)
   const K = col => tint ? mixHex(col, tint, 0.72) : col;
   const skin = K(lkc(L, 'skin')), hair = K(lkc(L, 'hair')), shirt = K(lkc(L, 'shirt')), shirt2 = K(lkc(L, 'shirt2')), pants = K(lkc(L, 'pants')), belt = K(lkc(L, 'belt')), shoes = K(lkc(L, 'shoes')), hat = K(lkc(L, 'hat')), line = K('#000000');
-  const OW = L.outer | 0, ow = K(lkc(L, 'outer')), jl = OW === 1 || OW === 2, tcol = jl ? ow : shirt, tr = TROPHIES[L.trophy] ? L.trophy : '', ps = L.pants | 0, bs = L.belt | 0, ss = L.shoes | 0, hs = tr ? 0 : L.hat | 0, st = tr ? 5 : L.style | 0, sl = L.sleeve | 0, pat = L.pat | 0;
+  const OW = L.outer | 0, ow = K(lkc(L, 'outer')), jl = OW === 1 || OW === 2, tcol = OW === 2 || (OW === 1 && back) ? ow : shirt, tr = TROPHIES[L.trophy] ? L.trophy : '', ps = L.pants | 0, bs = L.belt | 0, ss = L.shoes | 0, hs = tr ? 0 : L.hat | 0, st = tr ? 5 : L.style | 0, sl = L.sleeve | 0, pat = L.pat | 0;
   c.save(); c.lineJoin = 'round'; c.lineCap = 'round'; c.lineWidth = 3; c.strokeStyle = line;
   const rr = (x, y, w, h, r, f) => { c.beginPath(); c.roundRect(x, y, w, h, r); c.fillStyle = f; c.fill(); c.stroke(); };
   const el = (x, y, rx, ry, f) => { c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, 7); c.fillStyle = f; c.fill(); c.stroke(); };
@@ -5477,10 +5477,10 @@ function drawAvatarFigure(c, L, back, tint){      // the whole person standing, 
   rr(-34, -150, 68, 34, 7, pants);                                   // hips
   // torso
   poly([[-38, -224], [-30, -232], [30, -232], [38, -224], [34, -148], [-34, -148]], tcol);
-  if (pat > 0 && !jl){ c.save(); c.beginPath(); c.moveTo(-38, -224); c.lineTo(-30, -232); c.lineTo(30, -232); c.lineTo(38, -224); c.lineTo(34, -148); c.lineTo(-34, -148); c.closePath(); c.clip(); c.fillStyle = shirt2;
+  if (pat > 0 && tcol === shirt){ c.save(); c.beginPath(); c.moveTo(-38, -224); c.lineTo(-30, -232); c.lineTo(30, -232); c.lineTo(38, -224); c.lineTo(34, -148); c.lineTo(-34, -148); c.closePath(); c.clip(); c.fillStyle = shirt2;
     if (pat === 1){ for (let k = 0; k < 4; k++) c.fillRect(-40, -226 + k*22, 80, 11); } else if (pat === 2){ for (let k = 0; k < 5; k++) c.fillRect(-40 + k*16 + 8, -234, 8, 90); } else if (pat === 3) c.fillRect(0, -234, 40, 90); else { for (let gx = 0; gx < 6; gx++) for (let gy = 0; gy < 6; gy++) if ((gx + gy) % 2) c.fillRect(-40 + gx*14, -234 + gy*15, 14, 15); } c.restore();
     poly([[-38, -224], [-30, -232], [30, -232], [38, -224], [34, -148], [-34, -148]], 'rgba(0,0,0,0)'); }
-  if (OW === 1 && !back){ poly([[-10, -232], [10, -232], [8, -148], [-8, -148]], shirt); c.beginPath(); c.moveTo(-10, -232); c.lineTo(-8, -148); c.moveTo(10, -232); c.lineTo(8, -148); c.stroke(); poly([[-10, -232], [-22, -238], [-6, -224]], shadeHex(ow, 0.8)); poly([[10, -232], [22, -238], [6, -224]], shadeHex(ow, 0.8)); rr(-27, -186, 17, 22, 3, shadeHex(ow, 0.82)); rr(10, -186, 17, 22, 3, shadeHex(ow, 0.82)); }
+  if (OW === 1 && !back){ poly([[-38, -224], [-30, -232], [-10, -232], [-8, -148], [-34, -148]], ow); poly([[38, -224], [30, -232], [10, -232], [8, -148], [34, -148]], ow); c.beginPath(); c.moveTo(-10, -232); c.lineTo(-8, -148); c.moveTo(10, -232); c.lineTo(8, -148); c.stroke(); poly([[-10, -232], [-22, -238], [-6, -224]], shadeHex(ow, 0.8)); poly([[10, -232], [22, -238], [6, -224]], shadeHex(ow, 0.8)); rr(-27, -186, 17, 22, 3, shadeHex(ow, 0.82)); rr(10, -186, 17, 22, 3, shadeHex(ow, 0.82)); }
   if (OW === 1 && back){ c.beginPath(); c.moveTo(0, -226); c.lineTo(0, -150); c.lineWidth = 2; c.stroke(); c.lineWidth = 3; rr(-18, -232, 36, 8, 3, shadeHex(ow, 0.8)); }
   if (OW === 2 && !back){ rr(-24, -190, 48, 24, 7, shadeHex(ow, 0.82)); c.beginPath(); c.moveTo(0, -190); c.lineTo(0, -166); c.lineWidth = 2; c.stroke(); c.lineWidth = 3; for (const sd of [-1, 1]){ c.beginPath(); c.moveTo(sd*9, -230); c.lineTo(sd*10, -204); c.lineWidth = 2.4; c.strokeStyle = K('#f2f2f2'); c.stroke(); c.strokeStyle = line; c.lineWidth = 3; el(sd*10, -202, 2.6, 3.4, K('#f2f2f2')); } }
   if (OW === 3){ poly([[-30, -228], [30, -228], [28, -160], [-28, -160]], ow); if (!back){ poly([[-10, -224], [10, -224], [9, -166], [-9, -166]], mixHex(ow, '#ffffff', 0.28)); c.beginPath(); c.moveTo(-28, -196); c.lineTo(28, -196); c.moveTo(-28, -176); c.lineTo(28, -176); c.stroke(); } else { c.beginPath(); c.moveTo(0, -226); c.lineTo(0, -162); c.stroke(); } }
@@ -6138,10 +6138,10 @@ CSP.hero = (c, t, talk) => {
   csBody(c, shirt, 90);
   { const pt = l.pat|0, s2 = lkc(l, 'shirt2'), ow = l.outer|0, oc = lkc(l, 'outer'), jl = ow === 1 || ow === 2;
     const bp = () => { c.beginPath(); c.moveTo(-90, 0); c.quadraticCurveTo(-94, -78, -34, -104); c.lineTo(34, -104); c.quadraticCurveTo(94, -78, 90, 0); c.closePath(); };
-    if (jl){ c.fillStyle = oc; bp(); c.fill(); }
+    if (ow === 2){ c.fillStyle = oc; bp(); c.fill(); }
     else if (pt > 0){ c.save(); bp(); c.clip(); c.fillStyle = s2; if (pt === 1){ for (let k = 0; k < 5; k++) c.fillRect(-100, -104 + k*21 + 10, 200, 10); } else if (pt === 2){ for (let k = 0; k < 8; k++) c.fillRect(-96 + k*24 + 12, -106, 12, 110); } else if (pt === 3) c.fillRect(0, -106, 100, 110); else { for (let gx = 0; gx < 9; gx++) for (let gy = 0; gy < 6; gy++) if ((gx + gy) % 2) c.fillRect(-100 + gx*22, -106 + gy*19, 22, 19); } c.restore(); }
     c.lineJoin = 'round'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,0.5)';
-    if (ow === 1){ c.fillStyle = shirt; c.beginPath(); c.moveTo(-18, -104); c.lineTo(18, -104); c.lineTo(12, 0); c.lineTo(-12, 0); c.closePath(); c.fill(); c.beginPath(); c.moveTo(-18, -104); c.lineTo(-12, 0); c.moveTo(18, -104); c.lineTo(12, 0); c.stroke(); c.fillStyle = csShade(oc, 0.78); for (const sd of [-1, 1]){ c.beginPath(); c.moveTo(sd*18, -104); c.lineTo(sd*44, -112); c.lineTo(sd*14, -80); c.closePath(); c.fill(); c.stroke(); } }
+    if (ow === 1){ c.fillStyle = oc; c.beginPath(); c.moveTo(-90, 0); c.quadraticCurveTo(-94, -78, -34, -104); c.lineTo(-18, -104); c.lineTo(-12, 0); c.closePath(); c.moveTo(90, 0); c.quadraticCurveTo(94, -78, 34, -104); c.lineTo(18, -104); c.lineTo(12, 0); c.closePath(); c.fill(); c.beginPath(); c.moveTo(-18, -104); c.lineTo(-12, 0); c.moveTo(18, -104); c.lineTo(12, 0); c.stroke(); c.fillStyle = csShade(oc, 0.78); for (const sd of [-1, 1]){ c.beginPath(); c.moveTo(sd*18, -104); c.lineTo(sd*44, -112); c.lineTo(sd*14, -80); c.closePath(); c.fill(); c.stroke(); } }
     else if (ow === 2){ c.fillStyle = csShade(oc, 0.82); c.beginPath(); c.roundRect(-52, -50, 104, 36, 12); c.fill(); c.stroke(); c.fillStyle = csShade(oc, 0.9); c.beginPath(); c.ellipse(0, -112, 54, 22, 0, 0, 7); c.fill(); c.stroke(); c.strokeStyle = '#f2f2f2'; c.lineWidth = 4; for (const sd of [-1, 1]){ c.beginPath(); c.moveTo(sd*14, -94); c.lineTo(sd*16, -62); c.stroke(); c.fillStyle = '#f2f2f2'; c.beginPath(); c.arc(sd*16, -58, 4.5, 0, 7); c.fill(); } }
     else if (ow === 3){ c.fillStyle = oc; c.beginPath(); c.moveTo(-52, -100); c.lineTo(52, -100); c.lineTo(58, -8); c.lineTo(-58, -8); c.closePath(); c.fill(); c.stroke(); c.fillStyle = csShade(oc, 1.3); c.beginPath(); c.roundRect(-18, -92, 36, 76, 6); c.fill(); c.stroke(); c.beginPath(); c.moveTo(-54, -62); c.lineTo(54, -62); c.moveTo(-56, -34); c.lineTo(56, -34); c.stroke(); for (const sd of [-1, 1]){ c.fillStyle = oc; c.beginPath(); c.ellipse(sd*66, -86, 30, 17, sd*0.35, 0, 7); c.fill(); c.stroke(); } }
   }
