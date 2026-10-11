@@ -300,7 +300,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 99;
+const VERSION = 100;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -1335,8 +1335,9 @@ function initStory(levelId, humans){
   const p = S.player, coop = !!humans && humans.length > 1;
   const sh = storyShapes(), N = STORY.nodes;
   S.story = {levelId:STORY.id, diff:DIFF, n:0, cp:-1, deaths:0, lives:STORY.LIVES, deadT:0, t:0, boss:null, bs:{awake:false, ph:1, tShot:1.5, tBurst:3, tCharge:5, wind:0, charge:0, hitCd:0, tSpawn:6}, mounds:[], waves:[], pools:[], beams:[], total:0, segs:sh.segs, circs:sh.circs,
-    special: Math.random() < 0.5 ? 'minigun' : 'flame', camps:[], cps:[]};
-  const sy = S.story; sy.coop = coop; sy.bdMul = coop ? 1.5 : 1; sy.newSp = []; sy.live = false; sy.wipe = false;
+    special: 'minigun', camps:[], cps:[]};
+  const sy = S.story; { const sp4 = ['minigun', 'flame', 'jetpack', 'shieldgen']; for (let i = sp4.length - 1; i > 0; i--){ const j = Math.random()*(i + 1)|0; [sp4[i], sp4[j]] = [sp4[j], sp4[i]]; } sy.specials = sp4.slice(0, coop ? 2 : 1); sy.special = sy.specials[0]; }      // the last chest: 1 of 4 special items in solo, 2 of the 4 in co-op
+  sy.coop = coop; sy.bdMul = coop ? 1.5 : 1; sy.newSp = []; sy.live = false; sy.wipe = false;
   const mul = coop ? 2 : 1;      // two players: twice the enemies, and the boss has twice the health and hits harder
   // camps, in route order
   const cf = DF().camp, scaleComp = cmp => { const r = cmp.map(v => Math.round(v*mul*cf)); let t = r.reduce((x, y) => x + y, 0); while (t < 3*mul){ r[1]++; t++; } return r; };      // easier levels: smaller camps (the extra slots are never all melee)
@@ -1381,7 +1382,7 @@ function initStory(levelId, humans){
     [{type:sy.special, rar:4}, {type:'pistol', rar:4}, ...ammo('pistol', 3), ...ammo('shotgun', 3), ...heal('shield', 3), ...heal('med', 2)]];
   sy.camps.forEach((c, ci) => { let lt = L[ci] || L[L.length-1]; if (ci >= 1 && ci < sy.camps.length - 1 && Math.random() < [0.6, 0.45, 0.3][DIFF]) lt = lt.concat([{type:'ar', rar:Math.min(3, 1 + (ci >> 1))}, ...ammo('ar', 2)]);      // a rifle turns up in some chests now and then (never the boss-side special chest)
     if (DIFF < 2) lt = lt.concat(heal('med', 1), DIFF === 0 ? heal('shield', 1) : []);      // easier levels: more healing in every chest
-    if (coop) lt = lt.flatMap(d => d.type === sy.special ? [{type:'minigun', rar:4}, {type:'flame', rar:4}] : [d]); c.chest = {x:c.x, y:c.y, open:false, hidden:true, loot:lt}; S.chests.push(c.chest); });      // co-op: the last chest holds both special weapons
+    if (coop) lt = lt.flatMap(d => d.type === sy.special ? sy.specials.map(t => ({type:t, rar:4})) : [d]); c.chest = {x:c.x, y:c.y, open:false, hidden:true, loot:lt}; S.chests.push(c.chest); });      // co-op: the last chest holds two of the four special items
   sy.camps.forEach((c, ci) => {
     for (let k = 0; k < c.n; k++){
       const ang = k/c.n*Math.PI*2 + rnd(-0.3, 0.3), d = rnd(70, coop ? 240 : 150), el = k < c.el;
@@ -3091,7 +3092,7 @@ function bestSlot(a){
 function openChest(c){
   c.open = true;
   if (c.loot){      // Adventure chests hold a fixed, hand-picked set of items
-    const lt = S.story && S.story.coop ? c.loot.flatMap(dr => (dr.type === 'minigun' || dr.type === 'flame') ? [dr] : [dr, dr]) : c.loot;      // co-op: one bigger pile (two of everything but the special weapon), first come first served
+    const lt = S.story && S.story.coop ? c.loot.flatMap(dr => (dr.type === 'minigun' || dr.type === 'flame' || dr.type === 'jetpack' || dr.type === 'shieldgen') ? [dr] : [dr, dr]) : c.loot;      // co-op: one bigger pile (two of everything but the special weapon), first come first served
     lt.forEach((dr, i) => { const ang = i*Math.PI*2/lt.length + 0.4, d = 44 + (i % 3)*12; S.loot.push({x:c.x + Math.cos(ang)*d, y:c.y + Math.sin(ang)*d, type:dr.type, rar:dr.rar || 0, n:dr.n}); });
     burst(c.x, c.y, '#fc4', 14); sfx('cs', c.x, c.y); return;
   }
