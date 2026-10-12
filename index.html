@@ -301,7 +301,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 117;
+const VERSION = 118;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -6071,14 +6071,13 @@ function drawAvatarSide(c, L, tint, pose){
 function drawSideArm(c, L, far, len){
   const jl = [1, 2, 5].includes(L.outer | 0), SL = (L.sleeve | 0), SS = L.sstyle | 0, bare = (SL === 2 || SS === 1 || SS === 4) && !jl, GLV = (L.hands | 0) === 1;
   const shirt = lkc(L, 'shirt'), slv = jl ? lkc(L, 'outer') : shirt, skin = lkc(L, 'skin'), glc = lkc(L, 'gloves'), dk = f => far ? shadeHex(f, 0.82) : f;
-  c.save(); c.rotate(-Math.PI/2); c.lineJoin = 'round'; c.lineCap = 'round'; c.lineWidth = 3; c.strokeStyle = '#000';
-  c.scale(len/92, len/92);
-  const rr = (x, y, w, h, r, f) => { c.beginPath(); c.roundRect(x, y, w, h, r); c.fillStyle = f; c.fill(); c.stroke(); };
-  if (bare) rr(-9, -4, 18, 90, 8, dk(skin));
-  else if (SL === 1 || SS === 5){ rr(-9, 36, 18, 52, 7, dk(skin)); rr(-10, -4, 20, 44, 8, dk(slv)); }
-  else rr(-9, -4, 18, 90, 8, dk(slv));
-  if (GLV) rr(-10, 80, 20, 10, 3, dk(shadeHex(glc, 0.8)));
-  c.beginPath(); c.ellipse(0, 96, 9.5, 11, 0, 0, 7); c.fillStyle = dk(GLV ? glc : skin); c.fill(); c.stroke();
+  c.save(); c.rotate(-Math.PI/2); c.lineJoin = 'round'; c.lineCap = 'round'; c.lineWidth = 3; c.strokeStyle = '#000';      // (the arm keeps its width; only its length follows the reach)
+  const rr = (x, y, w, h, r, f) => { c.beginPath(); c.roundRect(x, y, w, h, r); c.fillStyle = f; c.fill(); c.stroke(); }, B = Math.max(26, len - 4);
+  if (bare) rr(-9, -4, 18, B, 8, dk(skin));
+  else if (SL === 1 || SS === 5){ rr(-9, B*0.4, 18, B*0.6, 7, dk(skin)); rr(-10, -4, 20, B*0.5, 8, dk(slv)); }
+  else rr(-9, -4, 18, B, 8, dk(slv));
+  if (GLV) rr(-10, B - 10, 20, 10, 3, dk(shadeHex(glc, 0.8)));
+  c.beginPath(); c.ellipse(0, B + 4, 9.5, 11, 0, 0, 7); c.fillStyle = dk(GLV ? glc : skin); c.fill(); c.stroke();
   c.restore();
 }
 // Side view (facing right) of the creature avatars, kinds 1-8 (9 = Marcus Kane uses the person side view). Origin = ground between the feet.
@@ -6538,6 +6537,7 @@ function drawAngledBoss(c, a){      // Angled view: the chapter boss standing up
 function drawAngledActor(c, a){
   a.foeNoHeld = a.forest === 'ranger' || a.war === 'gren' || (!!angCrt(a) && !a.snow);
   const mmHand = a.sea === 'merman';
+  const GS = 0.62;      // the weapon is drawn smaller in Angled view so it matches the avatar
   const _w = !a.foeNoHeld && a.inv ? WEAP[a.inv[a.cur]] : null, armsAny = !!_w && !a.boss && !a.noGun && !_w.heal && !_w.passive && !(a.down > 0) && (!angCrt(a) || !!a.snow), armsOut = armsAny && Math.abs(Math.cos(a.angle)) > 0.62;
   const cs = Math.cos(a.angle), sn = Math.sin(a.angle), sideV = Math.abs(cs) > 0.62 && angSide(a, false), back = sn < -0.45 && !sideV; let k = (a.scale || 1)*ANG_S*(a.desert === 'scorpion' ? 0.8 : a.forest === 'goblin' ? 0.9 : a.sea === 'squid' ? 1.1 : a.sea === 'merman' ? 0.95 : 1);
   if (a.emT > 0){ k *= 0.25 + 0.75*(1 - a.emT/0.4); }
@@ -6548,18 +6548,18 @@ function drawAngledActor(c, a){
   c.fillStyle = 'rgba(0,0,0,0.28)'; c.beginPath(); c.ellipse(a.x, a.y + 5, 17*k/ANG_S, 8*k/ANG_S, 0, 0, 7); c.fill();
   if (a.forest === 'boar' && a.flash){ const tt = performance.now()/1000; c.fillStyle = 'rgba(190,160,110,0.35)'; for (let i = 0; i < 3; i++){ c.beginPath(); c.arc(a.x - cs*(14 + i*8), a.y + 4 - sn*(6 + i*4) + Math.sin(tt*20 + i)*3, 5 + i*2, 0, 7); c.fill(); } }
   const sk_ = (a.snowAv | 0) || (a.snow ? 1 : 0), SH = {1:[8, -146], 2:[0, -224], 3:[0, -196], 4:[0, -196], 5:[4, -164], 6:[100, -100], 7:[20, -140], 8:[66, -64]}[sk_] || (angFoe(a) ? [0, -204] : [0, -228]);
-  const shX = a.x + ox + SH[0]*k*flip, shY = a.y + 6 + oy + SH[1]*k, Dn = 66*k, Df = 98*k, twoH = armsOut && _w && !(_w.melee) && a.inv[a.cur] !== 'pistol' && ![6, 7, 8].includes(sk_), Lk = armsOut && sk_ !== 9 && !angFoe(a) ? lookFromActor(a) : null;
+  const shX = a.x + ox + SH[0]*k*flip, shY = a.y + 6 + oy + SH[1]*k, Dn = 80*k, Df = Dn + (a.inv[a.cur] === 'pistol' ? 3 : 7), twoH = armsOut && _w && ![6, 7, 8].includes(sk_), Lk = armsOut && sk_ !== 9 && !angFoe(a) ? lookFromActor(a) : null;
   const arm = far => { if (gSide){ const a0 = (a.swing > 0 || a.atk > 0) ? -0.75 : far ? 1.15 : 0.95; c.save(); c.translate(shX, shY); c.rotate(flip < 0 ? Math.PI - a0 : a0); c.scale(k, k); drawFoeArm(c, 'gren', far, 70); if (!far && !(a.swing > 0 || a.atk > 0)){ c.translate(84, 0); c.beginPath(); c.arc(0, 0, 16, 0, 7); c.fillStyle = '#26262a'; c.fill(); c.lineWidth = 3; c.strokeStyle = '#0c0d10'; c.stroke(); c.fillStyle = '#c0402a'; c.fillRect(-4, -22, 8, 7); } c.restore(); return; } if (!armsOut || sk_ === 6) return; c.save(); c.translate(shX, shY + (far ? -2*k : 0)); c.rotate(a.angle); c.scale(k, k); const d = far ? (twoH ? Df : Dn - 4*k) : Dn; if (far && !twoH && !(_w.melee)) { c.restore(); return; } if (far && [7, 8].includes(sk_)){ c.restore(); return; } if (sk_ === 9) drawSideArm(c, KANE_LOOK, far, d/k); else if (angFoe(a)) drawFoeArm(c, angFoe(a), far, d/k); else if (sk_ >= 1 && sk_ <= 8) drawCreatureArm(c, sk_, far, d/k, {skin: sk_ === 2 ? lkc(Lk, 'skin') : null}); else drawSideArm(c, Lk, far, d/k); c.restore(); };
-  const frontArms = armsAny && !sideV, wk = armsAny ? a.inv[a.cur] : '', offW = wk === 'pistol' ? 9 : _w && _w.melee ? 22 : _w && _w.sniper ? 22 : _w && _w.minigun ? 20 : 14;
+  const frontArms = armsAny && !sideV, wk = armsAny ? a.inv[a.cur] : '', offW = (wk === 'pistol' ? 9 : _w && _w.melee ? 22 : _w && _w.sniper ? 22 : _w && _w.minigun ? 20 : 14)*GS;
   const SHF = frontArms ? ({1:[38, -140], 2:[60, -232], 3:[40, -200], 4:[59, -208], 5:[40, -160], 7:[0, -140], 8:[44, -70], 6:[0, -150]}[sk_] || (angFoe(a) ? [angFoe(a) === 'bandit' ? 62 : 60, -212] : [46.5, -228])) : null;
-  const chY = SHF ? SHF[1] + (sk_ >= 1 && sk_ <= 8 ? 40 : 78) : 0, Cx = a.x + ox, Cy = a.y + 6 + oy + chY*k, H1x = Cx + cs*offW*0.35, H1y = Cy + sn*offW*0.35, H2x = H1x + cs*8, H2y = H1y + sn*8;
+  const chY = SHF ? SHF[1] + (sk_ >= 1 && sk_ <= 8 ? 40 : 78) : 0, Cx = a.x + ox, Cy = a.y + 6 + oy + chY*k, H1x = Cx + cs*offW*0.35, H1y = Cy + sn*offW*0.35, H2x = H1x + cs*(wk === 'pistol' ? 3 : 7), H2y = H1y + sn*(wk === 'pistol' ? 3 : 7);
   const armsF = () => { if (!frontArms || sk_ === 6) return; const kane = sk_ === 9, Lf = kane ? KANE_LOOK : (!angFoe(a) && !(sk_ >= 1 && sk_ <= 8)) ? lookFromActor(a) : null;
     const lim = (sx, hx, hy, hang) => { const px = Cx + sx*k, py = a.y + 6 + oy + SHF[1]*k, dx = hang ? 0 : hx - px, dy = hang ? 1 : hy - py, len = hang ? 92 : Math.hypot(dx, dy)/k; c.save(); c.translate(px, py); c.rotate(Math.atan2(dy, dx)); c.scale(k, k);
       if (angFoe(a)) drawFoeArm(c, angFoe(a), false, len); else if (sk_ >= 1 && sk_ <= 8) drawCreatureArm(c, sk_, false, len, {skin: sk_ === 2 ? lkc(lookFromActor(a), 'skin') : null}); else drawSideArm(c, Lf, false, len); c.restore(); };
-    const two = _w && !_w.melee && wk !== 'pistol' || (_w && _w.melee), single = sk_ === 7 || sk_ === 8 && false;
+    const two = true, single = sk_ === 7 || sk_ === 8 && false;
     if (single) { lim(0, H1x, H1y, false); return; }
     lim(-SHF[0], H2x, H2y, !two); lim(SHF[0], H1x, H1y, false); };
-  const held = () => { if (a.foeNoHeld) return; c.save(); if (frontArms) c.translate(Cx - cs*offW*0.65, Cy - sn*offW*0.65); else if (armsOut) { const bk = sk_ === 6 ? 0 : Dn - (a.inv[a.cur] === 'pistol' ? 9 : _w.melee ? 22 : _w.sniper ? 22 : _w.minigun ? 20 : 14); c.translate(shX + cs*bk, shY + sn*bk + 1.5*k); } else c.translate(a.x + ox, a.y - ANG_HAND*k/ANG_S*(sideV ? 1.45 : 1) + oy); c.rotate(a.angle); const hw = WEAP[a.inv[a.cur]] || WEAP.pickaxe;
+  const held = () => { if (a.foeNoHeld) return; c.save(); if (frontArms) c.translate(Cx - cs*offW*0.65, Cy - sn*offW*0.65); else if (armsOut) { const bk = sk_ === 6 ? 0 : Dn - (a.inv[a.cur] === 'pistol' ? 9 : _w.melee ? 22 : _w.sniper ? 22 : _w.minigun ? 20 : 14)*GS; c.translate(shX + cs*bk, shY + sn*bk + 1.5*k); } else c.translate(a.x + ox, a.y - ANG_HAND*k/ANG_S*(sideV ? 1.45 : 1) + oy); c.rotate(a.angle); c.scale(GS, GS); const hw = WEAP[a.inv[a.cur]] || WEAP.pickaxe;
     if (gun && (a.snow || !hw.melee)){ c.save(); c.translate(-6*pu, 0); drawHeld(c, a, hw); c.restore(); if (u < 0.55){ const L = a.snow ? 52 : a.inv[a.cur] === 'pistol' ? 46 : a.inv[a.cur] === 'shotgun' ? 58 : 66, fa = 1 - u/0.55; c.globalAlpha = fa; c.fillStyle = 'rgba(255,170,40,0.9)'; c.beginPath(); c.arc(L, 0, 8 + 5*fa, 0, 7); c.fill(); c.fillStyle = '#fff6c0'; c.beginPath(); c.arc(L, 0, 4 + 2*fa, 0, 7); c.fill(); c.globalAlpha = 1; } }
     else drawHeld(c, a, hw); c.restore(); };
   if (back && !down){ held(); armsF(); }
