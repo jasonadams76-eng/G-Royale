@@ -301,7 +301,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 118;
+const VERSION = 119;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -4931,13 +4931,16 @@ function draw(){
   for (const t of S.trees){ if (!vis(t.x,t.y,40)) continue;
     ctx.drawImage(S.map === 'grass' || S.map === 'snow' ? treeSprite(t) : obstacleSprite(t), t.x-32, t.y-32, 64, 64); }
   // bullets
+  let _ly = 0;      // Angled view: shots fly at gun height, so they leave the gun instead of the feet
   for (const b of S.bullets){
+    { const ny = VIEW_ANG ? angShotLift(b) : 0; if (ny !== _ly){ ctx.translate(0, ny - _ly); _ly = ny; } }
     if (b.arrow){ ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(Math.atan2(b.vy, b.vx)); ctx.strokeStyle = '#6b5a3a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(6, 0); ctx.stroke(); ctx.strokeStyle = '#d9d2bd'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(-19, -3); ctx.moveTo(-15, 0); ctx.lineTo(-19, 3); ctx.stroke(); ctx.fillStyle = '#e8e2cf'; ctx.beginPath(); ctx.moveTo(11, 0); ctx.lineTo(4, -3.6); ctx.lineTo(4, 3.6); ctx.closePath(); ctx.fill(); ctx.restore(); continue; }
     if (b.ball){ ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.arc(b.x + 3, b.y + 4, 7, 0, 7); ctx.fill(); ctx.fillStyle = '#26262c'; ctx.strokeStyle = '#08080a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(b.x, b.y, 7, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.arc(b.x - 2.2, b.y - 2.4, 2, 0, 7); ctx.fill(); continue; }
     if (b.mag){ ctx.fillStyle = 'rgba(100,240,255,0.3)'; ctx.beginPath(); ctx.arc(b.x, b.y, 12, 0, 7); ctx.fill(); ctx.fillStyle = '#bffcff'; ctx.strokeStyle = '#1aa6b4'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.x, b.y, 5.2, 0, 7); ctx.fill(); ctx.stroke(); continue; }
     if (b.sand){ ctx.fillStyle = 'rgba(230,205,130,0.9)'; ctx.beginPath(); ctx.arc(b.x, b.y, 3.6, 0, 7); ctx.fill(); continue; }
     if (b.big){ ctx.fillStyle = 'rgba(190,255,60,0.3)'; ctx.beginPath(); ctx.arc(b.x, b.y, 13, 0, 7); ctx.fill(); ctx.fillStyle = b.color; ctx.strokeStyle = '#3a5a08'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.x, b.y, 7, 0, 7); ctx.fill(); ctx.stroke(); continue; }
     if (b.owner && b.owner.snow){ ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#7fa6c8'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(b.x, b.y, 5.5, 0, 7); ctx.fill(); ctx.stroke(); continue; } ctx.strokeStyle=b.color; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-b.vx*0.025, b.y-b.vy*0.025); ctx.stroke(); }
+  if (_ly) ctx.translate(0, -_ly);
   // actors
   for (const a of (VIEW_ANG ? S.actors.slice().sort((q1, q2) => q1.y - q2.y) : S.actors)){ if (!a.alive || !vis(a.x,a.y)) continue;
     const ANG = VIEW_ANG && (angPerson(a) || angFoe(a) || angCrt(a));
@@ -5853,6 +5856,16 @@ function drawCreatureFigure(c, kind, back, tint, pose, opt){      // pose (arche
   c.restore();
 }
 // ---------- Angled view: people are drawn standing up (front or back view) instead of as a disc seen from above ----------
+function angShotLift(b){
+  const a = b.owner; if (!a || a.boss || !a.inv || !(angPerson(a) || angFoe(a) || angCrt(a))) return 0;
+  const an = Math.atan2(b.vy, b.vx), sideV = Math.abs(Math.cos(an)) > 0.62 && angSide(a, false);
+  const sk = (a.snowAv | 0) || (a.snow ? 1 : 0), cr = sk >= 1 && sk <= 8;
+  let y;
+  if (sideV) y = ({1:-146, 2:-224, 3:-196, 4:-196, 5:-164, 6:-100, 7:-140, 8:-64}[sk]) || (angFoe(a) ? -204 : -228);
+  else y = ({1:-140, 2:-232, 3:-200, 4:-208, 5:-160, 7:-140, 8:-70, 6:-150}[sk] || (angFoe(a) ? -212 : -228)) + (cr ? 40 : 78);
+  const k = (a.scale || 1)*ANG_S*(a.desert === 'scorpion' ? 0.8 : a.forest === 'goblin' ? 0.9 : a.sea === 'squid' ? 1.1 : a.sea === 'merman' ? 0.95 : 1);
+  return 6 + y*k + (sideV ? 1.5*k : 0);
+}
 const ANG_S = 0.21, ANG_CS = 0.5, ANG_BAR = 72, ANG_HAND = 15, ANG_CACHE = new Map();
 function drawHeld(ctx, a, w){      // the weapon or tool in the actor's hands (ctx is already at the actor and turned to face its aim)
     ctx.fillStyle = w.color; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
