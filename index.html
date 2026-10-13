@@ -301,7 +301,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 119;
+const VERSION = 120;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -5599,7 +5599,7 @@ function openWheel(key, box){
   const end = () => { if (mode){ mode = null; try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){} } };
   cv.onpointerup = end; cv.onpointercancel = end;
   hx.onchange = () => { let v = hx.value.trim(); if (v[0] !== '#') v = '#' + v; const h = hexOK(v); if (h){ [H, S, V] = hex2hsv(h); apply(); try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){} } else draw(); };
-  dn.onclick = () => { closeWheel(); try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){} buildLookPickers(); };
+  dn.onclick = () => { closeWheel(); try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){} rebuildKeepScroll(); };
   draw();
 }
 // ----- the full-body portrait on the avatar screen (front or back view, tap to turn) -----
@@ -6589,8 +6589,14 @@ function drawPortrait(){
   c.save(); c.translate(100, 330); if (crtCode(look.crt) > 0) drawCreatureFigure(c, crtCode(look.crt), avBack, null, 0, {skin:lkc(look, 'skin'), hair:lkc(look, 'hair')}); else drawAvatarFigure(c, look, avBack); c.restore();
 }
 { const pv = document.getElementById('avport'); if (pv) pv.onclick = () => { avBack = !avBack; drawPortrait(); playSnd('ui'); }; }
+function rebuildKeepScroll(){      // rebuilding the pickers must not throw the scroll back to the top
+  const saved = [[window, window.scrollX, window.scrollY]];
+  document.querySelectorAll('#menu, #menu *').forEach(n => { if (n.scrollTop || n.scrollLeft) saved.push([n, n.scrollLeft, n.scrollTop]); });
+  buildLookPickers();
+  for (const [n, x, y] of saved){ if (n === window) window.scrollTo(x, y); else { n.scrollLeft = x; n.scrollTop = y; } }
+}
 function buildLookPickers(){
-  const save = () => { closeWheel(); try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){} buildLookPickers(); playSnd('ui'); };
+  const save = () => { closeWheel(); try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){} rebuildKeepScroll(); playSnd('ui'); };
   const mk = (id, cols, key) => {
     const box = $(id); box.textContent = '';
     cols.forEach((col, i) => {
