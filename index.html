@@ -203,7 +203,7 @@
     <div id="s-avatar" hidden>
       <p><b>Design Your Avatar</b></p>
       <div class="cols"><div class="colL">
-      <div id="avstick"><canvas id="avport" width="200" height="340" title="Tap to turn around"></canvas><div class="avside"><canvas id="avprev" width="150" height="150"></canvas><div class="avcap">In the game</div><div class="avcap">Tap the figure to turn</div></div></div>
+      <div id="avstick"><canvas id="avport" width="200" height="340" title="Tap to turn around"></canvas><div class="avside"><canvas id="avprev" width="150" height="150"></canvas><div class="avcap"><b>Top Down view</b><br>how you look in Top Down mode</div><div class="avcap">Tap the figure to turn</div></div></div>
       </div><div class="colR">
       <div class="lbl">Skin tone</div><div class="sws big" id="av-skins"></div>
       <div class="lbl">Hair style</div><div class="mapbox" id="av-styles"></div>
@@ -301,7 +301,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 120;
+const VERSION = 121;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
