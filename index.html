@@ -301,7 +301,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 121;
+const VERSION = 122;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -648,6 +648,14 @@ function padSetFocus(el){
   if (padFocus) padFocus.classList.remove('padfocus');
   padFocus = el; if (el){ el.classList.add('padfocus'); try { el.scrollIntoView({block:'nearest'}); } catch(_){} }
 }
+function padBack(){      // Circle: back out one step - pop-ups first, then the screen's own Back button
+  const vis = el => el && el.offsetParent !== null;
+  const ok = $('unl-ok') || $('snow-ok'); if (vis(ok)){ ok.click(); return; }
+  if (document.getElementById('wheelpanel')){ closeWheel(); return; }
+  const sv = $('svbox'); if (sv && sv.style.display !== 'none' && vis(sv)){ const c = $('sv-close'); if (c){ c.click(); return; } }
+  const bk = ['#b-scenes-back', '#menu [data-back]', '#b-avdone', '#b-leave'].map(q => [...document.querySelectorAll(q)].find(vis)).find(Boolean);
+  if (bk) bk.click();
+}
 function pollPad(dt){
   if (!navigator.getGamepads) return;
   const gp = [...navigator.getGamepads()].find(g => g && g.connected && g.buttons && g.buttons.length >= 10);
@@ -697,7 +705,7 @@ function pollPad(dt){
     else if (L[2] > 0.6 && padNavT <= 0){ if (Math.abs(L[0]) > Math.abs(L[1])) dx = Math.sign(L[0]); else dy = Math.sign(L[1]); padNavT = 0.22; }
     if (dx || dy) padMenuNav(dx, dy);
     if (hit(0)){ const el = padFocus; if (el && el.offsetParent !== null){ if (el.tagName === 'INPUT' && el.type === 'text') el.focus(); else el.click(); } else padMenuNav(0, 1); }
-    if (hit(1)){ const bk = [...document.querySelectorAll('#menu [data-back], #b-avdone, #b-leave')].find(el => el.offsetParent !== null); if (bk) bk.click(); }
+    if (hit(1)) padBack();
   }
   padPrev = gp.buttons.map(b => !!(b && (b.pressed || b.value > 0.5)));
 }
