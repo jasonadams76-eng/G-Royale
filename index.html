@@ -493,9 +493,28 @@
     #menu.onsub .avframe{width:100%}
     #menu.onsub .avside,#menu.onsub #av-reset{display:none}
   }
+
+  /* ===================== B3: end screens, transitions, loader ===================== */
+  #exit.big{position:fixed;isolation:isolate;border:0;border-radius:0;background:none;box-shadow:none;padding:13px 22px 11px;font:400 22px/1 var(--gr-display);letter-spacing:.05em;color:#ffe9a0;
+    filter:drop-shadow(0 0 10px rgba(123,44,255,.7)) drop-shadow(0 4px 8px #0009)}
+  #exit.big::before{content:'';position:absolute;inset:0;z-index:-2;clip-path:var(--gr-chamfer-m);background:linear-gradient(135deg,var(--gr-goldhi),var(--gr-gold) 45%,var(--gr-goldlo))}
+  #exit.big::after{content:'';position:absolute;inset:2px;z-index:-1;clip-path:var(--gr-chamfer-m);background:linear-gradient(180deg,#32208f,#140a52)}
+  #exit.big:hover::after{background:linear-gradient(180deg,#432ab0,#1d0f70)}
+  @keyframes grScr{from{opacity:0}to{opacity:1}}
+  #menu #s-main:not([hidden]),#menu #s-avatar:not([hidden]),#menu #s-join:not([hidden]),#menu #s-lobby:not([hidden]),#menu #s-adv:not([hidden]),#menu #s-scenes:not([hidden]){animation:grScr .16s ease-out}
+  #gr-load{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:radial-gradient(ellipse at 50% 40%,#2a1470,#07041c 70%);opacity:0;animation:grLoadIn .2s .35s forwards;transition:opacity .25s}
+  #gr-load.out{opacity:0!important;animation:none;pointer-events:none}
+  #gr-load b{font:400 40px/1 "GR Display",Impact,sans-serif;letter-spacing:.06em;color:#ffc933}
+  #gr-load svg{filter:drop-shadow(0 0 14px rgba(255,201,51,.7))}
+  #gr-load i{display:block;width:180px;height:6px;background:#241670;overflow:hidden;clip-path:polygon(5px 0,100% 0,calc(100% - 5px) 100%,0 100%)}
+  #gr-load u{display:block;width:40%;height:100%;background:linear-gradient(90deg,#a855f7,#ffc933);animation:grBar 1s ease-in-out infinite}
+  @keyframes grLoadIn{to{opacity:1}}
+  @keyframes grBar{from{transform:translateX(-100%)}to{transform:translateX(260%)}}
+  @media (prefers-reduced-motion:reduce){#menu #s-main,#menu #s-avatar,#menu #s-join,#menu #s-lobby,#menu #s-adv,#menu #s-scenes{animation:none!important}#gr-load u{animation:none}}
 </style>
 </head>
 <body>
+<div id="gr-load" aria-hidden="true"><svg viewBox="0 0 64 64" width="64" height="64"><path d="M38 2 14 36h14l-4 26 26-38H35z" fill="#ffc933" stroke="#fff0a0" stroke-width="2" stroke-linejoin="round"/></svg><b>G ROYALE</b><i><u></u></i></div>
 <canvas id="c"></canvas>
 
 <div id="menu" class="onmain">
@@ -652,7 +671,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 130;
+const VERSION = 131;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -5704,100 +5723,93 @@ function drawHUD(){
     }
   }
   if (p.alive && p.down > 0){          // you are down
-    ctx.fillStyle = '#000a'; ctx.fillRect(vw/2-190, 44, 380, 52);
-    ctx.textAlign = 'center'; ctx.fillStyle = '#f66'; ctx.font = 'bold 18px sans-serif';
-    ctx.fillText("YOU'RE DOWN · " + Math.ceil(p.down) + 's', vw/2, 68);
-    ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif';
-    ctx.fillText(p.rv > 0 ? 'Being revived… ' + Math.round(100*p.rv/REVIVE_TIME) + '%' : 'Stay put: a teammate can revive you', vw/2, 88);
+    grPanel(vw/2-190, 44, 380, 52, {edge:'#ff5a5a', c:10});
+    ctx.textAlign = 'center'; grTxt("YOU'RE DOWN · " + Math.ceil(p.down) + 's', vw/2, 68, 20, '#ff8a8a', 1);
+    grTxt(p.rv > 0 ? 'Being revived… ' + Math.round(100*p.rv/REVIVE_TIME) + '%' : 'Stay put: a teammate can revive you', vw/2, 88, 13, '#e8e8f5');
   } else if (p.alive && !S.over){
     const rt = reviveTarget(p);
-    if (rt){ ctx.textAlign = 'center'; ctx.fillStyle = '#000a'; ctx.fillRect(vw/2-130, 44, 260, 26); ctx.fillStyle = '#7f9'; ctx.font = 'bold 13px sans-serif'; ctx.fillText((touchMode ? 'Hold REVIVE' : 'Hold E') + ' to revive ' + rt.name + (rt.rv > 0 ? ' · ' + Math.round(100*rt.rv/REVIVE_TIME) + '%' : ''), vw/2, 62); }
+    if (rt){ grPanel(vw/2-130, 44, 260, 26, {edge:'#5fe39a', c:7, gold:false}); grTxt((touchMode ? 'Hold REVIVE' : 'Hold E') + ' to revive ' + rt.name + (rt.rv > 0 ? ' · ' + Math.round(100*rt.rv/REVIVE_TIME) + '%' : ''), vw/2, 62, 13, '#8dffbf'); }
   }
   if (canNewGame()){
     const g = specRects().newGame;
-    ctx.fillStyle = 'rgba(70,170,110,0.9)'; ctx.beginPath(); ctx.roundRect(g.x, g.y, g.w, g.h, 10); ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('▶ New game' + (touchMode ? '' : '  (R)'), g.x + g.w/2, g.y + 23);
+    ctx.save(); grPath(g.x, g.y, g.w, g.h, 9); const gg = ctx.createLinearGradient(0, g.y, 0, g.y + g.h); gg.addColorStop(0, '#fff0a0'); gg.addColorStop(.55, '#ffc933'); gg.addColorStop(1, '#e08a00');
+    ctx.fillStyle = gg; ctx.shadowColor = 'rgba(255,201,51,.55)'; ctx.shadowBlur = 12; ctx.fill(); ctx.restore();
+    grTxt('▶ New game' + (touchMode ? '' : '  (R)'), g.x + g.w/2, g.y + 24, 17, '#2a0a52', 1);
   }
   if (!p.alive && !S.koth && !S.over && specT && specT.alive){      // spectating controls
     const r = specRects(), b = r.bar, killer = p.killedBy && specT.name === p.killedBy.by;
-    ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 10); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.beginPath(); ctx.roundRect(r.prev.x, r.prev.y, r.prev.w, r.prev.h, 10); ctx.fill(); ctx.beginPath(); ctx.roundRect(r.next.x, r.next.y, r.next.w, r.next.h, 10); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 22px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('◀', r.prev.x + r.prev.w/2, r.prev.y + 30); ctx.fillText('▶', r.next.x + r.next.w/2, r.next.y + 30);
-    ctx.font = 'bold 14px sans-serif'; ctx.fillText('Spectating: ' + String(specT.name).slice(0, 14), b.x + b.w/2, b.y + 19);
-    ctx.font = '12px sans-serif'; ctx.fillStyle = killer ? '#ffd34d' : '#bcd'; ctx.fillText((killer ? 'eliminated you · ' : '') + Math.max(0, Math.round(specT.hp + specT.sh)) + ' HP · ' + specList().length + ' alive', b.x + b.w/2, b.y + 37);
+    grPanel(b.x, b.y, b.w, b.h, {c:10});
+    for (const k of [r.prev, r.next]){ ctx.save(); grPath(k.x + 4, k.y + 4, k.w - 8, k.h - 8, 7); ctx.fillStyle = '#32208f'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#a855f7'; ctx.stroke(); ctx.restore(); }
+    grTxt('◀', r.prev.x + r.prev.w/2, r.prev.y + 30, 20, '#ffc933'); grTxt('▶', r.next.x + r.next.w/2, r.next.y + 30, 20, '#ffc933');
+    grTxt('Spectating: ' + String(specT.name).slice(0, 14), b.x + b.w/2, b.y + 20, 16, '#fff', 1, b.w - 130);
+    grTxt((killer ? 'eliminated you · ' : '') + Math.max(0, Math.round(specT.hp + specT.sh)) + ' HP · ' + specList().length + ' alive', b.x + b.w/2, b.y + 38, 12, killer ? '#ffd34d' : '#b9b3e0', 0, b.w - 130);
   }
   // end screen / spectating banner
   const killLine = q => { const k = q.killedBy; if (!k) return ''; const wn = WEAP[k.w] ? WEAP[k.w].name : (k.w === 'storm' ? '' : k.w);
     return 'Eliminated by ' + k.by + (wn ? ' with the ' + wn : (k.by === 'the Storm' ? '' : '')); };
+  const PROMPT = (touchMode ? 'Tap' : 'Press R');
   if (S.over && S.koth){
     const rows = (S.board || []).slice(), me = rows.findIndex(r => r[0] === p.name), win = S.winTeam !== null && S.winTeam === p.team;
-    ctx.fillStyle = '#000b'; ctx.fillRect(0, 0, vw, vh);
-    const fsT = Math.min(36, vw/14), rh = Math.min(26, (vh - 200)/12), pw = Math.min(560, vw - 24), px0 = (vw - pw)/2;
-    ctx.textAlign = 'center'; ctx.fillStyle = '#ffd24a'; ctx.font = 'bold ' + fsT + 'px sans-serif'; ctx.fillText('KING OF THE HILL', vw/2, 72);
-    ctx.fillStyle = win ? '#ffd24a' : '#fff'; ctx.font = 'bold ' + Math.min(22, vw/20) + 'px sans-serif';
-    ctx.fillText(rows.length ? (win ? 'You win with ' : rows[0][0] + ' wins with ') + rows[0][1] + ' points!' : '', vw/2, 100);
-    drawXPLine(vw/2, 119, Math.min(15, vw/30));
-    let y = 132; ctx.font = 'bold ' + Math.min(15, rh*0.62) + 'px sans-serif'; ctx.fillStyle = '#9ab';
-    ctx.textAlign = 'left'; ctx.fillText('#', px0 + 8, y); ctx.fillText('PLAYER', px0 + 44, y); ctx.textAlign = 'right'; ctx.fillText('POINTS', px0 + pw - 140, y); ctx.fillText('KILLS', px0 + pw - 76, y); ctx.fillText('DEATHS', px0 + pw - 10, y);
-    y += rh*0.4;
+    ctx.fillStyle = 'rgba(4,2,18,.82)'; ctx.fillRect(0, 0, vw, vh);
+    const fsT = Math.min(40, vw/12), rh = Math.min(26, (vh - 200)/12), pw = Math.min(560, vw - 24), px0 = (vw - pw)/2;
     const show = rows.slice(0, 10); if (me >= 10) show.push(rows[me]);
+    const yEnd = 142 + rh*0.4 + rh*show.length;
+    grPanel(px0 - 10, 20, pw + 20, Math.min(vh - 28, yEnd + 66 - 20), {c:18});
+    grTitle('KING OF THE HILL', vw/2, 66, fsT, 'gold', pw - 20);
+    ctx.textAlign = 'center';
+    grTxt(rows.length ? (win ? 'You win with ' : rows[0][0] + ' wins with ') + rows[0][1] + ' points!' : '', vw/2, 100, Math.min(22, vw/20), win ? '#ffd24a' : '#fff', 1, pw - 20);
+    drawXPLine(vw/2, 119, Math.min(15, vw/30));
+    let y = 142; const hf = Math.min(15, rh*0.62); ctx.fillStyle = '#a855f7'; ctx.font = GRF(hf, 1); try { ctx.letterSpacing = '1px'; } catch(_){}
+    ctx.textAlign = 'left'; ctx.fillText('#', px0 + 8, y); ctx.fillText('PLAYER', px0 + 44, y); ctx.textAlign = 'right'; ctx.fillText('POINTS', px0 + pw - 140, y); ctx.fillText('KILLS', px0 + pw - 76, y); ctx.fillText('DEATHS', px0 + pw - 10, y);
+    try { ctx.letterSpacing = '0px'; } catch(_){}
+    y += rh*0.4;
     show.forEach((r, i) => {
       const rank = (me >= 10 && i === show.length-1) ? me + 1 : i + 1, mine = r[0] === p.name; y += rh;
-      if (mine){ ctx.fillStyle = 'rgba(255,210,70,0.22)'; ctx.fillRect(px0, y - rh*0.72, pw, rh*0.92); }
-      else if (i % 2 === 0){ ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(px0, y - rh*0.72, pw, rh*0.92); }
-      ctx.fillStyle = rank === 1 ? '#ffd24a' : mine ? '#fff' : '#dde'; ctx.font = (mine || rank === 1 ? 'bold ' : '') + Math.min(16, rh*0.66) + 'px sans-serif';
+      if (mine){ ctx.fillStyle = 'rgba(255,201,51,0.26)'; ctx.fillRect(px0, y - rh*0.72, pw, rh*0.92); ctx.fillStyle = '#ffc933'; ctx.fillRect(px0, y - rh*0.72, 3, rh*0.92); }
+      else if (i % 2 === 0){ ctx.fillStyle = 'rgba(123,44,255,0.16)'; ctx.fillRect(px0, y - rh*0.72, pw, rh*0.92); }
+      ctx.fillStyle = rank === 1 ? '#ffd24a' : mine ? '#fff' : '#e0dcf5'; ctx.font = GRF(Math.min(17, rh*0.68), 0);
       ctx.textAlign = 'left'; ctx.fillText(rank, px0 + 8, y); ctx.fillText(String(r[0]).slice(0, 14), px0 + 44, y);
       ctx.textAlign = 'right'; ctx.fillText(r[1], px0 + pw - 140, y); ctx.fillText(r[2], px0 + pw - 76, y); ctx.fillText(r[3], px0 + pw - 10, y);
     });
-    ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = Math.min(18, vw/26) + 'px sans-serif';
-    ctx.fillText((tm ? 'Tap' : 'Press R') + (NET.role === 'solo' ? ' to play again' : ' to return to the lobby'), vw/2, Math.min(vh - 20, y + 40));
+    ctx.textAlign = 'center';
+    grHint(PROMPT + (NET.role === 'solo' ? ' to play again' : ' to return to the lobby'), vw/2, Math.min(vh - 30, y + 42), Math.min(18, vw/26), pw);
   } else if (S.over && S.story && S.story.lost){
-    ctx.fillStyle='#000c'; ctx.fillRect(0,0,vw,vh);
-    ctx.textAlign='center'; ctx.fillStyle='#f55'; ctx.font='bold '+Math.min(64, vw/9)+'px sans-serif'; ctx.fillText('GAME OVER', vw/2, vh/2-34);
-    ctx.fillStyle='#fff'; ctx.font=Math.min(22, vw/24)+'px sans-serif';
-    ctx.fillText((S.story.coop ? 'Your party is out of lives' : 'You used all '+STORY.LIVES+' lives')+' · '+p.kills+' kills · '+bossThe()+' still stands', vw/2, vh/2+8);
-    ctx.fillText((tm ? 'Tap' : 'Press R')+(NET.role === 'solo' ? ' to return to the main menu' : ' to return to the lobby'), vw/2, vh/2+42);
+    grCard('GAME OVER', 'red', [
+      {t:(S.story.coop ? 'Your party is out of lives' : 'You used all '+STORY.LIVES+' lives')+' · '+p.kills+' kills · '+bossThe()+' still stands', size:Math.min(22, vw/24)},
+      {t:PROMPT+(NET.role === 'solo' ? ' to return to the main menu' : ' to return to the lobby'), size:Math.min(20, vw/24), hint:1}]);
   } else if (S.over && S.story && S.story.outro){
     /* the chapter's closing cut scene plays first */
   } else if (S.over && S.story){
-    ctx.fillStyle='#000a'; ctx.fillRect(0,0,vw,vh);
-    ctx.textAlign='center'; ctx.fillStyle='#fc4'; ctx.font='bold '+Math.min(60, vw/10)+'px sans-serif';
-    ctx.fillText(S.story.levelId === 'ravenrock' ? 'STORY COMPLETE' : 'LEVEL COMPLETE', vw/2, vh/2-40);
-    ctx.fillStyle='#fff'; ctx.font=Math.min(24, vw/22)+'px sans-serif';
-    const tt = S.story.t|0;
-    ctx.fillText(bossThe(true)+' is defeated · '+p.kills+' kills · '+p.lives+(p.lives === 1 ? ' life left' : ' lives left')+' · '+((tt/60)|0)+':'+('0'+tt%60).slice(-2), vw/2, vh/2+6);
-    ctx.fillText((tm ? 'Tap' : 'Press R')+(nextStoryLevel() ? ' to continue to ' + STORY_LEVELS[nextStoryLevel()].name : NET.role === 'solo' ? ' to play the level again, or use the Main menu button' : ' to return to the lobby'), vw/2, vh/2+40);
-    if (S.story.unlockedNow){ ctx.fillStyle = '#9fe8ff'; ctx.font = 'bold ' + Math.min(24, vw/22) + 'px sans-serif'; ctx.fillText('NEW LEVEL UNLOCKED: ' + S.story.unlockedNow, vw/2, vh/2+112); ctx.fillStyle = '#fff'; ctx.font = Math.min(24, vw/22) + 'px sans-serif'; }
-    drawXPLine(vw/2, vh/2+78, Math.min(22, vw/24));
+    const tt = S.story.t|0, sz = Math.min(24, vw/22);
+    grCard(S.story.levelId === 'ravenrock' ? 'STORY COMPLETE' : 'LEVEL COMPLETE', 'gold', [
+      {t:bossThe(true)+' is defeated · '+p.kills+' kills · '+p.lives+(p.lives === 1 ? ' life left' : ' lives left')+' · '+((tt/60)|0)+':'+('0'+tt%60).slice(-2), size:sz},
+      {xp:1, size:Math.min(22, vw/24)},
+      S.story.unlockedNow ? {t:'NEW LEVEL UNLOCKED: ' + S.story.unlockedNow, size:sz, col:'#9fe8ff', disp:1} : null,
+      {t:PROMPT+(nextStoryLevel() ? ' to continue to ' + STORY_LEVELS[nextStoryLevel()].name : NET.role === 'solo' ? ' to play the level again, or use the Main menu button' : ' to return to the lobby'), size:Math.min(20, vw/24), hint:1}]);
   } else if (S.over){
     const win = S.winTeam !== null && S.winTeam === p.team;   // a co-op team win counts for both players
-    ctx.fillStyle='#000a'; ctx.fillRect(0,0,vw,vh);
-    ctx.textAlign='center'; ctx.fillStyle = win ? '#fc4' : '#f66'; ctx.font='bold '+Math.min(64, vw/10)+'px sans-serif';
-    ctx.fillText(win ? 'VICTORY ROYALE' : 'ELIMINATED', vw/2, vh/2-20);
-    ctx.fillStyle='#fff'; ctx.font=Math.min(24, vw/22)+'px sans-serif';
-    ctx.fillText((win ? '#1' : '#'+p.place)+' · '+p.kills+' kills · '+(tm ? 'Tap' : 'Press R')+(NET.role === 'solo' ? ' to play again' : ' to return to the lobby'), vw/2, vh/2+30);
-    if (!win && p.killedBy){ ctx.fillStyle = '#ffd34d'; ctx.font = 'bold ' + Math.min(26, vw/20) + 'px sans-serif'; ctx.fillText(killLine(p), vw/2, vh/2+68); }
-    drawXPLine(vw/2, vh/2 + (!win && p.killedBy ? 104 : 74), Math.min(22, vw/24));
+    grCard(win ? 'VICTORY ROYALE' : 'ELIMINATED', win ? 'gold' : 'red', [
+      {t:(win ? '#1' : '#'+p.place)+' · '+p.kills+' kills · '+PROMPT+(NET.role === 'solo' ? ' to play again' : ' to return to the lobby'), size:Math.min(24, vw/22), hint:1},
+      (!win && p.killedBy) ? {t:killLine(p), size:Math.min(24, vw/20), col:'#ffd34d', disp:1} : null,
+      {xp:1, size:Math.min(22, vw/24)}]);
   } else if (!p.alive && S.story){
-    ctx.fillStyle='#000a'; ctx.fillRect(0,0,vw,vh); ctx.textAlign='center'; ctx.fillStyle='#f66'; ctx.font='bold '+Math.min(48, vw/12)+'px sans-serif';
-    ctx.fillText('YOU FELL', vw/2, vh/2-10); ctx.fillStyle='#fff'; ctx.font=Math.min(20, vw/24)+'px sans-serif';
-    ctx.fillText(p.lives <= 0 ? 'Out of lives' + (S.story.coop ? ': cheer on your partner' : '') : p.lives+(p.lives === 1 ? ' life left' : ' lives left'), vw/2, vh/2+84);
-    if (p.lives > 0) ctx.fillText('Returning to '+(S.story.cp >= 0 ? 'checkpoint '+(S.story.cp+1) : 'the start')+'…', vw/2, vh/2+28);
-    if (p.killedBy){ ctx.fillStyle = '#ffd34d'; ctx.fillText(killLine(p), vw/2, vh/2+58); }
+    grCard('YOU FELL', 'red', [
+      p.lives > 0 ? {t:'Returning to '+(S.story.cp >= 0 ? 'checkpoint '+(S.story.cp+1) : 'the start')+'…', size:Math.min(20, vw/24)} : null,
+      p.killedBy ? {t:killLine(p), size:Math.min(20, vw/24), col:'#ffd34d', disp:1} : null,
+      {t:p.lives <= 0 ? 'Out of lives' + (S.story.coop ? ': cheer on your partner' : '') : p.lives+(p.lives === 1 ? ' life left' : ' lives left'), size:Math.min(20, vw/24)}], 0.75);
   } else if (!p.alive && S.koth){
-    ctx.fillStyle='#000a'; ctx.fillRect(vw/2-190, 90, 380, 62); ctx.textAlign='center'; ctx.fillStyle='#f66'; ctx.font='bold 18px sans-serif';
-    ctx.fillText('KNOCKED OUT' + (p.respawnT > 0 ? ' · respawning in ' + Math.ceil(p.respawnT) : ' · respawning…'), vw/2, 114);
-    if (p.killedBy){ ctx.fillStyle = '#ffd34d'; ctx.font = 'bold 15px sans-serif'; ctx.fillText(killLine(p), vw/2, 138); }
+    grPanel(vw/2-190, 90, 380, 62, {edge:'#ff5a5a', c:12});
+    grTxt('KNOCKED OUT' + (p.respawnT > 0 ? ' · respawning in ' + Math.ceil(p.respawnT) : ' · respawning…'), vw/2, 117, 20, '#ff8a8a', 1, 350);
+    if (p.killedBy) grTxt(killLine(p), vw/2, 140, 15, '#ffd34d', 0, 350);
   } else if (!p.alive){
-    ctx.fillStyle='#000a'; ctx.fillRect(vw/2-190, 44, 380, p.killedBy ? 80 : 46);
-    ctx.textAlign='center'; ctx.fillStyle='#f66'; ctx.font='bold 16px sans-serif';
-    ctx.fillText('ELIMINATED #'+p.place+' · '+p.kills+' kills', vw/2, 63);
-    if (p.killedBy){ ctx.fillStyle = '#ffd34d'; ctx.font = 'bold 15px sans-serif'; ctx.fillText(killLine(p), vw/2, 86); }
+    const bh = (p.killedBy ? 80 : 46) + (S.xpGain ? 30 : 0);
+    grPanel(vw/2-190, 44, 380, bh, {edge:'#ff5a5a', c:12});
+    grTxt('ELIMINATED #'+p.place+' · '+p.kills+' kills', vw/2, 66, 19, '#ff8a8a', 1, 350);
+    if (p.killedBy) grTxt(killLine(p), vw/2, 87, 15, '#ffd34d', 0, 350);
     drawXPLine(vw/2, (p.killedBy ? 44 + 80 : 44 + 46) + 20, 15);
-    ctx.fillStyle='#fff'; ctx.font='12px sans-serif';
-    ctx.fillText((touchMode ? 'Spectating · tap ◀ ▶ to switch player' : 'Spectating · click ◀ ▶ or use the arrow keys' + (NET.role === 'solo' ? ' · R: new game' : '')), vw/2, p.killedBy ? 106 : 81);
+    grTxt((touchMode ? 'Spectating · tap ◀ ▶ to switch player' : 'Spectating · click ◀ ▶ or use the arrow keys' + (NET.role === 'solo' ? ' · R: new game' : '')), vw/2, p.killedBy ? 107 : 83, 12, '#e8e8f5', 0, 350);
   }
+  if (gFade){ const fa = 1 - (performance.now() - gFade)/380; if (fa > 0){ ctx.fillStyle = 'rgba(0,0,0,' + fa.toFixed(3) + ')'; ctx.fillRect(0, 0, vw, vh); } else gFade = 0; }
 }
 
 // ---------- Menu / lobby ----------
@@ -5810,7 +5822,7 @@ const SCREENS = ['s-main','s-avatar','s-join','s-lobby','s-adv','s-scenes'];
 function setRoomCode(c){ const e = $('roomcode'); e.textContent = ''; e.setAttribute('aria-label', 'Room code ' + c); for (const ch of String(c)){ const s = document.createElement('span'); s.textContent = ch; e.appendChild(s); } }
 function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); $('menu').classList.toggle('onmain', id === 's-main'); $('menu').classList.toggle('onsub', id !== 's-main'); $('menu').classList.toggle('onav', id === 's-avatar'); menuMsg(''); if (id === 's-main') setTimeout(() => { try { checkMenuMsgs(); } catch(_){} }, 400); }
 function menuMsg(t){ $('msg').textContent = t || ''; }
-function hideMenu(){ $('menu').classList.add('hide'); $('exit').style.display = 'block'; }
+function hideMenu(){ $('menu').classList.add('hide'); $('exit').style.display = 'block'; gFade = performance.now(); }
 
 let soloMode = 'classic'; try { { const sm = localStorage.getItem('sr-smode'); soloMode = sm === 'koth' || sm === 'story' ? sm : 'classic'; } } catch(_){}
 let soloLevel = 'marsh'; try { const sl = localStorage.getItem('sr-level'); soloLevel = STORY_LEVELS[sl] ? sl : 'marsh'; } catch(_){}
@@ -5899,11 +5911,58 @@ function maybeAwardXP(force){
   showXP(); ctrRefresh();
   if (l0 < AVATAR_UNLOCK && S.xpGain.lvl >= AVATAR_UNLOCK){ S.xpGain.unlock = true; toast('Level ' + AVATAR_UNLOCK + '! You can now design your own avatar from the main menu', 5000); try { refreshAvatarLock(); } catch(_){} }
 }
+let gFade = 0;                         // match-start fade-in (set when the menu hides)
+try { document.fonts.load('40px "GR Display"'); document.fonts.load('700 16px "GR Body"'); } catch(_){}
+const GRF = (px, disp) => disp ? '400 ' + px + 'px "GR Display",Impact,sans-serif' : '700 ' + px + 'px "GR Body","Arial Narrow",sans-serif';
+const GR_TONE = {gold:['#fff0a0','#ffc933','#e08a00','rgba(255,201,51,.55)'], red:['#ffd6d6','#ff6a6a','#c41c1c','rgba(255,70,70,.55)']};
+function grPath(x, y, w, h, c){ ctx.beginPath(); ctx.moveTo(x + c, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + h - c); ctx.lineTo(x + w - c, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + c); ctx.closePath(); }
+function grPanel(x, y, w, h, o){
+  o = o || {}; const c = o.c || Math.min(14, h/4), edge = o.edge || '#a855f7';
+  ctx.save(); grPath(x, y, w, h, c);
+  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(38,22,118,.94)'); g.addColorStop(1, 'rgba(10,5,40,.95)');
+  ctx.fillStyle = g; ctx.shadowColor = edge; ctx.shadowBlur = 14; ctx.fill(); ctx.shadowBlur = 0;
+  ctx.lineWidth = 2; ctx.strokeStyle = edge; ctx.stroke();
+  if (o.gold !== false){ const gg = ctx.createLinearGradient(x, 0, x + w, 0); gg.addColorStop(0, '#ffc933'); gg.addColorStop(1, 'rgba(255,201,51,0)'); ctx.fillStyle = gg; ctx.fillRect(x + c, y, w - c, 3); }
+  ctx.restore();
+}
+function grTxt(t, x, y, size, col, disp, maxw){          // centred text in the menu fonts, shrunk to fit maxw
+  ctx.save(); ctx.textAlign = 'center'; let s = size; ctx.font = GRF(s, disp);
+  if (maxw){ while (s > 9 && ctx.measureText(t).width > maxw){ s -= 1; ctx.font = GRF(s, disp); } }
+  ctx.fillStyle = col; ctx.fillText(t, x, y); ctx.restore();
+}
+function grTitle(t, x, y, size, tone, maxw){
+  const T = GR_TONE[tone || 'gold']; ctx.save(); ctx.textAlign = 'center'; let s = size; ctx.font = GRF(s, 1);
+  try { ctx.letterSpacing = (s*0.04).toFixed(1) + 'px'; } catch(_){}
+  if (maxw){ while (s > 12 && ctx.measureText(t).width > maxw){ s -= 2; ctx.font = GRF(s, 1); try { ctx.letterSpacing = (s*0.04).toFixed(1) + 'px'; } catch(_){} } }
+  ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(3, s/8); ctx.strokeStyle = '#1a0640'; ctx.shadowColor = T[3]; ctx.shadowBlur = s/2.2; ctx.strokeText(t, x, y); ctx.shadowBlur = 0;
+  const g = ctx.createLinearGradient(0, y - s*0.85, 0, y); g.addColorStop(0, T[0]); g.addColorStop(.55, T[1]); g.addColorStop(1, T[2]); ctx.fillStyle = g; ctx.fillText(t, x, y); ctx.restore();
+}
+function grHint(t, x, y, size, maxw){                    // the "Tap / Press R" prompt in an angled gold-trimmed pill
+  ctx.save(); let s = size; ctx.font = GRF(s, 0); const lim = (maxw || 600) - 40;
+  while (s > 9 && ctx.measureText(t).width > lim){ s -= 1; ctx.font = GRF(s, 0); }
+  const w = ctx.measureText(t).width + 36, h = s*1.8; grPath(x - w/2, y - s*1.25, w, h, h/3);
+  ctx.fillStyle = 'rgba(255,201,51,.14)'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#ffc933'; ctx.stroke();
+  ctx.textAlign = 'center'; ctx.fillStyle = '#fff0a0'; ctx.fillText(t, x, y); ctx.restore();
+}
+function grCard(title, tone, lines, scale){              // centred end-of-game card: title + lines (null lines skipped)
+  lines = lines.filter(Boolean).filter(l => !l.xp || (S && S.xpGain));
+  const pw = Math.min(SW - 20, 680), ts = Math.min(64, SW/9, SH/6.5)*(scale || 1);
+  let h = 34 + ts + 12; for (const l of lines) h += l.hint ? l.size*2.3 : l.size*1.7; h += 16;
+  const x = (SW - pw)/2, y = Math.max(8, (SH - h)/2);
+  ctx.fillStyle = 'rgba(4,2,18,.8)'; ctx.fillRect(0, 0, SW, SH);
+  grPanel(x, y, pw, h, {c:18, edge: tone === 'red' ? '#ff5a5a' : '#a855f7'});
+  let yy = y + 22 + ts*0.85; grTitle(title, SW/2, yy, ts, tone, pw - 36); yy += 10;
+  for (const l of lines){
+    if (l.xp){ drawXPLine(SW/2, yy + l.size*1.15, l.size); yy += l.size*1.7; }
+    else if (l.hint){ grHint(l.t, SW/2, yy + l.size*1.55, l.size, pw); yy += l.size*2.3; }
+    else { grTxt(l.t, SW/2, yy + l.size*1.15, l.size, l.col || '#e8e8f5', l.disp, pw - 36); yy += l.size*1.7; }
+  }
+}
 function drawXPLine(x, y, size){
   const g = S && S.xpGain; if (!g) return;
-  ctx.textAlign = 'center'; ctx.font = 'bold ' + size + 'px sans-serif'; ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.lineJoin = 'round';
   const t = '+' + g.gain + ' XP' + (g.up ? '  ·  LEVEL UP! You are level ' + g.lvl : '  ·  Level ' + g.lvl);
-  ctx.strokeText(t, x, y); ctx.fillStyle = g.up ? '#7dff7d' : '#ffd34d'; ctx.fillText(t, x, y);
+  ctx.save(); ctx.textAlign = 'center'; ctx.font = GRF(size, 0); ctx.lineWidth = 4; ctx.strokeStyle = '#0d0830'; ctx.lineJoin = 'round';
+  ctx.strokeText(t, x, y); ctx.fillStyle = g.up ? '#7dff9d' : '#ffd34d'; ctx.fillText(t, x, y); ctx.restore();
 }
 showXP(); showKills();
 ctrRefresh(); { let ch = false; for (let i = 0; i < 3; i++) if ((look.xtra >> i & 1) && !unlockedX(i)){ look.xtra &= ~(1 << i); ch = true; } for (const row in UNL) if (look[row] && !unlockedIdx(row, look[row] | 0)){ look[row] = 0; ch = true; } if (ch) try { localStorage.setItem('sr-look', JSON.stringify(look)); } catch(_){} }      // a saved avatar using something not unlocked falls back to the default
@@ -8400,6 +8459,7 @@ function loop(now){
 }
 init();
 requestAnimationFrame(loop);
+{ const L = document.getElementById('gr-load'); if (L) requestAnimationFrame(() => requestAnimationFrame(() => { L.classList.add('out'); setTimeout(() => L.remove(), 300); })); }
 </script>
 </body>
 </html>
