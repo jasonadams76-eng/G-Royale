@@ -282,7 +282,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 126;
+const VERSION = 127;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -7937,6 +7937,7 @@ function renderAdv(){
   }
 }
 let VIEW_ANG = false; try { VIEW_ANG = localStorage.getItem('sr-view') === 'ang'; } catch(_){}
+try { drawLookPreview(); } catch(_){}      // the menu picture was first drawn before the saved view was known: redraw it to match
 { const b = $('view-set'), upd = () => { b.textContent = '\u{1F3A5} View: ' + (VIEW_ANG ? 'Angled' : 'Top-down'); }; upd(); b.onclick = () => { VIEW_ANG = !VIEW_ANG; try { localStorage.setItem('sr-view', VIEW_ANG ? 'ang' : 'top'); } catch(_){} upd(); try { drawLookPreview(); } catch(_){} }; }
 { const b = $('cs-set'), upd = () => { b.textContent = '\u{1F3AC} Cut scenes: ' + CS_LBL[csSetting()]; }; upd(); b.onclick = () => { const nx = CS_SET[(CS_SET.indexOf(csSetting()) + 1) % CS_SET.length]; try { localStorage.setItem('sr-cs', nx); } catch(_){} upd(); }; }
 function renderScenes(){
