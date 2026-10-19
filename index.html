@@ -511,6 +511,11 @@
   @keyframes grLoadIn{to{opacity:1}}
   @keyframes grBar{from{transform:translateX(-100%)}to{transform:translateX(260%)}}
   @media (prefers-reduced-motion:reduce){#menu #s-main,#menu #s-avatar,#menu #s-join,#menu #s-lobby,#menu #s-adv,#menu #s-scenes{animation:none!important}#gr-load u{animation:none}}
+
+  /* v132: no Top Down preview on the avatar screen */
+  #avprev[hidden]{display:none!important}
+  #menu.onsub .avside{justify-content:center;padding:0 10px}
+  @media (max-width:720px){#menu.onsub .avside .avcap:last-child{display:block}#menu.onsub .avside{justify-content:flex-start}}
 </style>
 </head>
 <body>
@@ -568,7 +573,7 @@
       <div class="sh"><div><h1>Design your avatar</h1><p class="sub">Your changes save as you pick</p></div><button class="btn" id="b-avdone">Save &amp; Back</button></div>
       <div class="avlayout">
         <div class="avstage">
-          <div class="avframe"><div id="avstick"><canvas id="avport" width="200" height="340" title="Tap to turn around"></canvas><div class="avside"><canvas id="avprev" width="150" height="150"></canvas><div class="avcap"><b>Top Down view</b><br>how you look in Top Down mode</div><div class="avcap">Tap the figure to turn</div></div></div></div>
+          <div class="avframe"><div id="avstick"><canvas id="avport" width="200" height="340" title="Tap to turn around"></canvas><div class="avside"><canvas id="avprev" width="150" height="150" hidden></canvas><div class="avcap">Tap the figure to turn</div></div></div></div>
           <button class="mini" id="av-reset" type="button">Reset colours</button>
         </div>
         <div class="avmain">
@@ -671,7 +676,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 131;
+const VERSION = 132;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
