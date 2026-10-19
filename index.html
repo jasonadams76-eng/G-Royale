@@ -177,7 +177,7 @@
     <div id="s-avatar" hidden>
       <p><b>Design Your Avatar</b></p>
       <div class="cols"><div class="colL">
-      <div id="avstick"><canvas id="avport" width="200" height="340" title="Tap to turn around"></canvas><div class="avside"><canvas id="avprev" width="150" height="150"></canvas><div class="avcap" id="avcap1"><b>Top Down view</b><br>how you look in Top Down mode</div><div class="avcap">Tap the figure to turn</div></div></div>
+      <div id="avstick"><canvas id="avport" width="200" height="340" title="Tap to turn around"></canvas><div class="avside"><canvas id="avprev" width="150" height="150"></canvas><div class="avcap"><b>Top Down view</b><br>how you look in Top Down mode</div><div class="avcap">Tap the figure to turn</div></div></div>
       </div><div class="colR">
       <div class="lbl">Skin tone</div><div class="sws big" id="av-skins"></div>
       <div class="lbl">Hair style</div><div class="mapbox" id="av-styles"></div>
@@ -275,7 +275,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 124;
+const VERSION = 125;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -5540,14 +5540,14 @@ showWins();
 try { $('pname').value = localStorage.getItem('sr-name') || ''; } catch(_){}
 $('pname').addEventListener('input', () => { try { localStorage.setItem('sr-name', cleanName($('pname').value)); } catch(_){} });
 const myName = () => cleanName($('pname').value);
-// Designer screen, Angled view: the small preview shows the avatar as it is drawn in the game (standing up, holding a gun); tap it to turn
+// Main menu, Angled view: the small avatar image shows the avatar as it is drawn in the game (standing up, holding a gun); tap it to turn
 let avFace = 0;
 const AV_FACE = [0, Math.PI/2, Math.PI, -Math.PI/2];      // facing right, toward you, left, away
 function avAngledOn(){ try { return !!VIEW_ANG; } catch(_){ return false; } }      // (VIEW_ANG is declared further down the file)
-function drawAvAngled(cv){
+function drawAvAngled(cv, L){
   try {
     const c = cv.getContext('2d'), w = cv.width, h = cv.height;
-    const a = {x:0, y:0, r:15, hp:100, sh:0, inv:['pistol', null, null, null, null, null], gr:{}, ammo:{}, cur:0, angle:AV_FACE[avFace % 4], swing:0, atk:0, down:0, heal:0, alive:true, scale:1, emT:0, isPlayer:true, lk:lkOf(look), pat:look.pat | 0, hstyle:look.style | 0, sleeve:look.sleeve | 0, trophy:look.trophy || '', snowAv:crtCode(look.crt)};
+    const a = {x:0, y:0, r:15, hp:100, sh:0, inv:['pistol', null, null, null, null, null], gr:{}, ammo:{}, cur:0, angle:AV_FACE[avFace % 4], swing:0, atk:0, down:0, heal:0, alive:true, scale:1, emT:0, isPlayer:true, lk:lkOf(L), pat:L.pat | 0, hstyle:L.style | 0, sleeve:L.sleeve | 0, trophy:L.trophy || '', snowAv:crtCode(L.crt)};
     const s = (h - 16)/72;
     c.save(); c.translate(w/2, h - 14); c.scale(s, s); drawAngledActor(c, a); c.restore();
     return true;
@@ -5555,10 +5555,9 @@ function drawAvAngled(cv){
 }
 function drawLookPreview(){
   const ang = avAngledOn();
-  { const cap = $('avcap1'); if (cap) cap.innerHTML = ang ? '<b>Angled view</b><br>how you look in Angled mode (tap to turn)' : '<b>Top Down view</b><br>how you look in Top Down mode'; }
   for (const [id, sc] of [['lookprev', 2.3], ['avprev', 3.4]]){
     const cv2 = $(id), c = cv2.getContext('2d'), w = cv2.width; c.clearRect(0, 0, w, w);
-    if (id === 'avprev' && ang && drawAvAngled(cv2)) continue;
+    if (id === 'lookprev' && ang && drawAvAngled(cv2, curLook())) continue;
     c.save(); c.translate(w/2, w*(id === 'avprev' ? 0.6 : 0.52)); c.rotate(-Math.PI/2); c.scale(sc, sc); c.lineWidth = 2; c.strokeStyle = '#000'; c.lineJoin = 'round';
     const L = id === 'avprev' ? look : curLook();      // (the designer screen always previews the avatar being designed)
     if (crtCode(L.crt) > 0) drawCrtTop(c, crtCode(L.crt), {x:0, swing:0}); else drawPerson(c, lkc(L, 'shirt'), lkc(L, 'skin'), 0, false, {pat:L.pat, shirt2:lkc(L, 'shirt2'), hair:lkc(L, 'hair'), style:L.style, sleeve:L.sleeve, trophy:L.trophy, lk:lkOf(L)}); c.restore();
@@ -6587,7 +6586,7 @@ function drawPortrait(){
   c.save(); c.translate(100, 330); if (crtCode(look.crt) > 0) drawCreatureFigure(c, crtCode(look.crt), avBack, null, 0, {skin:lkc(look, 'skin'), hair:lkc(look, 'hair')}); else drawAvatarFigure(c, look, avBack); c.restore();
 }
 { const pv = document.getElementById('avport'); if (pv) pv.onclick = () => { avBack = !avBack; drawPortrait(); playSnd('ui'); }; }
-{ const pv = document.getElementById('avprev'); if (pv){ pv.style.cursor = 'pointer'; pv.onclick = () => { if (!avAngledOn()) return; avFace = (avFace + 1) % 4; drawLookPreview(); playSnd('ui'); }; } }
+{ const pv = document.getElementById('lookprev'); if (pv){ pv.style.cursor = 'pointer'; pv.title = 'Angled view: tap to turn'; pv.onclick = () => { if (!avAngledOn()) return; avFace = (avFace + 1) % 4; drawLookPreview(); playSnd('ui'); }; } }
 function rebuildKeepScroll(){      // rebuilding the pickers must not throw the scroll back to the top
   const saved = [[window, window.scrollX, window.scrollY]];
   document.querySelectorAll('#menu, #menu *').forEach(n => { if (n.scrollTop || n.scrollLeft) saved.push([n, n.scrollLeft, n.scrollTop]); });
