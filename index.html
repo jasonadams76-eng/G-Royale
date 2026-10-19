@@ -160,8 +160,8 @@
   }
   /* dusk sky behind the main screen only */
   #menu .sky{display:none}
-  #menu.onmain{background:var(--gr-ink);align-items:flex-start;font-family:var(--gr-body);font-weight:500}
-  #menu.onmain .sky{display:block;position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;
+  #menu.onmain,#menu.onsub{background:var(--gr-ink);align-items:flex-start;font-family:var(--gr-body);font-weight:500}
+  #menu.onmain .sky,#menu.onsub .sky{display:block;position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;
     background:radial-gradient(60% 55% at 88% 34%,rgba(255,196,80,.55),rgba(224,137,74,.22) 45%,transparent 70%),
       radial-gradient(55% 60% at 10% 20%,rgba(94,40,200,.55),transparent 70%),
       linear-gradient(100deg,#08051f 0%,#150c46 35%,#3a1a74 58%,#9a4a74 80%,#e0894a 100%)}
@@ -272,11 +272,11 @@
   #menu.onmain .padfocus{outline:3px solid #7dff7d !important;outline-offset:3px}
 
   /* sound / music / full screen buttons: corner of the main menu only (in a match they keep their old spot) */
-  body:has(#menu.onmain:not(.hide)) :is(#snd,#mus,#fs){top:12px;width:42px;height:42px;font-size:18px;color:var(--gr-silver);
+  body:has(#menu:is(.onmain,.onsub):not(.hide)) :is(#snd,#mus,#fs){top:12px;width:42px;height:42px;font-size:18px;color:var(--gr-silver);
     background:rgba(9,5,34,.7);border:1px solid rgba(168,85,247,.6);border-radius:12px 3px 12px 3px}
-  body:has(#menu.onmain:not(.hide)) #snd{left:14px}
-  body:has(#menu.onmain:not(.hide)) #mus{left:62px}
-  body:has(#menu.onmain:not(.hide)) #fs{left:110px}
+  body:has(#menu:is(.onmain,.onsub):not(.hide)) #snd{left:14px}
+  body:has(#menu:is(.onmain,.onsub):not(.hide)) #mus{left:62px}
+  body:has(#menu:is(.onmain,.onsub):not(.hide)) #fs{left:110px}
 
   /* phones in portrait and narrow windows: stack, pin Play to the bottom */
   @media (max-width:860px) and (orientation:portrait),(max-width:560px){
@@ -310,9 +310,130 @@
     #menu.onmain .mm-row .btn{min-height:34px;font-size:13px}
     #menu.onmain .menumini{padding-top:6px;flex-wrap:nowrap;gap:8px}
     #menu.onmain .menumini .mini{font-size:12px;white-space:nowrap}
-    body:has(#menu.onmain:not(.hide)) :is(#snd,#mus,#fs){display:none !important}
+    body:has(#menu:is(.onmain,.onsub):not(.hide)) :is(#snd,#mus,#fs){display:none !important}
   }
   @media (prefers-reduced-motion:reduce){#menu .sky .cloud,#menu .sky .flash,#menu.onmain .logo{animation:none}#menu.onmain #modebox-main .mini{transition:none}}
+
+  /* ===================== B1: chapter select, cut scenes, join, lobby, pop-ups ===================== */
+  #menu.onsub{padding:14px 0;box-sizing:border-box}
+  #menu.onsub .card{position:relative;isolation:isolate;z-index:1;box-sizing:border-box;width:min(840px,calc(100% - 28px));max-width:none;max-height:none;margin:auto;
+    padding:18px 22px 18px;background:none;border:0;border-radius:0;overflow:visible;text-align:left;color:var(--gr-silver);font-family:var(--gr-body);
+    filter:drop-shadow(0 0 26px rgba(123,44,255,.45))}
+  #menu.onsub .card::before{content:'';position:absolute;inset:0;z-index:-2;clip-path:var(--gr-chamfer);background:linear-gradient(135deg,var(--gr-violet2),var(--gr-violetdim) 45%,var(--gr-gold))}
+  #menu.onsub .card::after{content:'';position:absolute;inset:2px;z-index:-1;clip-path:var(--gr-chamfer);background:linear-gradient(180deg,rgba(20,12,64,.95),rgba(9,5,34,.97))}
+  #menu.onsub .logo{position:absolute;left:22px;top:16px;width:84px;height:84px;margin:0;border-radius:0;object-fit:contain;
+    -webkit-mask-image:radial-gradient(closest-side,#000 74%,transparent 100%);mask-image:radial-gradient(closest-side,#000 74%,transparent 100%)}
+  #menu.onsub :is(#s-adv,#s-scenes,#s-join,#s-lobby){display:flex;flex-direction:column;gap:14px}
+  #menu.onsub :is(#s-adv,#s-scenes,#s-join,#s-lobby)[hidden]{display:none}
+  #menu.onsub #msg{min-height:0;margin-top:10px;text-align:center;color:#ffb3b3;font-size:14px}
+  #menu.onsub #msg:empty{display:none}
+  #menu.onsub .sh{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:84px;padding-left:98px}
+  #menu.onsub .sh h1{margin:0;font:400 34px/1 var(--gr-display);letter-spacing:.03em;color:var(--gr-gold);text-shadow:0 2px 0 #4b1088,0 0 18px rgba(255,201,51,.35)}
+  #menu.onsub .sh .sub{margin:4px 0 0;font-size:14px;color:var(--gr-dim)}
+  #menu.onsub .lbl{margin:0 0 -6px;font-size:13px;font-weight:700;color:var(--gr-dim)}
+  #menu.onsub .lbl span{opacity:.8}
+  #menu.onsub :focus-visible{outline:3px solid #fff;outline-offset:3px}
+  #menu.onsub .padfocus{outline:3px solid #7dff7d !important;outline-offset:3px}
+
+  /* buttons: secondary angled, primary (not .ghost) gold */
+  #menu.onsub .btn{position:relative;isolation:isolate;display:flex;align-items:center;justify-content:center;width:100%;min-height:44px;margin:0;padding:0 18px;border:0;border-radius:0;
+    background:none;font:700 15px/1.1 var(--gr-body);color:var(--gr-silver);transition:filter .15s}
+  #menu.onsub .btn[hidden]{display:none}
+  #menu.onsub .btn::before{content:'';position:absolute;inset:0;z-index:-2;clip-path:var(--gr-slant);background:linear-gradient(135deg,var(--gr-violet2),var(--gr-violetdim) 60%,var(--gr-gold))}
+  #menu.onsub .btn::after{content:'';position:absolute;inset:2px;z-index:-1;clip-path:var(--gr-slant);background:linear-gradient(180deg,#22157a,#120a45)}
+  #menu.onsub .btn:hover{filter:brightness(1.25)}
+  #menu.onsub .btn:not(.ghost){padding:11px 0 9px;font:400 30px/1 var(--gr-display);letter-spacing:.06em;text-transform:uppercase;color:#2a0a52;text-shadow:0 1px 0 rgba(255,255,255,.55);
+    filter:drop-shadow(0 0 16px rgba(255,190,40,.5));transition:filter .15s,transform .1s}
+  #menu.onsub .btn:not(.ghost)::before{z-index:-1;background:linear-gradient(180deg,var(--gr-goldhi),var(--gr-gold) 48%,var(--gr-goldlo))}
+  #menu.onsub .btn:not(.ghost)::after{display:none}
+  #menu.onsub .btn:not(.ghost):hover{filter:drop-shadow(0 0 24px rgba(255,200,60,.85)) brightness(1.06);transform:translateY(-1px)}
+  #menu.onsub .btn:not(.ghost):active{transform:translateY(1px)}
+  #menu.onsub .sh .btn{width:auto;flex:none}
+
+  /* chips (difficulty, mode, map, level) */
+  #menu.onsub .mapbox,#menu.onsub #modebox{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:4px;margin:0 -4px 0 -2px}
+  #menu.onsub .mapbox .mini,#menu.onsub #modebox .mini{position:relative;isolation:isolate;padding:8px 14px;border:0;border-radius:0;background:none;font:700 14px var(--gr-body);color:var(--gr-silver)}
+  #menu.onsub .mapbox .mini::before,#menu.onsub #modebox .mini::before{content:'';position:absolute;inset:0;z-index:-1;clip-path:var(--gr-slant);background:#241670;transition:background .15s}
+  #menu.onsub .mapbox .mini:hover::before,#menu.onsub #modebox .mini:hover::before{background:#32208f}
+  #menu.onsub .mapbox .mini.sel,#menu.onsub #modebox .mini.sel{color:#2a0a52}
+  #menu.onsub .mapbox .mini.sel::before,#menu.onsub #modebox .mini.sel::before{background:linear-gradient(var(--gr-goldhi),var(--gr-gold) 55%,var(--gr-goldlo))}
+  #menu.onsub .mapbox .mini.locked{color:var(--gr-dim);opacity:.6}
+  #menu.onsub .mapbox .mini.locked::before{background:repeating-linear-gradient(135deg,#3b3566 0 6px,#2a2552 6px 12px)}
+  /* small action buttons inside lists (Team up, + Bot teammate, invites) */
+  #menu.onsub .mini{position:relative;isolation:isolate;flex:none;padding:6px 12px;border:0;border-radius:0;background:none;font:700 13px var(--gr-body);color:#2a0a52}
+  #menu.onsub .mini::before{content:'';position:absolute;inset:0;z-index:-1;clip-path:var(--gr-slant);background:linear-gradient(var(--gr-goldhi),var(--gr-gold) 55%,var(--gr-goldlo))}
+  #menu.onsub .mini.no{color:var(--gr-silver)}
+  #menu.onsub .mini.no::before{background:linear-gradient(#a8334f,#6f1a33)}
+  #menu.onsub .mini:disabled{opacity:.55}
+
+  /* chapter / cut scene cards */
+  #menu.onsub #diffhelp{margin:0;font-size:14px;line-height:1.3;opacity:1;border-left:3px solid var(--gr-violet);padding-left:10px}
+  #menu.onsub #advgrid,#menu.onsub #scenegrid{grid-template-columns:1fr 1fr;gap:10px;margin:0}
+  #menu.onsub .advcard{position:relative;isolation:isolate;border:0;border-radius:0;background:none;color:var(--gr-silver);padding:12px 16px 11px;font-family:var(--gr-body);transition:transform .15s}
+  #menu.onsub .advcard::before{content:'';position:absolute;inset:0;z-index:-2;clip-path:var(--gr-chamfer-m);background:linear-gradient(135deg,#5a3bc0,#2a1a76)}
+  #menu.onsub .advcard::after{content:'';position:absolute;inset:2px;z-index:-1;clip-path:var(--gr-chamfer-m);background:linear-gradient(180deg,#1a1064,#0d0830)}
+  #menu.onsub .advcard:hover{transform:translateY(-2px)}
+  #menu.onsub .advcard .at{font:400 21px/1.1 var(--gr-display);letter-spacing:.03em}
+  #menu.onsub .advcard .as{font-size:13px;color:var(--gr-dim);opacity:1;margin-top:3px}
+  #menu.onsub .advcard .ast{font-size:13px;font-weight:700;margin-top:6px;color:var(--gr-gold)}
+  #menu.onsub .advcard .abadge{font-size:13px;font-weight:700;margin-top:2px;color:var(--gr-goldhi)}
+  #menu.onsub .advcard.last::before{background:linear-gradient(135deg,var(--gr-goldhi),var(--gr-gold) 50%,var(--gr-goldlo))}
+  #menu.onsub .advcard.last::after{background:linear-gradient(180deg,#43209a,#1b1060)}
+  #menu.onsub .advcard.done .ast{color:#7dffb0}
+  #menu.onsub .advcard.locked,#menu.onsub .advcard.soon{opacity:1;cursor:default}
+  #menu.onsub .advcard.locked:hover,#menu.onsub .advcard.soon:hover{transform:none}
+  #menu.onsub .advcard.locked::before,#menu.onsub .advcard.soon::before{background:repeating-linear-gradient(135deg,#3b3566 0 6px,#2a2552 6px 12px)}
+  #menu.onsub .advcard.locked::after,#menu.onsub .advcard.soon::after{background:linear-gradient(180deg,#14102f,#0b0822)}
+  #menu.onsub .advcard.locked .at,#menu.onsub .advcard.locked .as,#menu.onsub .advcard.soon{opacity:.6}
+  #menu.onsub .advcard.locked .ast{color:#c9a94a}
+
+  /* join */
+  #menu.onsub #s-join .joinbox{display:flex;flex-direction:column;align-items:center;gap:14px;padding:6px 0}
+  #menu.onsub #code{width:min(420px,100%);margin:0;padding:12px 10px 8px .35em;text-align:center;font:400 54px/1 var(--gr-display);letter-spacing:.35em;text-transform:uppercase;color:var(--gr-gold);
+    background:rgba(255,255,255,.05);border:0;border-bottom:3px solid var(--gr-gold);border-radius:2px;outline:0}
+  #menu.onsub #code::placeholder{color:#5b5390}
+  #menu.onsub #code:focus-visible{background:rgba(255,201,51,.1);box-shadow:0 0 0 2px var(--gr-gold)}
+  #menu.onsub #s-join .hint{display:block;max-width:46ch;margin:0;min-height:0;text-align:center;color:var(--gr-dim);font-size:15px;line-height:1.35}
+  #menu.onsub #s-join .joinbox .btn{width:min(420px,100%)}
+
+  /* lobby */
+  #menu.onsub #s-lobby .cols{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;text-align:left}
+  #menu.onsub #s-lobby .colL,#menu.onsub #s-lobby .colR{display:flex;flex-direction:column;gap:12px;min-width:0}
+  #menu.onsub #roomcode{display:flex;gap:8px;margin:0;font:400 38px/1 var(--gr-display);letter-spacing:.04em;text-align:left;color:var(--gr-gold)}
+  #menu.onsub #roomcode span{position:relative;isolation:isolate;width:52px;height:64px;display:grid;place-items:center;text-shadow:0 0 14px rgba(255,201,51,.5)}
+  #menu.onsub #roomcode span::before{content:'';position:absolute;inset:0;z-index:-2;clip-path:var(--gr-chamfer-s);background:linear-gradient(135deg,var(--gr-violet2),var(--gr-violetdim) 55%,var(--gr-gold))}
+  #menu.onsub #roomcode span::after{content:'';position:absolute;inset:2px;z-index:-1;clip-path:var(--gr-chamfer-s);background:linear-gradient(180deg,#1a1064,#0a0630)}
+  #menu.onsub #plist{display:flex;flex-direction:column;gap:6px;margin:0}
+  #menu.onsub .prow{margin:0;min-height:44px;padding:7px 10px 7px 12px;border:0;border-left:3px solid var(--gr-violet2);border-radius:0;background:rgba(123,44,255,.14);font-size:15px}
+  #menu.onsub .prow.me{border-left-color:var(--gr-gold);background:rgba(255,201,51,.09)}
+  #menu.onsub .prow .nm{font-weight:700;font-size:17px}
+  #menu.onsub .tag{margin-left:8px;font-size:12px;font-weight:500;color:var(--gr-dim)}
+  #menu.onsub .tag.win{color:var(--gr-gold);font-weight:700}
+  #menu.onsub .team{display:flex;flex-direction:column;gap:5px;margin:0;padding:6px 8px 7px;border:1px solid rgba(168,85,247,.6);border-radius:0;background:rgba(75,16,136,.28);clip-path:var(--gr-chamfer-s)}
+  #menu.onsub .team .tl{margin:1px 4px;font-size:12px;font-weight:700;color:var(--gr-gold);text-transform:none;letter-spacing:0}
+  #menu.onsub .team .prow{margin:0}
+  #menu.onsub #invites .inv{margin:6px 0 0;min-height:44px;padding:7px 10px 7px 12px;border:0;border-left:3px solid var(--gr-gold);border-radius:0;background:rgba(255,201,51,.09);font-size:15px}
+  #menu.onsub #s-lobby .hint{margin:0;min-height:0;text-align:left;font-size:14px;color:var(--gr-dim)}
+  #menu.onsub #diffwrap-lobby{display:flex;flex-direction:column;gap:10px}
+  #menu.onsub #diffwrap-lobby .lbl{margin:0}
+
+  /* pop-ups (Save transfer, unlock notices) and menu toasts */
+  #svbox .mini,#unl-ok,#snow-ok{position:relative;isolation:isolate;border:0;border-radius:0;background:none;color:#2a0a52;font:700 14px "GR Body",system-ui,sans-serif}
+  #svbox .mini::before,#unl-ok::before,#snow-ok::before{content:'';position:absolute;inset:0;z-index:-1;clip-path:var(--gr-slant);background:linear-gradient(var(--gr-goldhi),var(--gr-gold) 55%,var(--gr-goldlo))}
+  #snow-ok{display:block;width:100%;min-height:44px;margin:8px 0 0;padding:0 18px;font:400 24px/1 var(--gr-display);letter-spacing:.05em;text-transform:uppercase}
+  body:has(#menu:is(.onmain,.onsub):not(.hide)) #toast{background:rgba(9,5,34,.95);border:1px solid var(--gr-violet2);border-radius:12px 3px 12px 3px;
+    box-shadow:0 0 18px rgba(123,44,255,.45);font:500 15px var(--gr-body);color:var(--gr-silver)}
+
+  @media (max-width:720px){
+    #menu.onsub .card{padding:14px 14px 16px;margin-top:62px}
+    #menu.onsub .logo{left:14px;top:12px;width:60px;height:60px}
+    #menu.onsub .sh{min-height:60px;padding-left:70px}
+    #menu.onsub .sh h1{font-size:26px}
+    #menu.onsub #s-lobby .cols{grid-template-columns:1fr}
+    #menu.onsub #advgrid,#menu.onsub #scenegrid{grid-template-columns:1fr}
+    #menu.onsub #roomcode span{width:44px;height:56px;font-size:32px}
+    #menu.onsub #code{font-size:44px}
+  }
 </style>
 </head>
 <body>
@@ -403,32 +524,29 @@
     </div>
 
     <div id="s-adv" hidden>
-      <p style="font-size:18px;font-weight:700;margin:4px 0 10px">Story Mode · Choose your chapter</p>
+      <div class="sh"><div><h1>Choose your chapter</h1><p class="sub">Story Mode</p></div><button class="btn ghost" data-back>Back</button></div>
       <div class="lbl">Difficulty <span style="font-weight:400;opacity:.75">(Explorer = Easy · Adventurer = Normal · Veteran = Hard)</span></div><div class="mapbox" id="diffbox"></div>
-      <div id="diffhelp" style="font-size:13px;opacity:.85;margin:4px 0 10px"></div>
+      <div id="diffhelp"></div>
       <div id="advgrid"></div>
-      <button class="btn" id="b-scenes">🎬 Replay cut scenes</button>
-      <button class="btn ghost" data-back>Back</button>
+      <div><button class="btn ghost" id="b-scenes" style="width:auto">Replay cut scenes</button></div>
     </div>
     <div id="s-scenes" hidden>
-      <p style="font-size:18px;font-weight:700;margin:4px 0 10px">🎬 Story cut scenes</p>
+      <div class="sh"><div><h1>Cut scenes</h1><p class="sub">Story Mode</p></div><button class="btn ghost" id="b-scenes-back">Back</button></div>
       <div id="scenegrid"></div>
-      <button class="btn ghost" id="b-scenes-back">Back</button>
     </div>
     <div id="s-join" hidden>
-      <div class="cols"><div class="colL">
-      <p>Enter the room code</p>
-      <input id="code" class="txt" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false">
-      <button class="btn" id="b-go">Join</button>
-      </div><div class="colR">
-      <p class="hint pconly">Ask the host for the 5-letter room code. It is shown big at the top of their lobby. Once you are in, you can team up with other players before the host starts the match.</p>
-      <button class="btn ghost" data-back>Back</button>
-      </div></div>
+      <div class="sh"><div><h1>Join a game</h1><p class="sub">Ask the host for their room code</p></div><button class="btn ghost" data-back>Back</button></div>
+      <div class="joinbox">
+        <input id="code" class="txt" maxlength="5" placeholder="•••••" aria-label="Room code" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <p class="hint pconly">The 5-letter room code is shown big at the top of the host's lobby. Once you are in, you can team up with other players before the host starts the match.</p>
+        <button class="btn" id="b-go">Join</button>
+      </div>
     </div>
 
     <div id="s-lobby" hidden>
+      <div class="sh"><div><h1>Lobby</h1><p class="sub">Share the room code with your friends</p></div><button class="btn ghost" id="b-leave">Leave Room</button></div>
       <div class="cols"><div class="colL">
-      <p class="small">Room code</p>
+      <p class="lbl">Room code</p>
       <div id="roomcode">-----</div>
       <div id="plist"></div>
       <div id="invites"></div>
@@ -441,7 +559,6 @@
       <button class="btn ghost" id="b-leaveteam" hidden>Leave team (play solo)</button>
       <button class="btn" id="b-start" hidden>Start Match</button>
       <p class="hint" id="wait-host" hidden>Waiting for the host to start the match…</p>
-      <button class="btn ghost" id="b-leave">Leave Room</button>
       </div></div>
     </div>
 
@@ -449,13 +566,13 @@
   </div>
 </div>
 <button id="snd" title="Sound on/off (M)">🔊</button>
-<div id="svbox" style="display:none;position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.82);align-items:center;justify-content:center"><div style="background:#16251a;border:2px solid #4a6;border-radius:12px;padding:16px;width:min(440px,92vw);max-height:92vh;overflow:auto;color:#cfe;font:14px sans-serif">
-  <b style="font-size:17px">💾 Save transfer</b>
+<div id="svbox" style="display:none;position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.82);align-items:center;justify-content:center"><div style="background:linear-gradient(180deg,#1b1060,#0d0830);border:2px solid #a855f7;border-radius:14px 3px 14px 3px;box-shadow:0 0 30px rgba(123,44,255,.55);padding:16px;width:min(440px,92vw);max-height:92vh;overflow:auto;color:#e8e8f5;font:500 14px GR Body,system-ui,sans-serif">
+  <b style="font:400 24px/1.1 'GR Display',Impact,sans-serif;letter-spacing:.03em;color:#ffc933">Save transfer</b>
   <p style="margin:8px 0 4px"><b>Export</b>: copy this code (or download it) and import it on your other device.</p>
-  <textarea id="sv-out" readonly style="width:100%;height:70px;box-sizing:border-box;background:#0b140d;color:#9f9;border:1px solid #4a6;border-radius:6px;font:11px monospace"></textarea>
+  <textarea id="sv-out" readonly style="width:100%;height:70px;box-sizing:border-box;background:#07041c;color:#ffe9a0;border:1px solid #a855f7;border-radius:4px;font:11px monospace"></textarea>
   <div style="margin:6px 0"><button class="mini" id="sv-copy">Copy code</button> <button class="mini" id="sv-dl">Download file</button></div>
   <p style="margin:10px 0 4px"><b>Import</b>: paste a code or load a file. This replaces the progress on this device.</p>
-  <textarea id="sv-in" placeholder="Paste save code here" style="width:100%;height:70px;box-sizing:border-box;background:#0b140d;color:#fff;border:1px solid #4a6;border-radius:6px;font:11px monospace"></textarea>
+  <textarea id="sv-in" placeholder="Paste save code here" style="width:100%;height:70px;box-sizing:border-box;background:#07041c;color:#fff;border:1px solid #a855f7;border-radius:4px;font:11px monospace"></textarea>
   <div style="margin:6px 0"><button class="mini" id="sv-apply">Import code</button> <button class="mini" id="sv-file">Load file…</button> <input type="file" id="sv-pick" accept=".json,.txt,text/plain,application/json" style="display:none"></div>
   <div id="sv-msg" style="min-height:18px;color:#fc4"></div>
   <div style="text-align:right"><button class="mini" id="sv-close">Close</button></div></div></div>
@@ -466,7 +583,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 128;
+const VERSION = 129;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -4087,7 +4204,7 @@ function onGuestData(m){
     case 'welcome':
       NET.myPid = m.pid; NET.role = 'guest'; if (NET.joinOk) NET.joinOk();
       if (m.name && myName() && m.name !== myName()) setTimeout(() => toast('That name was taken in this room, so you are ' + m.name, 4000), 300);
-      phase = 'lobby'; $('roomcode').textContent = NET.code; showScreen('s-lobby');
+      phase = 'lobby'; setRoomCode(NET.code); showScreen('s-lobby');
       break;
     case 'lobby': case 'invited': case 'invitegone': case 'declined':
       if (phase === 'lobby') onLobbyMsg(m);
@@ -5621,7 +5738,8 @@ function toast(t, ms){
   clearTimeout(toastT); toastT = setTimeout(() => el.style.display = 'none', ms || 3500);
 }
 const SCREENS = ['s-main','s-avatar','s-join','s-lobby','s-adv','s-scenes'];
-function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); $('menu').classList.toggle('onmain', id === 's-main'); menuMsg(''); if (id === 's-main') setTimeout(() => { try { checkMenuMsgs(); } catch(_){} }, 400); }
+function setRoomCode(c){ const e = $('roomcode'); e.textContent = ''; e.setAttribute('aria-label', 'Room code ' + c); for (const ch of String(c)){ const s = document.createElement('span'); s.textContent = ch; e.appendChild(s); } }
+function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); $('menu').classList.toggle('onmain', id === 's-main'); $('menu').classList.toggle('onsub', id !== 's-main' && id !== 's-avatar'); menuMsg(''); if (id === 's-main') setTimeout(() => { try { checkMenuMsgs(); } catch(_){} }, 400); }
 function menuMsg(t){ $('msg').textContent = t || ''; }
 function hideMenu(){ $('menu').classList.add('hide'); $('exit').style.display = 'block'; }
 
@@ -5651,7 +5769,7 @@ function checkUnlockMsg(){      // new avatar items earned since the last time y
     if (!out.length) return;
     localStorage.setItem('sr-unl-seen', JSON.stringify(seen.concat(out.map(q => q[0]))));
     const o = document.createElement('div'); o.style.cssText = 'position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center';
-    o.innerHTML = '<div style="background:#16251a;border:2px solid #fc4;border-radius:14px;padding:20px;width:min(420px,90vw);text-align:center;color:#eef;font:16px sans-serif"><div style="font-size:42px">\u{1F513}</div><b style="font-size:20px;color:#fc4">New avatar ' + (out.length > 1 ? 'items' : 'item') + ' unlocked!</b><p style="margin:10px 0 14px">' + out.map(q => '<b>' + q[1] + '</b>').join(', ') + '<br>Pick ' + (out.length > 1 ? 'them' : 'it') + ' in the avatar designer.</p><button class="mini" id="unl-ok" style="font-size:16px;padding:10px 24px">Nice!</button></div>';
+    o.innerHTML = '<div style="background:linear-gradient(180deg,#1b1060,#0d0830);border:2px solid #ffc933;border-radius:14px 3px 14px 3px;box-shadow:0 0 30px rgba(123,44,255,.55);padding:20px;width:min(420px,90vw);text-align:center;color:#e8e8f5;font:500 16px GR Body,system-ui,sans-serif"><div style="font-size:42px">\u{1F513}</div><b style="font-size:20px;color:#fc4">New avatar ' + (out.length > 1 ? 'items' : 'item') + ' unlocked!</b><p style="margin:10px 0 14px">' + out.map(q => '<b>' + q[1] + '</b>').join(', ') + '<br>Pick ' + (out.length > 1 ? 'them' : 'it') + ' in the avatar designer.</p><button class="mini" id="unl-ok" style="font-size:16px;padding:10px 24px">Nice!</button></div>';
     document.body.appendChild(o); o.querySelector('#unl-ok').onclick = () => o.remove(); o.addEventListener('click', e => { if (e.target === o) o.remove(); });
     try { playSnd('ui'); } catch(_){}
   } catch(_){}
@@ -5668,7 +5786,7 @@ function checkSnowMsg(){      // the first time you are back at the main menu af
       if (add.length) localStorage.setItem('sr-crt-seen', JSON.stringify(cs.concat(add))); }
     if (!list.length) return;
     const o = document.createElement('div'); o.style.cssText = 'position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center';
-    o.innerHTML = '<div style="background:#16251a;border:2px solid #fc4;border-radius:14px;padding:20px;width:min(420px,90vw);text-align:center;color:#eef;font:16px sans-serif">' + list.map(([ic, t, nm]) => '<div style="font-size:42px">' + ic + '</div><b style="font-size:20px;color:#fc4">' + t + '</b><p style="margin:10px 0 14px">You unlocked ' + nm + ' as an avatar in every mode. Pick it in <b>Design Your Avatar</b>.</p>').join('') + '<button class="btn" id="snow-ok">Awesome!</button></div>';
+    o.innerHTML = '<div style="background:linear-gradient(180deg,#1b1060,#0d0830);border:2px solid #ffc933;border-radius:14px 3px 14px 3px;box-shadow:0 0 30px rgba(123,44,255,.55);padding:20px;width:min(420px,90vw);text-align:center;color:#e8e8f5;font:500 16px GR Body,system-ui,sans-serif">' + list.map(([ic, t, nm]) => '<div style="font-size:42px">' + ic + '</div><b style="font-size:20px;color:#fc4">' + t + '</b><p style="margin:10px 0 14px">You unlocked ' + nm + ' as an avatar in every mode. Pick it in <b>Design Your Avatar</b>.</p>').join('') + '<button class="btn" id="snow-ok">Awesome!</button></div>';
     document.body.appendChild(o); o.querySelector('#snow-ok').onclick = () => o.remove(); o.addEventListener('click', e => { if (e.target === o) o.remove(); });
     try { playSnd('ui'); } catch(_){}
     return true;
@@ -6948,7 +7066,7 @@ function createRoom(tries){
   peer.on('open', () => {
     Object.assign(NET, {role:'host', code, myPid:0, nextPid:1, peers:{}, lobby:[{pid:0, name:myName() || 'Player 1', tm:null, bm:0, wins:0, ...lookMsg()}],
       invites:[], incoming:[], sent:new Set(), mode:soloMode === 'story' ? 'story' : 'bots', level:lvlOpen(soloLevel) ? soloLevel : 'marsh', map:soloMap});
-    phase = 'lobby'; $('roomcode').textContent = code; showScreen('s-lobby'); lobbyBroadcast();
+    phase = 'lobby'; setRoomCode(code); showScreen('s-lobby'); lobbyBroadcast();
   });
   peer.on('connection', hostAcceptConnection);
   peer.on('error', err => {
