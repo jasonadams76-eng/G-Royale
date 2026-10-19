@@ -41,7 +41,9 @@
     #s-main .hint{text-align:center}
     #s-main .menumini{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:2px 0 6px}
     #chk-auto{display:none}                                  /* Autofire is a touch-screen option: not shown on PC */
-    .menubtns{width:min(420px,100%);margin:6px auto 12px}
+    .menubtns{width:min(560px,100%);margin:6px auto 12px}
+    #lookprev{flex-basis:230px;width:230px}
+    .mbcol .btn{font-size:17px;padding:12px}
     #s-avatar .cols{grid-template-columns:240px 1fr}
     #s-avatar #avstick{flex-direction:column;align-items:center}
     #s-avatar #avport{width:176px;height:300px}
@@ -66,8 +68,10 @@
   .txt{box-sizing:border-box;width:100%;font-size:30px;text-align:center;letter-spacing:8px;text-transform:uppercase;
     padding:8px;border-radius:10px;border:2px solid #3a5a40;background:#0d1610;color:#fff;
     -webkit-user-select:text;user-select:text}
-  .look{display:flex;gap:10px;align-items:center;margin:0 0 8px;text-align:left}
-  .look canvas{width:56px;height:56px;flex:none;background:#2e4a33;border-radius:10px;border:1px solid #3a5a40}
+  .menubtns{display:flex;gap:12px;align-items:stretch;margin:6px auto 12px}
+  #lookprev{flex:0 0 40%;width:40%;height:auto;aspect-ratio:1/1;align-self:center;background:#2e4a33;border-radius:12px;border:1px solid #3a5a40;box-sizing:border-box}
+  .mbcol{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:8px}
+  .mbcol .btn{margin:0;flex:1 1 auto;display:flex;align-items:center;justify-content:center;padding:10px 6px;font-size:16px;line-height:1.15}
   .look .lbl{margin:0 0 2px}
   #b-avatar.locked{background:#3a463e;color:#aab;font-size:13px}
   .sws{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}
@@ -154,16 +158,19 @@
       <label class="lbl" for="pname">Your name</label>
       <input id="pname" class="txt name" maxlength="12" placeholder="Enter a name" autocomplete="off" spellcheck="false">
       <div id="xpbox" title="Earn XP at the end of every game: finishing place, kills and a bonus for winning"><div class="xprow"><b id="lvltxt">Level 1</b><span id="xptxt">0 / 100 XP</span></div><div id="xpbar"><i id="xpfill"></i></div></div>
-      <div class="look"><canvas id="lookprev" width="112" height="112"></canvas><button class="btn" id="b-avatar">🎨 Design Your Avatar</button></div>
       <label class="chk" id="chk-auto"><input type="checkbox" id="autofire"> <span><b>Autofire</b> (touch controls): the gun fires by itself while you aim at an enemy you can see. Off: fire when you let go of the aim stick.</span></label>
       </div><div class="colR">
       <div class="lbl">Mode</div><div class="mapbox" id="modebox-main"><button class="mini" data-smode="classic">Battle Royale</button><button class="mini" data-smode="koth">King of the Hill</button><button class="mini" data-smode="story">Story Mode</button></div><div id="storyhint" style="display:none;font-size:13px;opacity:.85;margin:4px 0 8px">Story Mode (solo): follow the hero’s journey through levels full of enemy camps and defeat each boss, with cut scenes between chapters. Press Play Solo to choose your chapter.</div>
       <div class="lbl">Map</div><div class="mapbox" id="mapbox-main"></div>
       </div></div>
       <div class="menubtns">
+      <canvas id="lookprev" width="240" height="240"></canvas>
+      <div class="mbcol">
       <button class="btn" id="b-solo">Play Solo</button>
       <button class="btn" id="b-host">Host a Game</button>
       <button class="btn" id="b-join">Join a Game</button>
+      <button class="btn" id="b-avatar">🎨 Design Your Avatar</button>
+      </div>
       </div>
       <div class="menumini">
         <button class="mini" id="view-set" title="Camera view: straight down from above, or slightly angled so you can see everyone's whole outfit">\u{1F3A5} View: Top-down</button>
@@ -275,7 +282,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 125;
+const VERSION = 126;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -5555,7 +5562,7 @@ function drawAvAngled(cv, L){
 }
 function drawLookPreview(){
   const ang = avAngledOn();
-  for (const [id, sc] of [['lookprev', 2.3], ['avprev', 3.4]]){
+  for (const [id, sc] of [['lookprev', 2.3*240/112], ['avprev', 3.4]]){
     const cv2 = $(id), c = cv2.getContext('2d'), w = cv2.width; c.clearRect(0, 0, w, w);
     if (id === 'lookprev' && ang && drawAvAngled(cv2, curLook())) continue;
     c.save(); c.translate(w/2, w*(id === 'avprev' ? 0.6 : 0.52)); c.rotate(-Math.PI/2); c.scale(sc, sc); c.lineWidth = 2; c.strokeStyle = '#000'; c.lineJoin = 'round';
