@@ -434,6 +434,65 @@
     #menu.onsub #roomcode span{width:44px;height:56px;font-size:32px}
     #menu.onsub #code{font-size:44px}
   }
+
+  /* ===================== B2: avatar designer ===================== */
+  #menu.onsub #s-avatar{display:flex;flex-direction:column;gap:14px}
+  #menu.onsub #s-avatar[hidden]{display:none}
+  #menu.onsub #s-avatar [hidden]{display:none}
+  #menu.onsub #s-avatar .sh .btn{padding:8px 22px 6px;font-size:22px;width:auto}
+  #menu.onsub .avlayout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:22px;align-items:start}
+  #menu.onsub .avstage{position:sticky;top:12px;display:flex;flex-direction:column;align-items:center;gap:12px}
+  #menu.onsub .avframe{position:relative;isolation:isolate;width:100%;padding:2px;filter:drop-shadow(0 0 14px rgba(123,44,255,.5))}
+  #menu.onsub .avframe::before{content:'';position:absolute;inset:0;z-index:-1;clip-path:var(--gr-chamfer-m);background:linear-gradient(135deg,var(--gr-violet2),var(--gr-violetdim) 55%,var(--gr-gold))}
+  #menu.onsub #avstick{display:flex;flex-direction:column;align-items:center;gap:10px;margin:0;padding-bottom:10px;clip-path:var(--gr-chamfer-m);
+    background:radial-gradient(ellipse at 50% 30%,#4a2aa8 0,#241470 45%,#0d0830 100%)}
+  #menu.onsub #avport{display:block;width:100%;height:auto;aspect-ratio:200/340;box-shadow:none;border:0;border-radius:0;background:none;cursor:pointer}
+  #menu.onsub .avside{display:flex;align-items:center;gap:10px;padding:0 10px;text-align:left}
+  #menu.onsub #avprev{display:block;flex:none;width:64px;height:64px;box-shadow:none;border:1px solid rgba(168,85,247,.6);border-radius:0;background:rgba(7,4,28,.6)}
+  #menu.onsub .avcap{margin:0;font-size:12px;line-height:1.25;color:var(--gr-dim);opacity:1}
+  #menu.onsub .avcap b{color:var(--gr-silver)}
+  #menu.onsub #av-reset{color:var(--gr-silver)}
+  #menu.onsub #av-reset::before{background:#241670}
+  #menu.onsub .avmain{display:flex;flex-direction:column;gap:14px;min-width:0}
+  #menu.onsub .avtabs{display:flex;gap:4px;overflow-x:auto;padding:0 6px 10px 0;border-bottom:1px solid rgba(168,85,247,.35)}
+  #menu.onsub .avtab{position:relative;isolation:isolate;flex:none;padding:10px 22px;border:0;border-radius:0;background:none;font:400 18px/1 var(--gr-display);letter-spacing:.04em;color:var(--gr-silver)}
+  #menu.onsub .avtab::before{content:'';position:absolute;inset:0;z-index:-1;clip-path:var(--gr-slant);background:#241670;transition:background .15s}
+  #menu.onsub .avtab:hover::before{background:#32208f}
+  #menu.onsub .avtab.sel{color:#2a0a52}
+  #menu.onsub .avtab.sel::before{background:linear-gradient(var(--gr-goldhi),var(--gr-gold) 55%,var(--gr-goldlo))}
+  #menu.onsub .avpanel{display:flex;flex-direction:column;gap:14px}
+  #menu.onsub .avpanel > div[id$="row"],#menu.onsub .avpanel > #av-c2,#menu.onsub .avpanel > #av-snowrow{display:flex;flex-direction:column;gap:14px}
+  #menu.onsub #s-avatar .lbl{text-align:left;margin:0 0 -8px}
+  #menu.onsub .sws{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-start;margin:0}
+  #menu.onsub .sws.big{gap:8px;margin:0;justify-content:flex-start}
+  #menu.onsub .sw{width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,255,255,.28);box-shadow:none}
+  #menu.onsub .sws.big .sw{width:34px;height:34px}
+  #menu.onsub .sw.on{border-color:#fff;box-shadow:0 0 0 3px var(--gr-gold)}
+  #menu.onsub .wheelpanel{width:224px;margin:4px 0 0;padding:12px;background:linear-gradient(180deg,#1b1060,#0d0830);border:1px solid var(--gr-violet2);border-radius:12px 3px 12px 3px;text-align:center}
+  #menu.onsub .wheelpanel input{width:96px;margin-right:8px;padding:5px;text-align:center;font:700 15px var(--gr-body);color:#ffe9a0;background:var(--gr-ink);border:2px solid var(--gr-gold);border-radius:4px}
+
+  @media (max-width:720px){
+    #menu.onav .card{filter:none;padding-bottom:92px}
+    #menu.onsub .avlayout{display:block}
+    #menu.onsub .avstage{top:0;z-index:6;flex-direction:row;justify-content:flex-start;align-items:center;gap:10px;margin:0 -14px 10px;padding:8px 14px;
+      background:rgba(9,5,34,.97);border-bottom:1px solid rgba(168,85,247,.45);box-shadow:0 8px 12px -6px rgba(0,0,0,.7)}
+    #menu.onsub .avframe{width:auto;flex:1;min-width:0;filter:none}
+    #menu.onsub #avstick{flex-direction:row;align-items:center;gap:12px;padding:0 10px 0 0}
+    #menu.onsub #avport{width:72px;flex:none}
+    #menu.onsub .avside{flex-direction:column;align-items:flex-start;padding:0;gap:6px;flex:1;min-width:0}
+    #menu.onsub .avside .avcap:last-child{display:none}
+    #menu.onsub #avprev{width:52px;height:52px}
+    #menu.onsub #av-reset{align-self:center;flex:none}
+    #menu.onsub .avtabs{gap:3px;padding-right:0}
+    #menu.onsub .avtab{flex:1 1 auto;padding:10px 8px;font-size:16px;text-align:center}
+    #menu.onsub #s-avatar .sh #b-avdone{position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));width:auto;z-index:8;padding:11px 0 9px;font-size:30px}
+  }
+  @media (max-height:520px) and (orientation:landscape){
+    #menu.onsub .avlayout{display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px}
+    #menu.onsub .avstage{position:sticky;top:6px;flex-direction:column;margin:0;padding:0;background:none;border:0;box-shadow:none}
+    #menu.onsub .avframe{width:100%}
+    #menu.onsub .avside,#menu.onsub #av-reset{display:none}
+  }
 </style>
 </head>
 <body>
@@ -487,43 +546,53 @@
     </div></div>
 
     <div id="s-avatar" hidden>
-      <p><b>Design Your Avatar</b></p>
-      <div class="cols"><div class="colL">
-      <div id="avstick"><canvas id="avport" width="200" height="340" title="Tap to turn around"></canvas><div class="avside"><canvas id="avprev" width="150" height="150"></canvas><div class="avcap"><b>Top Down view</b><br>how you look in Top Down mode</div><div class="avcap">Tap the figure to turn</div></div></div>
-      </div><div class="colR">
-      <div class="lbl">Skin tone</div><div class="sws big" id="av-skins"></div>
-      <div class="lbl">Hair style</div><div class="mapbox" id="av-styles"></div>
-      <div class="lbl">Hair colour</div><div class="sws big" id="av-hairs"></div>
-      <div id="av-tierow"><div class="lbl">Hair tie colour</div><div class="sws big" id="av-tiec"></div></div>
-      <div class="lbl">Headwear</div><div class="mapbox" id="av-hats"></div>
-      <div class="lbl">Headwear colour</div><div class="sws big" id="av-hatc"></div>
-      <div class="lbl">Hands</div><div class="mapbox" id="av-hands"></div>
-      <div class="lbl">Glove colour</div><div class="sws big" id="av-glovec"></div>
-      <div class="lbl">Back</div><div class="mapbox" id="av-back"></div>
-      <div class="lbl">Cape colour</div><div class="sws big" id="av-capec"></div>
-      <div class="lbl">Prestige extras</div><div class="mapbox" id="av-xtra"></div>
-      <div class="lbl">Face gear</div><div class="mapbox" id="av-face"></div>
-      <div class="lbl">Shirt style</div><div class="mapbox" id="av-sstyle"></div>
-      <div class="lbl">Sleeves</div><div class="mapbox" id="av-sleeves"></div>
-      <div class="lbl">Shirt pattern</div><div class="mapbox" id="av-pats"></div>
-      <div class="lbl">Shirt colour</div><div class="sws big" id="av-shirts"></div>
-      <div id="av-c2"><div class="lbl">Second colour</div><div class="sws big" id="av-shirts2"></div></div>
-      <div class="lbl">Over your shirt</div><div class="mapbox" id="av-outers"></div>
-      <div id="av-outerrow"><div class="lbl">Over-shirt colour</div><div class="sws big" id="av-outerc"></div></div>
-      <div class="lbl">Pants</div><div class="mapbox" id="av-pants"></div>
-      <div class="lbl">Pants colour</div><div class="sws big" id="av-pantc"></div>
-      <div class="lbl">Belt</div><div class="mapbox" id="av-belts"></div>
-      <div id="av-beltrow"><div class="lbl">Belt colour</div><div class="sws big" id="av-beltc"></div></div>
-      <div class="lbl">Shoes</div><div class="mapbox" id="av-shoes"></div>
-      <div class="lbl">Shoe colour</div><div class="sws big" id="av-shoec"></div>
-      <div style="text-align:center;margin:8px 0"><button class="mini" id="av-reset" type="button">Reset colours</button></div>
-      <div id="av-snowrow" hidden><div class="lbl">Creature avatar <span style="font-weight:400;opacity:.75">(works in every mode; tap a locked one to see how to earn it)</span></div><div class="mapbox" id="av-snow"></div></div>
-      <div class="lbl">Trophy head <span style="font-weight:400;opacity:.75">(wear a defeated boss's head)</span></div><div class="mapbox" id="av-trophy"></div>
-      </div></div>
-      <button class="btn" id="b-avdone">Save &amp; Back to Main Menu</button>
+      <div class="sh"><div><h1>Design your avatar</h1><p class="sub">Your changes save as you pick</p></div><button class="btn" id="b-avdone">Save &amp; Back</button></div>
+      <div class="avlayout">
+        <div class="avstage">
+          <div class="avframe"><div id="avstick"><canvas id="avport" width="200" height="340" title="Tap to turn around"></canvas><div class="avside"><canvas id="avprev" width="150" height="150"></canvas><div class="avcap"><b>Top Down view</b><br>how you look in Top Down mode</div><div class="avcap">Tap the figure to turn</div></div></div></div>
+          <button class="mini" id="av-reset" type="button">Reset colours</button>
+        </div>
+        <div class="avmain">
+      <div class="avtabs" role="tablist" aria-label="Avatar sections"><button type="button" class="avtab sel" role="tab" data-tab="head" aria-selected="true">Head</button><button type="button" class="avtab" role="tab" data-tab="outfit" aria-selected="false">Outfit</button><button type="button" class="avtab" role="tab" data-tab="legs" aria-selected="false">Legs &amp; feet</button><button type="button" class="avtab" role="tab" data-tab="special" aria-selected="false">Special</button></div>
+      <div class="avpanel" role="tabpanel" data-panel="head">
+        <div class="lbl">Skin tone</div><div class="sws big" id="av-skins"></div>
+        <div class="lbl">Hair style</div><div class="mapbox" id="av-styles"></div>
+        <div class="lbl">Hair colour</div><div class="sws big" id="av-hairs"></div>
+        <div id="av-tierow"><div class="lbl">Hair tie colour</div><div class="sws big" id="av-tiec"></div></div>
+        <div class="lbl">Headwear</div><div class="mapbox" id="av-hats"></div>
+        <div class="lbl">Headwear colour</div><div class="sws big" id="av-hatc"></div>
+        <div class="lbl">Face gear</div><div class="mapbox" id="av-face"></div>
+      </div>
+      <div class="avpanel" role="tabpanel" data-panel="outfit" hidden>
+        <div class="lbl">Shirt style</div><div class="mapbox" id="av-sstyle"></div>
+        <div class="lbl">Sleeves</div><div class="mapbox" id="av-sleeves"></div>
+        <div class="lbl">Shirt pattern</div><div class="mapbox" id="av-pats"></div>
+        <div class="lbl">Shirt colour</div><div class="sws big" id="av-shirts"></div>
+        <div id="av-c2"><div class="lbl">Second colour</div><div class="sws big" id="av-shirts2"></div></div>
+        <div class="lbl">Over your shirt</div><div class="mapbox" id="av-outers"></div>
+        <div id="av-outerrow"><div class="lbl">Over-shirt colour</div><div class="sws big" id="av-outerc"></div></div>
+        <div class="lbl">Hands</div><div class="mapbox" id="av-hands"></div>
+        <div class="lbl">Glove colour</div><div class="sws big" id="av-glovec"></div>
+        <div class="lbl">Back</div><div class="mapbox" id="av-back"></div>
+        <div class="lbl">Cape colour</div><div class="sws big" id="av-capec"></div>
+      </div>
+      <div class="avpanel" role="tabpanel" data-panel="legs" hidden>
+        <div class="lbl">Pants</div><div class="mapbox" id="av-pants"></div>
+        <div class="lbl">Pants colour</div><div class="sws big" id="av-pantc"></div>
+        <div class="lbl">Belt</div><div class="mapbox" id="av-belts"></div>
+        <div id="av-beltrow"><div class="lbl">Belt colour</div><div class="sws big" id="av-beltc"></div></div>
+        <div class="lbl">Shoes</div><div class="mapbox" id="av-shoes"></div>
+        <div class="lbl">Shoe colour</div><div class="sws big" id="av-shoec"></div>
+      </div>
+      <div class="avpanel" role="tabpanel" data-panel="special" hidden>
+        <div class="lbl">Prestige extras</div><div class="mapbox" id="av-xtra"></div>
+        <div id="av-snowrow" hidden><div class="lbl">Creature avatar <span style="font-weight:400;opacity:.75">(works in every mode; tap a locked one to see how to earn it)</span></div><div class="mapbox" id="av-snow"></div></div>
+        <div class="lbl">Trophy head <span style="font-weight:400;opacity:.75">(wear a defeated boss's head)</span></div><div class="mapbox" id="av-trophy"></div>
+      </div>
+      </div>
+      </div>
     </div>
-
-    <div id="s-adv" hidden>
+<div id="s-adv" hidden>
       <div class="sh"><div><h1>Choose your chapter</h1><p class="sub">Story Mode</p></div><button class="btn ghost" data-back>Back</button></div>
       <div class="lbl">Difficulty <span style="font-weight:400;opacity:.75">(Explorer = Easy · Adventurer = Normal · Veteran = Hard)</span></div><div class="mapbox" id="diffbox"></div>
       <div id="diffhelp"></div>
@@ -583,7 +652,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 129;
+const VERSION = 130;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -5739,7 +5808,7 @@ function toast(t, ms){
 }
 const SCREENS = ['s-main','s-avatar','s-join','s-lobby','s-adv','s-scenes'];
 function setRoomCode(c){ const e = $('roomcode'); e.textContent = ''; e.setAttribute('aria-label', 'Room code ' + c); for (const ch of String(c)){ const s = document.createElement('span'); s.textContent = ch; e.appendChild(s); } }
-function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); $('menu').classList.toggle('onmain', id === 's-main'); $('menu').classList.toggle('onsub', id !== 's-main' && id !== 's-avatar'); menuMsg(''); if (id === 's-main') setTimeout(() => { try { checkMenuMsgs(); } catch(_){} }, 400); }
+function showScreen(id){ for (const s of SCREENS) $(s).hidden = (s !== id); $('menu').classList.toggle('onmain', id === 's-main'); $('menu').classList.toggle('onsub', id !== 's-main'); $('menu').classList.toggle('onav', id === 's-avatar'); menuMsg(''); if (id === 's-main') setTimeout(() => { try { checkMenuMsgs(); } catch(_){} }, 400); }
 function menuMsg(t){ $('msg').textContent = t || ''; }
 function hideMenu(){ $('menu').classList.add('hide'); $('exit').style.display = 'block'; }
 
@@ -6955,6 +7024,9 @@ function refreshAvatarLock(){
 }
 $('b-avatar').onclick = () => { if (!avatarOpen()){ toast('Reach Level ' + AVATAR_UNLOCK + ' to design your own avatar. Until then you play as the starter avatar.', 3500); return; } showScreen('s-avatar'); buildLookPickers(); $('menu').scrollTop = 0; document.querySelectorAll('#menu *').forEach(n => { if (n.scrollTop) n.scrollTop = 0; }); };
 $('b-avdone').onclick = () => { showScreen('s-main'); refreshAvatarLock(); };
+{ const tabs = [...document.querySelectorAll('#s-avatar .avtab')], panels = [...document.querySelectorAll('#s-avatar .avpanel')];
+  const showTab = n => { tabs.forEach(b => { const on = b.dataset.tab === n; b.classList.toggle('sel', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); }); panels.forEach(p => { p.hidden = p.dataset.panel !== n; }); };
+  tabs.forEach(b => b.onclick = () => { showTab(b.dataset.tab); try { playSnd('ui'); } catch(_){} }); showTab('head'); }
 refreshAvatarLock();
 setTimeout(() => { try { checkMenuMsgs(); } catch(_){} }, 600);
 
