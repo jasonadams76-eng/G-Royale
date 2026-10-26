@@ -696,7 +696,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 134;
+const VERSION = 135;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -5842,6 +5842,12 @@ function drawHUD(){
       {t:(win ? '#1' : '#'+p.place)+' · '+p.kills+' kills · '+PROMPT+(NET.role === 'solo' ? ' to play again' : ' to return to the lobby'), size:Math.min(24, vw/22), hint:1},
       (!win && p.killedBy) ? {t:killLine(p), size:Math.min(24, vw/20), col:'#ffd34d', disp:1} : null,
       {xp:1, size:Math.min(22, vw/24)}]);
+  } else if (!p.alive && S.story && p.lives <= 0 && S.players.some(q => q !== p && (q.alive || q.lives > 0))){      // out of lives but your partner plays on: small banner so you can spectate them
+    const bh = p.killedBy ? 80 : 46;
+    grPanel(vw/2-190, 44, 380, bh, {edge:'#ff5a5a', c:12});
+    grTxt('OUT OF LIVES · '+p.kills+' kills', vw/2, 66, 19, '#ff8a8a', 1, 350);
+    if (p.killedBy) grTxt(killLine(p), vw/2, 87, 15, '#ffd34d', 0, 350);
+    grTxt(touchMode ? 'Spectating · tap ◀ ▶ to switch player' : 'Spectating · click ◀ ▶ or use the arrow keys', vw/2, p.killedBy ? 107 : 83, 12, '#e8e8f5', 0, 350);
   } else if (!p.alive && S.story){
     grCard('YOU FELL', 'red', [
       p.lives > 0 ? {t:'Returning to '+(S.story.cp >= 0 ? 'checkpoint '+(S.story.cp+1) : 'the start')+'…', size:Math.min(20, vw/24)} : null,
