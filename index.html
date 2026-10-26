@@ -582,6 +582,20 @@
         <button class="mini" id="cs-set" title="Story Mode cut scenes: play them the first time only, every time, or never">Cut scenes: First time only</button>
         <button class="mini" id="sv-open" title="Move your progress to another device">Save transfer</button>
       </div>
+<style>
+  #acct{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px 12px;margin:2px 0 6px}
+  #acct[hidden],#acct [hidden]{display:none}
+  #acct .mini{padding:6px 14px;font:700 13px var(--gr-body,inherit);border:1px solid rgba(168,85,247,.55);border-radius:8px;background:rgba(123,44,255,.18);color:#fff;cursor:pointer}
+  #acct .mini:hover{color:var(--gr-gold,#ffc933)}
+  #g-who{font:700 13px var(--gr-body,inherit);color:var(--gr-gold,#ffc933);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #g-note{flex-basis:100%;text-align:center;font-size:11px;color:var(--gr-dim,#9ab)}
+</style>
+      <div id="acct" hidden>
+        <button class="mini" id="g-sign" type="button">Sign in with Google</button>
+        <span id="g-who" hidden></span>
+        <button class="mini" id="g-out" type="button" hidden>Sign out</button>
+        <div id="g-note">Optional. Saves only your game progress and Google ID, never your email.</div>
+      </div>
       <p class="hint">Play with friends on other devices (up to 8 players). Host a room and share the code, team up in the lobby, then start the match.</p>
       <div class="ver" id="ver">G Royale</div>
     </div></div>
@@ -696,7 +710,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 135;
+const VERSION = 136;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -8522,6 +8536,42 @@ function loop(now){
 init();
 requestAnimationFrame(loop);
 { const L = document.getElementById('gr-load'); if (L) requestAnimationFrame(() => requestAnimationFrame(() => { L.classList.add('out'); setTimeout(() => L.remove(), 300); })); }
+</script>
+<script type="module">
+// Optional Google sign-in (Firebase). If it can't load (offline, blocked), the game works exactly as before and the sign-in area stays hidden.
+const firebaseConfig = {
+  apiKey: "AIzaSyAE7_7c9wTGWkIdqrD87NEco2fqqpccvO8",
+  authDomain: "g-royale-f5dd6.firebaseapp.com",
+  projectId: "g-royale-f5dd6",
+  storageBucket: "g-royale-f5dd6.firebasestorage.app",
+  messagingSenderId: "554356886482",
+  appId: "1:554356886482:web:31545400e015b344b0d60b"
+};
+try {
+  const V = '10.12.2', base = 'https://www.gstatic.com/firebasejs/' + V + '/';
+  const [{ initializeApp }, A] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js')]);
+  const app = initializeApp(firebaseConfig), auth = A.getAuth(app), $ = id => document.getElementById(id);
+  window.GR = window.GR || {}; window.GR.app = app; window.GR.auth = auth; window.GR.user = null;
+  const note = t => { try { const e = $('toast'); e.textContent = t; e.style.display = 'block'; setTimeout(() => { e.style.display = 'none'; }, 4000); } catch(_){} };
+  $('g-sign').onclick = async () => {
+    const prov = new A.GoogleAuthProvider();
+    try { await A.signInWithPopup(auth, prov); }
+    catch (e) {
+      const c = e && e.code;
+      if (c === 'auth/popup-blocked') { try { await A.signInWithRedirect(auth, prov); } catch(_){ note('Sign-in was blocked by the browser.'); } }
+      else if (c !== 'auth/popup-closed-by-user' && c !== 'auth/cancelled-popup-request') note('Could not sign in' + (c ? ' (' + c.replace('auth/', '') + ')' : '') + '.');
+    }
+  };
+  $('g-out').onclick = () => { A.signOut(auth).catch(() => {}); };
+  A.onAuthStateChanged(auth, u => {
+    window.GR.user = u ? { uid: u.uid, name: u.displayName || '' } : null;
+    $('g-sign').hidden = !!u; $('g-out').hidden = !u; $('g-who').hidden = !u;
+    $('g-who').textContent = u ? 'Signed in: ' + (u.displayName || 'Google user') : '';
+    $('g-note').hidden = !!u;
+    document.dispatchEvent(new CustomEvent('gr-auth', { detail: window.GR.user }));
+  });
+  $('acct').hidden = false;
+} catch (e) { console.warn('Google sign-in unavailable:', e); }
 </script>
 </body>
 </html>
