@@ -710,7 +710,7 @@
 
 <script>
 // Version number: bump this by one every time a new build is pushed to GitHub (shown on the main menu).
-const VERSION = 136;
+const VERSION = 137;
 document.getElementById('ver').textContent = 'G Royale · Version ' + VERSION;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -8538,7 +8538,7 @@ requestAnimationFrame(loop);
 { const L = document.getElementById('gr-load'); if (L) requestAnimationFrame(() => requestAnimationFrame(() => { L.classList.add('out'); setTimeout(() => L.remove(), 300); })); }
 </script>
 <script type="module">
-// Optional Google sign-in (Firebase). If it can't load (offline, blocked), the game works exactly as before and the sign-in area stays hidden.
+// Optional Google sign-in + cloud save (Firebase). If it can't load (offline, blocked), the game works exactly as before and the sign-in area stays hidden.
 const firebaseConfig = {
   apiKey: "AIzaSyAE7_7c9wTGWkIdqrD87NEco2fqqpccvO8",
   authDomain: "g-royale-f5dd6.firebaseapp.com",
@@ -8547,28 +8547,123 @@ const firebaseConfig = {
   messagingSenderId: "554356886482",
   appId: "1:554356886482:web:31545400e015b344b0d60b"
 };
+// ---- which saved settings travel with the account ----
+//  counters / bests: the higher number wins · flags (unlocks, chapters done, cut scenes seen): either device having it counts
+//  avatar, name and current streak: the newest change wins · everything else (music, view, map...) stays on the device
+const MAXK = /^(sr-(xp|wins|kills|games|top3|top5|bestk|beststreak|win0|comeback)(-[a-z0-9]+)?|sr-best-.+)$/, FLAGK = /^sr-(unlock|done|cs)-.+$/;
+const NEWK = new Set(['sr-look', 'sr-name', 'sr-streak']), SEEN = 'sr-unl-seen';
+const isSynced = k => typeof k === 'string' && (MAXK.test(k) || FLAGK.test(k) || NEWK.has(k) || k === SEEN);
+const LS = (() => { try { return window.localStorage; } catch(_) { return null; } })();
+const oSet = Storage.prototype.setItem, oRem = Storage.prototype.removeItem;
+let sched = () => {};
+// one hook sees every save: stamps "newest wins" items with the time, and queues a cloud upload
+try {
+  Storage.prototype.setItem = function (k, v) {
+    oSet.call(this, k, v);
+    try { if (this === LS && typeof k === 'string' && k.indexOf('sr-') === 0 && isSynced(k)) { if (NEWK.has(k)) oSet.call(this, 'sr-ts-' + k, String(Date.now())); sched(); } } catch(_) {}
+  };
+} catch(_) {}
+const readLocal = () => {
+  const data = {}, ts = {};
+  try { for (let i = 0; i < LS.length; i++) { const k = LS.key(i); if (isSynced(k)) { const v = LS.getItem(k); if (v !== null) { data[k] = v; if (NEWK.has(k)) ts[k] = parseInt(LS.getItem('sr-ts-' + k), 10) || 0; } } } } catch(_) {}
+  return { data, ts };
+};
+const seenList = s => { try { const a = JSON.parse(s || '[]'); return Array.isArray(a) ? a.map(String) : []; } catch(_) { return []; } };
+const merge = (L, C) => {
+  const data = {}, ts = {}, keys = new Set([...Object.keys(L.data), ...Object.keys(C.data || {})]);
+  for (const k of keys) {
+    const a = L.data[k], b = (C.data || {})[k];
+    if (a === undefined || a === null) { data[k] = b; if (NEWK.has(k)) ts[k] = (C.ts || {})[k] || 0; continue; }
+    if (b === undefined || b === null) { data[k] = a; if (NEWK.has(k)) ts[k] = L.ts[k] || 0; continue; }
+    if (k === SEEN) data[k] = JSON.stringify([...new Set([...seenList(a), ...seenList(b)])].sort());
+    else if (NEWK.has(k)) { const ta = L.ts[k] || 0, tb = (C.ts || {})[k] || 0; if (ta > tb) { data[k] = a; ts[k] = ta; } else { data[k] = b; ts[k] = tb; } }
+    else if (FLAGK.test(k)) data[k] = (a === '1' || b === '1') ? '1' : a;
+    else { const x = parseInt(a, 10), y = parseInt(b, 10); data[k] = String(Math.max(isNaN(x) ? 0 : x, isNaN(y) ? 0 : y)); }
+  }
+  return { data, ts };
+};
 try {
   const V = '10.12.2', base = 'https://www.gstatic.com/firebasejs/' + V + '/';
-  const [{ initializeApp }, A] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js')]);
-  const app = initializeApp(firebaseConfig), auth = A.getAuth(app), $ = id => document.getElementById(id);
+  const [{ initializeApp }, A, F] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js'), import(base + 'firebase-firestore.js')]);
+  const app = initializeApp(firebaseConfig), auth = A.getAuth(app), db = F.getFirestore(app), $ = id => document.getElementById(id);
   window.GR = window.GR || {}; window.GR.app = app; window.GR.auth = auth; window.GR.user = null;
-  const note = t => { try { const e = $('toast'); e.textContent = t; e.style.display = 'block'; setTimeout(() => { e.style.display = 'none'; }, 4000); } catch(_){} };
+  const note = t => { try { const e = $('toast'); e.textContent = t; e.style.display = 'block'; setTimeout(() => { e.style.display = 'none'; }, 4000); } catch(_) {} };
+  let user = null, ready = false, timer = 0, busy = false, again = false, status = '', first = '';
+  const paint = () => { $('g-who').textContent = user ? 'Signed in: ' + first + (status ? ' · ' + status : '') : ''; };
+  const setStatus = s => { status = s; paint(); };
+  const ref = () => F.doc(db, 'players', user.uid);
+  // merge this device with the cloud copy and store the result in the cloud (never blocks the game, retries later on failure)
+  const upload = async () => {
+    if (!user || !ready) return;
+    if (busy) { again = true; return; }
+    busy = true; setStatus('☁ saving…');
+    try {
+      const r = ref(), L = readLocal();
+      await F.runTransaction(db, async tx => {
+        const snap = await tx.get(r), c = snap.exists() ? snap.data() : {};
+        const m = merge(L, { data: c.data || {}, ts: c.ts || {} });
+        tx.set(r, { v: 1, data: m.data, ts: m.ts, updatedAt: F.serverTimestamp() });
+      });
+      setStatus('☁ synced');
+    } catch (e) { setStatus('☁ offline'); console.warn('Cloud save failed:', e); }
+    busy = false; if (again) { again = false; sched(); }
+  };
+  sched = () => { if (!user || !ready) return; clearTimeout(timer); timer = setTimeout(upload, 5000); };
+  const flush = () => { if (user && ready && timer) { clearTimeout(timer); timer = 0; upload(); } };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+  window.addEventListener('pagehide', flush);
+  window.addEventListener('online', () => { if (user && !ready) syncIn(user); else sched(); });
+  // sign-in: load the cloud save and merge it with this device
+  const syncIn = async u => {
+    setStatus('☁ syncing…');
+    let snap;
+    try { snap = await F.getDoc(F.doc(db, 'players', u.uid)); } catch (e) { setStatus('☁ offline'); console.warn('Cloud load failed:', e); return; }
+    if (user !== u) return;
+    const c = snap.exists() ? snap.data() : {}, cd = c.data || {}, hasCloud = Object.keys(cd).length > 0;
+    const L = readLocal(), hasLocal = Object.keys(L.data).some(k => k !== 'sr-name');
+    let owner = ''; try { owner = LS.getItem('sr-owner') || ''; } catch(_) {}
+    let replace = false;
+    if (owner && owner !== u.uid) {
+      if (!confirm('This device has another player\'s progress.\n\nLoad YOUR progress from your Google account instead?\n(The other player\'s progress stays safe in their own account.)')) { A.signOut(auth).catch(() => {}); return; }
+      replace = true;
+    } else if (!owner && hasLocal) {
+      if (!confirm(hasCloud ? 'Add this device\'s progress to your Google account?\n\nYour saved account progress and this device\'s progress will be combined, keeping the best of each.'
+                            : 'Save this device\'s progress to your Google account?')) { A.signOut(auth).catch(() => {}); return; }
+    }
+    const before = JSON.stringify(Object.entries(L.data).sort());
+    if (replace) { try { for (const k of Object.keys(L.data)) { oRem.call(LS, k); oRem.call(LS, 'sr-ts-' + k); } } catch(_) {} }
+    const m = merge(replace ? { data: {}, ts: {} } : L, { data: cd, ts: c.ts || {} });
+    try {
+      for (const k of Object.keys(m.data)) { oSet.call(LS, k, m.data[k]); if (NEWK.has(k)) oSet.call(LS, 'sr-ts-' + k, String(m.ts[k] || 0)); }
+      oSet.call(LS, 'sr-owner', u.uid);
+    } catch(_) {}
+    const changed = before !== JSON.stringify(Object.entries(readLocal().data).sort());
+    ready = true; await upload();
+    if (changed) {
+      let play = false; try { play = (typeof phase !== 'undefined' && phase === 'play'); } catch(_) {}
+      let recent = false; try { recent = Date.now() - (parseInt(sessionStorage.getItem('gr-rl'), 10) || 0) < 20000; } catch(_) {}
+      if (play || recent) note('Progress synced. Reload the game to see it.');
+      else { try { sessionStorage.setItem('gr-rl', String(Date.now())); } catch(_) {} location.reload(); }
+    }
+  };
   $('g-sign').onclick = async () => {
     const prov = new A.GoogleAuthProvider();
     try { await A.signInWithPopup(auth, prov); }
     catch (e) {
       const c = e && e.code;
-      if (c === 'auth/popup-blocked') { try { await A.signInWithRedirect(auth, prov); } catch(_){ note('Sign-in was blocked by the browser.'); } }
+      if (c === 'auth/popup-blocked') { try { await A.signInWithRedirect(auth, prov); } catch(_) { note('Sign-in was blocked by the browser.'); } }
       else if (c !== 'auth/popup-closed-by-user' && c !== 'auth/cancelled-popup-request') note('Could not sign in' + (c ? ' (' + c.replace('auth/', '') + ')' : '') + '.');
     }
   };
-  $('g-out').onclick = () => { A.signOut(auth).catch(() => {}); };
+  $('g-out').onclick = () => { flush(); A.signOut(auth).catch(() => {}); };
   A.onAuthStateChanged(auth, u => {
+    user = u || null; ready = false; clearTimeout(timer); timer = 0;
     window.GR.user = u ? { uid: u.uid, name: u.displayName || '' } : null;
-    $('g-sign').hidden = !!u; $('g-out').hidden = !u; $('g-who').hidden = !u;
-    $('g-who').textContent = u ? 'Signed in: ' + (u.displayName || 'Google user') : '';
-    $('g-note').hidden = !!u;
+    first = u ? (u.displayName || 'Google user') : '';
+    $('g-sign').hidden = !!u; $('g-out').hidden = !u; $('g-who').hidden = !u; $('g-note').hidden = !!u;
+    status = ''; paint();
     document.dispatchEvent(new CustomEvent('gr-auth', { detail: window.GR.user }));
+    if (u) syncIn(u);
   });
   $('acct').hidden = false;
 } catch (e) { console.warn('Google sign-in unavailable:', e); }
